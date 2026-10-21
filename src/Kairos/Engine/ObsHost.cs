@@ -12,30 +12,17 @@ public sealed record MonitorInfo(string Id, string Name, int Width, int Height, 
 /// <summary>Owns the process-wide libobs instance.</summary>
 public static partial class ObsHost
 {
-    static readonly string[] Modules = ["win-capture", "win-wasapi", "obs-nvenc", "obs-ffmpeg", "obs-x264"];
-
-    /// <summary>
-    /// Intel's encoder plugin takes over half a second to start (it probes the Intel driver), while the recording
-    /// usually runs on NVIDIA or AMD. It loads once the replay buffer is up, unless the wanted codec has no other
-    /// hardware encoder (then it is loaded with the rest, since it could be the pick). It has no post-load step.
-    /// </summary>
-    static readonly string[] Later = ["obs-qsv11"];
+    static string[] Modules => CaptureBackend.Modules;
+    static string[] Later => CaptureBackend.Later;
     static bool _laterLoaded;
-    static readonly IntPtr GraphicsModule = Marshal.StringToCoTaskMemUTF8("libobs-d3d11");
+    static readonly IntPtr GraphicsModule = Marshal.StringToCoTaskMemUTF8(CaptureBackend.GraphicsModule);
 
     public static bool Started { get; private set; }
     public static List<string> FailedModules { get; } = [];
 
-    /// <summary>
-    /// Where libobs starts: it looks for its own files only as ../../data/libobs/ from the working directory, so in the
-    /// one-folder program that is data\libobs itself.
-    /// </summary>
-    internal static string LibobsWorkingDirectory(string appFolder) => Path.Combine(appFolder, "data", "libobs");
+    internal static string LibobsWorkingDirectory(string appFolder) => CaptureBackend.LibobsWorkingDirectory(appFolder);
 
-    /// <summary>A plugin's DLL and its data folder in the program folder.</summary>
-    internal static (string Bin, string Data) ModulePaths(string appFolder, string name) =>
-        (Path.Combine(appFolder, "obs-plugins", "64bit", name + ".dll"),
-         Path.Combine(appFolder, "data", "obs-plugins", name) + Path.DirectorySeparatorChar);
+    internal static (string Bin, string Data) ModulePaths(string appFolder, string name) => CaptureBackend.ModulePaths(appFolder, name);
 
     /// <summary>Starts libobs. <paramref name="appFolder"/> is the program folder (obs.dll, data\, obs-plugins\).</summary>
     /// <param name="wanted">The codec the settings ask for (which encoder plugins must be in before the first pick).</param>
@@ -47,6 +34,7 @@ public static partial class ObsHost
         Directory.SetCurrentDirectory(LibobsWorkingDirectory(appFolder));
         ObsLog.Open(logDir);
         ObsLog.HookLibobs();
+        CaptureBackend.BeforeStartup();
 
         var clock = System.Diagnostics.Stopwatch.StartNew();
         string moduleConfig = Path.Combine(configDir, "plugin_config") + Path.DirectorySeparatorChar;
@@ -188,22 +176,33 @@ public static partial class ObsHost
     public static List<(string Name, string Value)> ListProperty(string sourceId, string property)
     {
         var items = new List<(string, string)>();
-        IntPtr props = Obs.obs_get_source_properties(sourceId);
+        // Some sources (X11 screen capture) cannot describe themselves without an instance.
+        IntPtr instance = CaptureBackend.PropertiesNeedInstance(sourceId) ? Obs.obs_source_create(sourceId, "properties", IntPtr.Zero, IntPtr.Zero) : IntPtr.Zero;
+        IntPtr props = CaptureBackend.PropertiesNeedInstance(sourceId)
+            ? instance == IntPtr.Zero ? IntPtr.Zero : Obs.obs_source_properties(instance)
+            : Obs.obs_get_source_properties(sourceId);
         if (props == IntPtr.Zero)
+        {
+            if (instance != IntPtr.Zero)
+                Obs.obs_source_release(instance);
             return items;
+        }
         try
         {
             IntPtr p = Obs.obs_properties_get(props, property);
             if (p == IntPtr.Zero)
                 return items;
             nuint count = Obs.obs_property_list_item_count(p);
+            bool numbers = Obs.obs_property_list_format(p) == 1; // X11 screens are an int list; reading one as a string crashes
             for (nuint i = 0; i < count; i++)
                 items.Add((Obs.Utf8(Obs.obs_property_list_item_name(p, i)) ?? "",
-                           Obs.Utf8(Obs.obs_property_list_item_string(p, i)) ?? ""));
+                           numbers ? Obs.obs_property_list_item_int(p, i).ToString() : Obs.Utf8(Obs.obs_property_list_item_string(p, i)) ?? ""));
         }
         finally
         {
             Obs.obs_properties_destroy(props);
+            if (instance != IntPtr.Zero)
+                Obs.obs_source_release(instance);
         }
         return items;
     }
@@ -212,7 +211,7 @@ public static partial class ObsHost
     public static List<MonitorInfo> Monitors()
     {
         var list = new List<MonitorInfo>();
-        foreach (var (name, id) in ListProperty("monitor_capture", "monitor_id"))
+        foreach (var (name, id) in ListProperty(CaptureBackend.MonitorList.Source, CaptureBackend.MonitorList.Property))
         {
             var m = SizePattern().Match(name);
             if (!m.Success || string.IsNullOrEmpty(id))

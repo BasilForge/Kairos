@@ -1,0 +1,500 @@
+<UserControl x:Class="Kairos.Ui.ShareOverlay"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <UserControl.Styles>
+    <Style Selector="l|Icon.st1"><Setter Property="Glyph" Value="E767"/></Style>
+    <Style Selector="l|Icon.st1.v1"><Setter Property="Glyph" Value="E74F"/></Style>
+    <Style Selector="l|Icon.st2"><Setter Property="Glyph" Value="E8C8"/></Style>
+    <Style Selector="l|Icon.st2.v1"><Setter Property="Glyph" Value="E73E"/></Style>
+    <Style Selector="TextBlock.st3"><Setter Property="Text" Value="{l:T share.copy}"/></Style>
+    <Style Selector="TextBlock.st3.v1"><Setter Property="Text" Value="{l:T share.copied}"/><Setter Property="Foreground" Value="{StaticResource Success}"/></Style>
+    <Style Selector="Ellipse.st4"><Setter Property="Fill" Value="{StaticResource StrokeStrong}"/></Style>
+    <Style Selector="Ellipse.st4.v1"><Setter Property="Fill" Value="{DynamicResource Accent}"/></Style>
+    <Style Selector="Ellipse.st4.v2"><Setter Property="Fill" Value="{StaticResource Success}"/></Style>
+    <Style Selector="Ellipse.st4.v3"><Setter Property="Fill" Value="{StaticResource Warning}"/></Style>
+    <Style Selector="Ellipse.st4.v4"><Setter Property="Fill" Value="{StaticResource Warning}"/></Style>
+    <!-- Compact platform tile: same selection language as the choice cards, sized for four in a row. -->
+    <Style Selector="RadioButton.Tile">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Margin" Value="0,0,8,0"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="{StaticResource Bg}" BorderBrush="{StaticResource Stroke}" BorderThickness="1.5" CornerRadius="10" Padding="6,12,6,10">
+                    <ContentPresenter HorizontalAlignment="Center" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton.Tile:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="RadioButton.Tile:checked"><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="RadioButton.Tile:checked /template/ Border#Bd">
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+        <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    </Style>
+    <Style Selector="RadioButton.Tile:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/></Style>
+    <Style Selector="RadioButton.Tile:disabled /template/ Border#Bd"><Setter Property="Opacity" Value="0.55"/></Style>
+    <!-- Copy: a tile that acts at once (no choice to keep), same look as the platform tiles -->
+    <Style Selector="Button.ActionTile">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Margin" Value="0,0,8,0"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="{StaticResource Bg}" BorderBrush="{StaticResource Stroke}" BorderThickness="1.5" CornerRadius="10" Padding="6,12,6,10">
+                    <ContentPresenter HorizontalAlignment="Center" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button.ActionTile:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="Button.ActionTile:pressed /template/ Border#Bd"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/></Style>
+    <Style Selector="Button.ActionTile:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/></Style>
+    <Style Selector="Button.ActionTile:disabled /template/ Border#Bd"><Setter Property="Opacity" Value="0.55"/></Style>
+    <!-- One emoji in the caption picker -->
+    <Style Selector="Button.EmojiButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="5"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="Transparent" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button.EmojiButton:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="Button.EmojiButton:focus-visible /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <!-- Platform marks: the round logos supplied by the project owner, all the same size, never mirrored. -->
+    <Style Selector="Image.Badge">
+        <Setter Property="Width" Value="38"/>
+        <Setter Property="Height" Value="38"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="FlowDirection" Value="LeftToRight"/>
+    </Style>
+    <Style Selector="TextBlock.TileName">
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Margin" Value="0,8,0,0"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+    <Style Selector="TextBlock.Field">
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+        <Setter Property="Margin" Value="0,18,0,8"/>
+    </Style>
+    <!-- The caption's frame: one field, lit by the pointer and the keyboard -->
+    <Style Selector="Border.CaptionField">
+        <Setter Property="Background" Value="{StaticResource FieldFill}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
+    </Style>
+    <Style Selector="Border.CaptionField:pointerover"><Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Style>
+    <Style Selector="Border.CaptionField:focus-within"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/></Style>
+    <!-- The preview's loudness pill shows while the pointer is on the picture -->
+    <Style Selector="Border#VolumePill">
+        <Setter Property="Transitions"><Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.15"/></Transitions></Setter>
+    </Style>
+    <Style Selector="Border#Preview:pointerover Border#VolumePill"><Setter Property="Opacity" Value="1"/></Style>
+    <Style Selector="Border#VolumePill:focus-within"><Setter Property="Opacity" Value="1"/></Style>
+    <!-- Emoji tabs -->
+    <Style Selector="ListBox#EmojiTabs ListBoxItem">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid Background="Transparent">
+                    <Border Name="Bd" CornerRadius="8" Padding="6,5" Margin="1,0">
+                        <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"/>
+                    </Border>
+                    <Rectangle Name="Bar" Height="2.5" RadiusX="1.2" RadiusY="1.2" VerticalAlignment="Bottom" Margin="10,0,10,-3" Fill="{DynamicResource Accent}" IsVisible="False"/>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="ListBox#EmojiTabs ListBoxItem:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="ListBox#EmojiTabs ListBoxItem:selected /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="ListBox#EmojiTabs ListBoxItem:selected /template/ Rectangle#Bar"><Setter Property="IsVisible" Value="True"/></Style>
+    <Style Selector="Border.copied"><Setter Property="Background" Value="{StaticResource Success}"/></Style>
+    </UserControl.Styles>
+
+    <Grid Name="Scrim" Background="#C81A1514">
+        <Border Name="Panel" MaxWidth="940" Margin="24,52,24,24" VerticalAlignment="Center"
+                Background="{StaticResource Surface}" BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1" CornerRadius="14" KeyboardNavigation.TabNavigation="Cycle"
+                AutomationProperties.Name="{l:T share.title}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="48" OffsetX="0" OffsetY="0" Opacity="0.55" Color="Black"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <DockPanel Margin="24,16,14,0">
+                    <Button DockPanel.Dock="Right" Classes="Ghost" Padding="9,8" Command="{Binding CloseCommand}"
+                            ToolTip.Tip="{l:T share.close}" AutomationProperties.Name="{l:T share.close}" BorderBrush="Transparent">
+                        <l:Icon Glyph="E8BB" FontSize="11"/>
+                    </Button>
+                    <l:Icon Glyph="E72D" FontSize="17" Foreground="{DynamicResource Accent}" Margin="0,0,12,0"/>
+                    <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <!-- Body -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="24,16,24,20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="11*"/>
+                            <ColumnDefinition Width="26"/>
+                            <ColumnDefinition Width="10*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- The clip: picture (with the 9:16 frame), playback and trim, and (when ready) the file to drag -->
+                        <StackPanel VerticalAlignment="Top">
+                            <l:AspectBox Ratio="{Binding PreviewAspect}">
+                                <!-- A click on the picture plays or pauses the cut; with 9:16 on, a drag moves the frame -->
+                                <Border Name="Preview" CornerRadius="10" Background="#231D1C" ClipToBounds="True" Cursor="Hand"
+                                        FlowDirection="LeftToRight" PointerPressed="OnPreviewDown" PointerMoved="OnPreviewMove" PointerReleased="OnPreviewUp"
+                                        ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
+                                    <Grid>
+                                        <l:Icon Glyph="E714" FontSize="28" Foreground="{StaticResource StrokeStrong}" HorizontalAlignment="Center"/>
+                                        <Image Name="PreviewImage" Source="{Binding PreviewFrame}" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                                        <!-- 9:16 frame: drag it sideways on the picture -->
+                                        <Grid IsVisible="{Binding ShowCrop, Converter={StaticResource Truthy}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="{Binding CropLeft}"/>
+                                                <ColumnDefinition Width="{Binding CropWindow}"/>
+                                                <ColumnDefinition Width="{Binding CropRight}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Rectangle Fill="#B4000000"/>
+                                            <Border Name="CropWindow" Grid.Column="1" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3"
+                                                    Background="Transparent" Cursor="SizeWestEast" ToolTip.Tip="{l:T share.verticalTip}">
+                                                <TextBlock Text="9:16" FontSize="11" FontWeight="SemiBold" Foreground="White" Margin="6,4" VerticalAlignment="Top" HorizontalAlignment="Left"/>
+                                            </Border>
+                                            <Rectangle Grid.Column="2" Fill="#B4000000"/>
+                                        </Grid>
+                                        <!-- Edit (top right, like the player) -->
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" CornerRadius="9" Background="#B0141010"
+                                                IsVisible="{Binding IsChoosing, Converter={StaticResource Truthy}}">
+                                            <Button Name="EditButton" Classes="Ghost" Command="{Binding EditCommand}" Padding="12,7" FontSize="13"
+                                                    BorderBrush="Transparent" Foreground="White" AutomationProperties.Name="{l:T viewer.edit}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <l:Icon Glyph="E70F" FontSize="12" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="White"/>
+                                                    <TextBlock Text="{l:T viewer.edit}" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </Border>
+                                        <!-- Paused: a round play mark in the middle (the click goes to the picture) -->
+                                        <Border Width="60" Height="60" CornerRadius="30" Background="#99000000" IsHitTestVisible="False"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                IsVisible="{Binding ShowPlayMark, Converter={StaticResource Truthy}}">
+                                            <Path Data="M 0,0 L 18,11 L 0,22 Z" Fill="White" Margin="5,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <!-- The preview's loudness, in the corner like any player, while the pointer is on the picture.
+                                             Only what is heard here: the shared clip keeps its own sound. Its clicks never play or move the frame. -->
+                                        <Border Name="VolumePill" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" CornerRadius="16"
+                                                Background="#A6000000" Padding="3,2,12,2" Cursor="Arrow" Opacity="0"
+                                                ToolTip.Tip="{l:T share.previewVolume}" PointerWheelChanged="OnVolumeWheel"
+                                                IsVisible="{Binding CanPlay, Converter={StaticResource Truthy}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Classes="EmojiButton" Command="{Binding MuteCommand}" Padding="5" VerticalAlignment="Center"
+                                                        AutomationProperties.Name="{l:T share.mute}">
+                                                    <l:Icon FontSize="16" Width="20" Foreground="White" Classes="st1" Classes.v1="{Binding IsMuted, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                                                </Button>
+                                                <Slider Width="90" Minimum="0" Maximum="1" Value="{Binding PreviewVolume}" SmallChange="0.05" LargeChange="0.2"
+                                                        VerticalAlignment="Center" Margin="2,0,0,0"
+                                                        AutomationProperties.Name="{l:T share.previewVolume}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </l:AspectBox>
+
+                            <!-- Trim, left to right like the picture whatever the language, and one short line under it -->
+                            <l:TrimBar Margin="0,10,0,0" IsEnabled="{Binding CanEdit}" IsVisible="{Binding HasVideo, Converter={StaticResource Truthy}}"
+                                       Duration="{Binding ClipSeconds}" Start="{Binding TrimStart}" End="{Binding TrimEnd}" MoveStart="{Binding TrimMoveStart}"
+                                       Playhead="{Binding Playhead}" ShowPlayhead="{Binding ShowPlayhead}"
+                                       Frames="{Binding Filmstrip}" AutomationProperties.Name="{l:T share.trim}"/>
+                            <!-- One line under the bar: where the cut starts and ends, and about how big it comes out -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0" FlowDirection="LeftToRight"
+                                        IsVisible="{Binding HasVideo, Converter={StaticResource Truthy}}">
+                                <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="7" Padding="10,4">
+                                    <TextBlock Text="{Binding TrimRange}" FontSize="12.5" Foreground="{StaticResource TextSecondary}"/>
+                                </Border>
+                                <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="7" Padding="10,4"
+                                        Margin="8,0,0,0" IsVisible="{Binding SizeEstimate, Converter={StaticResource Truthy}}">
+                                    <TextBlock Text="{Binding SizeEstimate}" FontSize="12.5" Foreground="{StaticResource TextSecondary}"/>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Choices -->
+                        <StackPanel Grid.Column="2" IsEnabled="{Binding CanEdit}" IsVisible="{Binding HasClip, Converter={StaticResource Truthy}}">
+                            <TextBlock Classes="Field" Text="{l:T share.where}" Margin="0,0,0,8"/>
+                            <UniformGrid Rows="1" Columns="4" Margin="0,0,-8,0">
+                                <RadioButton Classes="Tile" GroupName="platform" AutomationProperties.Name="X"
+                                             IsChecked="{Binding Platform, Converter={StaticResource Eq}, ConverterParameter=X}">
+                                    <StackPanel>
+                                        <Image Classes="Badge" Source="Assets/x.png"/>
+                                        <TextBlock Classes="TileName" Text="X"/>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton Classes="Tile" GroupName="platform" AutomationProperties.Name="TikTok"
+                                             IsChecked="{Binding Platform, Converter={StaticResource Eq}, ConverterParameter=TikTok}">
+                                    <StackPanel>
+                                        <Image Classes="Badge" Source="Assets/tiktok.png"/>
+                                        <TextBlock Classes="TileName" Text="TikTok"/>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton Classes="Tile" GroupName="platform" AutomationProperties.Name="Instagram"
+                                             IsChecked="{Binding Platform, Converter={StaticResource Eq}, ConverterParameter=Instagram}">
+                                    <StackPanel>
+                                        <Image Classes="Badge" Source="Assets/instagram.png"/>
+                                        <TextBlock Classes="TileName" Text="Instagram"/>
+                                    </StackPanel>
+                                </RadioButton>
+                                <!-- Copy: one press puts the cut on the clipboard; a check shows for a moment -->
+                                <Button Classes="ActionTile" Command="{Binding CopyCommand}" AutomationProperties.Name="{l:T share.copy}"
+                                        ToolTip.Tip="{l:T share.copyTip}">
+                                    <StackPanel>
+                                        <!-- Round like the logos beside it -->
+                                        <Border Width="38" Height="38" CornerRadius="19" HorizontalAlignment="Center" Background="{StaticResource StrokeStrong}" Classes.copied="{Binding IsCopied}">
+                                            <l:Icon FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="st2" Classes.v1="{Binding IsCopied, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                                        </Border>
+                                        <TextBlock Classes="st3" Classes.v1="{Binding IsCopied, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                                    </StackPanel>
+                                </Button>
+                            </UniformGrid>
+
+                            <!-- Everywhere: X, TikTok and Instagram with one caption, one press -->
+                            <RadioButton Classes="Tile" GroupName="platform" Margin="0,8,0,0" AutomationProperties.Name="{l:T share.all}"
+                                         IsChecked="{Binding Platform, Converter={StaticResource Eq}, ConverterParameter=All}">
+                                <StackPanel Orientation="Horizontal" Margin="0,-4">
+                                    <!-- The three marks overlapping, left to right in every language -->
+                                    <Grid Width="78" Height="34" FlowDirection="LeftToRight" VerticalAlignment="Center">
+                                        <Ellipse Width="36" Height="36" Fill="{StaticResource Bg}" HorizontalAlignment="Left" Margin="42,-1,0,-1"/>
+                                        <Image Source="Assets/instagram.png" Width="32" Height="32" HorizontalAlignment="Left" Margin="44,0,0,0" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                                        <Ellipse Width="36" Height="36" Fill="{StaticResource Bg}" HorizontalAlignment="Left" Margin="20,-1,0,-1"/>
+                                        <Image Source="Assets/tiktok.png" Width="32" Height="32" HorizontalAlignment="Left" Margin="22,0,0,0" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                                        <Ellipse Width="36" Height="36" Fill="{StaticResource Bg}" HorizontalAlignment="Left" Margin="-2,-1,0,-1"/>
+                                        <Image Source="Assets/x.png" Width="32" Height="32" HorizontalAlignment="Left" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                                    </Grid>
+                                    <TextBlock Text="{l:T share.all}" FontSize="13.5" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                </StackPanel>
+                            </RadioButton>
+
+                            <!-- Vertical 9:16, for every platform (off until turned on) -->
+                            <DockPanel Margin="0,18,0,0" ToolTip.Tip="{l:T share.verticalTip}" IsVisible="{Binding ShowVertical, Converter={StaticResource Truthy}}">
+                                <CheckBox DockPanel.Dock="Right" Classes="Switch" IsChecked="{Binding Vertical}"
+                                          AutomationProperties.Name="{l:T share.vertical}"/>
+                                <TextBlock Classes="Label" Text="{l:T share.vertical}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </DockPanel>
+
+                            <StackPanel IsVisible="{Binding ShowCaption, Converter={StaticResource Truthy}}">
+                                <TextBlock Classes="Field" Text="{l:T share.caption}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <!-- One field: the text, and the emoji button inside its frame at the end -->
+                                    <Border Classes="CaptionField" CornerRadius="8" BorderThickness="1">
+                                        <DockPanel>
+                                            <!-- Emoji: a colour picker of popular ones, and Windows' own panel for the rest -->
+                                            <Button Name="EmojiButton" DockPanel.Dock="Right" Classes="EmojiButton" Padding="3" Margin="0,2,4,2" VerticalAlignment="Center"
+                                                    Click="OnEmojiOpen" ToolTip.Tip="{l:T share.emoji}" AutomationProperties.Name="{l:T share.emoji}">
+                                                <!-- A plain smiley like the other icons; the colour ones are inside -->
+                                                <l:Icon Glyph="E76E" FontSize="17" Width="20"
+                                                           Foreground="{StaticResource TextSecondary}"/>
+                                            </Button>
+                                            <TextBox Name="CaptionBox" Text="{Binding Caption, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MaxHeight="76" FlowDirection="{Binding CaptionFlow, Converter={x:Static l:FlowConverter.Instance}}"
+                                                     Padding="11,6,4,6" MinHeight="0" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"
+                                                     AutomationProperties.Name="{l:T share.caption}">
+                                            </TextBox>
+                                        </DockPanel>
+                                    </Border>
+                                    <Popup Name="EmojiPopup" PlacementTarget="{Binding #EmojiButton}" Placement="Bottom"
+                                           IsLightDismissEnabled="True" Closed="OnEmojiClosed">
+                                        <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1" CornerRadius="12"
+                                                Padding="8" Margin="0,6,12,12">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="18" OffsetX="0" OffsetY="2" Opacity="0.5" Color="Black"/>
+                                            </Border.Effect>
+                                            <StackPanel FlowDirection="LeftToRight">
+                                                <!-- Tabs: popular first, then faces, hands, games, symbols, nature -->
+                                                <ListBox Name="EmojiTabs" ItemsSource="{x:Static l:EmojiPicks.Categories}" SelectedIndex="0"
+                                                         Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,0,6"
+                                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                                    <ListBox.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <UniformGrid Rows="1"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ListBox.ItemsPanel>
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Image Source="{Binding Icon, Converter={x:Static l:EmojiImageConverter.Instance}}" Width="22" Height="22"
+                                                                   ToolTip.Tip="{Binding Name}" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                                <Border Height="1" Background="{StaticResource Stroke}" Margin="2,0,2,6"/>
+                                                <ScrollViewer MaxHeight="184" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                    <ItemsControl ItemsSource="{Binding #EmojiTabs.SelectedItem.Emoji}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <UniformGrid Columns="8"/>
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Button Classes="EmojiButton" Click="OnEmojiPick" ToolTip.Tip="{Binding Emoji}"
+                                                                        AutomationProperties.Name="{Binding Emoji}">
+                                                                    <Image Source="{Binding ., Converter={x:Static l:EmojiImageConverter.Instance}}" Width="26" Height="26" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                                                                </Button>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                            </StackPanel>
+                                        </Border>
+                                    </Popup>
+                                    <Button Grid.Column="1" Classes="Ghost" Command="{Binding CopyCaptionCommand}" Margin="8,0,0,0" Padding="12,8"
+                                            VerticalAlignment="Top" ToolTip.Tip="{l:T share.copyCaption}" AutomationProperties.Name="{l:T share.copyCaption}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <l:Icon Glyph="E8C8" FontSize="13"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" IsVisible="{Binding CopiedVisible, Converter={StaticResource Truthy}}">
+                                    <l:Icon Glyph="E73E" FontSize="11" Foreground="{StaticResource Success}" Margin="0,0,6,0"/>
+                                    <TextBlock Classes="Caption" Text="{l:T share.copied}" Foreground="{StaticResource Success}" Margin="0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- Footer: plan and action / progress / result / error -->
+                <Border Grid.Row="2" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Stroke}" BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,14,14" Padding="24,14">
+                    <Grid>
+                        <DockPanel IsVisible="{Binding IsChoosing, Converter={StaticResource Truthy}}">
+                            <Button DockPanel.Dock="Right" Classes="Primary" Command="{Binding PrepareCommand}" MinWidth="150">
+                                <StackPanel Orientation="Horizontal">
+                                    <l:Icon Glyph="E72D" FontSize="13" Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding PrepareLabel}"/>
+                                </StackPanel>
+                            </Button>
+                            <Border/>
+                        </DockPanel>
+
+                        <!-- Everywhere: a row per site, while it goes and after -->
+                        <DockPanel IsVisible="{Binding IsMulti, Converter={StaticResource Truthy}}">
+                            <Button DockPanel.Dock="Right" Classes="Ghost" Content="{l:T share.cancel}" Command="{Binding CancelCommand}" Margin="12,0,0,0"
+                                    VerticalAlignment="Center" IsVisible="{Binding IsMultiRunning, Converter={StaticResource Truthy}}"/>
+                            <ItemsControl ItemsSource="{Binding Jobs}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Rows="1"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="10"
+                                                Padding="10,8" Margin="0,0,8,0" ToolTip.Tip="{Binding Detail}">
+                                            <DockPanel>
+                                                <Image DockPanel.Dock="Left" Source="{Binding Platform, Converter={x:Static l:PlatformLogoConverter.Instance}}" Width="28" Height="28" FlowDirection="LeftToRight"
+                                                       RenderOptions.BitmapInterpolationMode="HighQuality" VerticalAlignment="Center"/>
+                                                <Button DockPanel.Dock="Right" Classes="Ghost" Padding="10,5" Content="{Binding OpenLabel}"
+                                                        Command="{Binding OpenCommand}" VerticalAlignment="Center"
+                                                        IsVisible="{Binding CanOpen, Converter={StaticResource Truthy}}"/>
+                                                <StackPanel Margin="10,0,6,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,6,0" Classes="st4" Classes.v1="{Binding IsBusy, Converter={StaticResource Eq}, ConverterParameter=True}" Classes.v2="{Binding IsPosted, Converter={StaticResource Eq}, ConverterParameter=True}" Classes.v3="{Binding NeedsUser, Converter={StaticResource Eq}, ConverterParameter=True}" Classes.v4="{Binding IsFailed, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                                                        <TextBlock Classes="Caption" Text="{Binding StatusText}" Margin="0" TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DockPanel>
+
+                        <DockPanel IsVisible="{Binding IsSingleWorking, Converter={StaticResource Truthy}}">
+                            <Button DockPanel.Dock="Right" Classes="Ghost" Content="{l:T share.cancel}" Command="{Binding CancelCommand}" Margin="16,0,0,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ProgressText}" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
+                                <ProgressBar Height="6" Minimum="0" Maximum="100" Value="{Binding ProgressPercent, Mode=OneWay}" Foreground="{DynamicResource Accent}"
+                                             Background="{StaticResource Bg}" BorderThickness="0"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- Kairos is posting through the site's page, off screen -->
+                        <DockPanel IsVisible="{Binding IsSinglePublishing, Converter={StaticResource Truthy}}">
+                            <Button DockPanel.Dock="Right" Classes="Ghost" Content="{l:T share.cancel}" Command="{Binding CancelCommand}" Margin="16,0,0,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding PublishText}" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                                <ProgressBar Height="6" IsIndeterminate="True" Foreground="{DynamicResource Accent}" Background="{StaticResource Bg}" BorderThickness="0"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <Grid IsVisible="{Binding IsSingleDone, Converter={StaticResource Truthy}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="30" Height="30" CornerRadius="15" Background="{StaticResource SuccessSoft}" VerticalAlignment="Top" Margin="0,2,12,0">
+                                <l:Icon Glyph="E73E" FontSize="13" Foreground="{StaticResource Success}" HorizontalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="{Binding ResultTitle}" FontWeight="SemiBold"/>
+                                <TextBlock Classes="Caption" Text="{Binding ResultHint}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Classes="Ghost" Command="{Binding ShowFileCommand}" Padding="11,9" Margin="0,0,8,0"
+                                        ToolTip.Tip="{l:T share.showFile}" AutomationProperties.Name="{l:T share.showFile}">
+                                    <l:Icon Glyph="E838" FontSize="13"/>
+                                </Button>
+                                <Button Classes="Ghost" Command="{Binding CopyFileCommand}" Padding="11,9" Margin="0,0,8,0"
+                                        ToolTip.Tip="{l:T share.copyFile}" AutomationProperties.Name="{l:T share.copyFile}">
+                                    <l:Icon Glyph="E8C8" FontSize="13"/>
+                                </Button>
+                                <Button Classes="Primary" Command="{Binding OpenAgainCommand}" Margin="0"
+                                        IsVisible="{Binding ShowOpenAgain, Converter={StaticResource Truthy}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <l:Icon Glyph="E8A7" FontSize="13" Margin="0,0,8,0"/>
+                                        <TextBlock Text="{Binding OpenAgainLabel}"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid IsVisible="{Binding IsFailed, Converter={StaticResource Truthy}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="30" Height="30" CornerRadius="15" Background="{StaticResource WarningSoft}" VerticalAlignment="Top" Margin="0,2,12,0">
+                                <l:Icon Glyph="E7BA" FontSize="13" Foreground="{StaticResource Warning}" HorizontalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="{l:T share.failed}" FontWeight="SemiBold"/>
+                                <TextBlock Classes="Caption" Text="{Binding ErrorDetail}" FlowDirection="LeftToRight" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                            <Button Grid.Column="2" Classes="Ghost" Content="{Binding RetryLabel}" Command="{Binding RetryCommand}" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

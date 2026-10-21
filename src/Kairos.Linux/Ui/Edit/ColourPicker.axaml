@@ -1,0 +1,59 @@
+<UserControl x:Class="Kairos.Ui.Edit.ColourPicker"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui"
+             Width="220" FlowDirection="LeftToRight">
+    <StackPanel>
+        <Grid ColumnDefinitions="*,Auto">
+            <!-- Saturation across, brightness down, in the chosen hue -->
+            <Border Name="Field" Height="132" CornerRadius="8" ClipToBounds="True" Background="Transparent" Cursor="Cross">
+                <Grid>
+                    <Rectangle Name="HueFill" Fill="#FF0000"/>
+                    <Rectangle>
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                                <GradientStop Color="#00FFFFFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Rectangle>
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#00000000" Offset="0"/>
+                                <GradientStop Color="#FF000000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Ellipse Name="FieldMark" Width="14" Height="14" Stroke="White" StrokeThickness="2" HorizontalAlignment="Left" VerticalAlignment="Top"
+                             IsHitTestVisible="False"/>
+                </Grid>
+            </Border>
+            <!-- The hue, top to bottom -->
+            <Border Name="HueBar" Grid.Column="1" Width="18" Height="132" Margin="10,0,0,0" CornerRadius="6" ClipToBounds="True" Cursor="Cross" Background="Transparent">
+                <Grid>
+                    <Rectangle>
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#FF0000" Offset="0"/>
+                                <GradientStop Color="#FFFF00" Offset="0.167"/>
+                                <GradientStop Color="#00FF00" Offset="0.333"/>
+                                <GradientStop Color="#00FFFF" Offset="0.5"/>
+                                <GradientStop Color="#0000FF" Offset="0.667"/>
+                                <GradientStop Color="#FF00FF" Offset="0.833"/>
+                                <GradientStop Color="#FF0000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Border Name="HueMark" Height="6" BorderBrush="White" BorderThickness="2" CornerRadius="3" VerticalAlignment="Top" IsHitTestVisible="False"/>
+                </Grid>
+            </Border>
+        </Grid>
+        <!-- The colour and its code (typed or pasted) -->
+        <Grid Margin="0,10,0,0" ColumnDefinitions="Auto,*">
+            <Ellipse Name="Preview" Width="28" Height="28" Stroke="{StaticResource ControlStroke}" StrokeThickness="1" Margin="0,0,10,0"/>
+            <TextBox Name="HexBox" Grid.Column="1" FontFamily="monospace" FontSize="13" MaxLength="7" VerticalContentAlignment="Center"
+                     AutomationProperties.Name="{l:T editor.colour.hex}"/>
+        </Grid>
+    </StackPanel>
+</UserControl>

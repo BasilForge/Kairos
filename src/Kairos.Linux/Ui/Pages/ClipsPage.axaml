@@ -1,0 +1,165 @@
+<UserControl x:Class="Kairos.Ui.Pages.ClipsPage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <UserControl.Styles>
+        <!-- Round button on a clip picture (same look as the selection check) -->
+        <Style Selector="Button.ThumbAction">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="Bd" Width="30" Height="30" CornerRadius="15" Background="#99000000" BorderBrush="#66FFFFFF" BorderThickness="1">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.ThumbAction:pointerover /template/ Border#Bd">
+            <Setter Property="Background" Value="{DynamicResource Accent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+        </Style>
+        <Style Selector="Button.ThumbAction:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="White"/></Style>
+
+        <!-- A card's picture: all of it opens the clip (a video in the player, a screenshot in the viewer); the mark in the middle says so -->
+        <Style Selector="Button.OpenCard">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid Background="Transparent">
+                        <Border Name="Mark" Width="40" Height="40" CornerRadius="12" Background="{DynamicResource Accent}" Opacity="0.82"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Panel>
+                                <l:Icon Glyph="E768" FontSize="15" Foreground="{DynamicResource OnAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsPicture, Converter={StaticResource Truthy}, ConverterParameter=invert}"/>
+                                <l:Icon Glyph="E722" FontSize="15" Foreground="{DynamicResource OnAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsPicture, Converter={StaticResource Truthy}}"/>
+                            </Panel>
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.OpenCard:pointerover /template/ Border#Mark">
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+        </Style>
+        <Style Selector="Button.OpenCard:focus-visible /template/ Border#Mark"><Setter Property="Opacity" Value="1"/></Style>
+
+        <Style Selector="Border.ClipCard">
+            <Setter Property="Width" Value="250"/>
+            <Setter Property="Margin" Value="6"/>
+            <Setter Property="Background" Value="{StaticResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="CornerRadius" Value="12"/>
+        </Style>
+        <Style Selector="Border.ClipCard.selected"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/></Style>
+        <!-- The column is about 150 wide: the name gives the "New" mark room only while it shows -->
+        <Style Selector="TextBlock.ClipApp"><Setter Property="MaxWidth" Value="150"/></Style>
+        <Style Selector="TextBlock.ClipApp.isnew"><Setter Property="MaxWidth" Value="104"/></Style>
+    </UserControl.Styles>
+
+    <StackPanel>
+        <Grid Margin="0,0,0,14" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+            <!-- One row: the title (with the chosen clips' size, in light grey), then choosing all, what to show and refresh -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Classes="Title" Text="{l:T clips.title}" Margin="0" VerticalAlignment="Center"
+                           AutomationProperties.HelpText="{Binding CountText}"/>
+                <TextBlock Text="{Binding SelectedSizeText}" FontSize="16" FontWeight="Normal" Foreground="{StaticResource TextSecondary}"
+                           Margin="14,5,0,0" VerticalAlignment="Center" IsVisible="{Binding HasSelection}"/>
+            </StackPanel>
+            <Button Grid.Column="2" Classes="Ghost" Command="{Binding SelectAllCommand}" Padding="12,7" Margin="0,0,8,0" VerticalAlignment="Center"
+                    IsVisible="{Binding !IsEmpty}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E8B3" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SelectAllLabel}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <!-- Videos, screenshots or both -->
+            <ComboBox Grid.Column="3" Width="150" VerticalAlignment="Center" ItemsSource="{Binding Kinds}" DisplayMemberBinding="{Binding Label}"
+                      SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Kind}" Margin="0,0,8,0" AutomationProperties.Name="{l:T clips.kindList}"/>
+            <ComboBox Grid.Column="4" Width="190" VerticalAlignment="Center" ItemsSource="{Binding Apps}" DisplayMemberBinding="{Binding Label}"
+                      SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Filter}" Margin="0,0,8,0" AutomationProperties.Name="{l:T clips.all}"/>
+            <Button Grid.Column="5" Classes="Ghost" Command="{Binding RefreshCommand}" VerticalAlignment="Center" Padding="11,9"
+                    ToolTip.Tip="{l:T clips.refresh}" AutomationProperties.Name="{l:T clips.refresh}">
+                <l:Icon Glyph="E72C" FontSize="13"/>
+            </Button>
+        </Grid>
+
+        <Border Classes="Card" Padding="28" IsVisible="{Binding IsEmpty}">
+            <StackPanel HorizontalAlignment="Center">
+                <l:Icon Glyph="E714" FontSize="34" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center"/>
+                <TextBlock Text="{Binding EmptyText}" Foreground="{StaticResource TextSecondary}" Margin="0,12,0,0" TextAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- The cards under day headings (Today, Yesterday…); sorted by size there is one group with no heading.
+             Room at the end, so the floating bar of chosen clips never covers the last cards. -->
+        <ItemsControl Name="GroupList" Margin="-6,0,-6,64">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Name}" Margin="8,10,8,4" IsVisible="{Binding Name, Converter={StaticResource Truthy}}"/>
+                        <ItemsControl ItemsSource="{Binding Items}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="ClipCard" Classes.selected="{Binding IsSelected}">
+                                        <StackPanel>
+                                            <Border CornerRadius="11,11,0,0" Height="140" Background="#231D1C" ClipToBounds="True">
+                                                <Grid>
+                                                    <l:Icon Glyph="E714" FontSize="28" Foreground="{StaticResource StrokeStrong}" HorizontalAlignment="Center"/>
+                                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" FlowDirection="LeftToRight"/>
+                                                    <Button Classes="OpenCard" CommandParameter="{Binding}"
+                                                            Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                                                            AutomationProperties.Name="{l:T clips.play}"/>
+                                                    <CheckBox Classes="SelectCheck" IsChecked="{Binding IsSelected}" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                              Margin="10" AutomationProperties.Name="{Binding Name}"/>
+                                                    <!-- Share straight from the card (a quick post), over the picture's own button -->
+                                                    <Button Classes="ThumbAction" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8"
+                                                            Command="{Binding $parent[UserControl].DataContext.ShareCommand}" CommandParameter="{Binding}"
+                                                            ToolTip.Tip="{l:T clips.share}" AutomationProperties.Name="{l:T clips.share}">
+                                                        <l:Icon Glyph="E72D" FontSize="13" Foreground="White"/>
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                            <Grid Margin="14,10,10,12" ColumnDefinitions="*,Auto,Auto">
+                                                <StackPanel>
+                                                    <StackPanel Orientation="Horizontal" FlowDirection="LeftToRight" HorizontalAlignment="Left">
+                                                        <TextBlock Text="{Binding App}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Path}"
+                                                                   Classes="ClipApp" Classes.isnew="{Binding IsNew}"/>
+                                                        <!-- Saved while this page was open -->
+                                                        <Border Background="{DynamicResource Accent}" CornerRadius="4" Padding="6,0,6,1" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                                IsVisible="{Binding IsNew}">
+                                                            <TextBlock Text="{l:T clips.new}" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource OnAccent}"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Meta}" Classes="Caption" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                               FlowDirection="LeftToRight" HorizontalAlignment="Left"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Classes="Ghost" Padding="8,6" Margin="4,0" VerticalAlignment="Center"
+                                                        Command="{Binding $parent[UserControl].DataContext.ShowCommand}" CommandParameter="{Binding}"
+                                                        ToolTip.Tip="{l:T clips.show}" AutomationProperties.Name="{l:T clips.show}">
+                                                    <l:Icon Glyph="E838" FontSize="12"/>
+                                                </Button>
+                                                <Button Grid.Column="2" Classes="Ghost" Padding="8,6" VerticalAlignment="Center"
+                                                        Command="{Binding $parent[UserControl].DataContext.DeleteCommand}" CommandParameter="{Binding}"
+                                                        ToolTip.Tip="{l:T clips.recycle}" AutomationProperties.Name="{l:T clips.recycle}">
+                                                    <l:Icon Glyph="E74D" FontSize="12" Foreground="{DynamicResource Accent}"/>
+                                                </Button>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

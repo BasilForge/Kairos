@@ -20,7 +20,8 @@ public static class ClipOrganizer
         "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     };
 
-    static readonly HashSet<char> InvalidChars = [.. Path.GetInvalidFileNameChars()];
+    // Windows' set on every platform: a clip copied to an NTFS, FAT or exFAT drive (or a Windows PC) must keep its name.
+    static readonly HashSet<char> InvalidChars = [.. Path.GetInvalidFileNameChars(), .. "<>:\"/\\|?*"];
 
     /// <summary>Folder-safe name for the app in the foreground when a clip was saved.</summary>
     public static string AppFolderName(string? processName, string? productName, string? windowTitle)

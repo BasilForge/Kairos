@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Linux build links the portable sources of ..\Kairos instead of moving them, so the Windows app is untouched
+       and upstream changes merge cleanly. Windows-only files are replaced by their Linux counterparts in this folder. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>kairos</AssemblyName>
+    <RootNamespace>Kairos</RootNamespace>
+    <Version>1.0.1</Version>
+    <!-- The pages are the Windows app's, bound to a DataContext by reflection (as WPF does), not compiled against a type. -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <WinSrc>$(MSBuildThisFileDirectory)..\Kairos\</WinSrc>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kairos.Linux.Tests" />
+    <InternalsVisibleTo Include="Kairos.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="$(WinSrc)Engine\**\*.cs" Exclude="$(WinSrc)Engine\SelfTest.cs;$(WinSrc)Engine\Share\PictureJpeg.cs;$(WinSrc)Engine\ScreenshotWriter.cs;$(WinSrc)Engine\CaptureBackend.cs" LinkBase="Engine" />
+    <Compile Include="$(WinSrc)Settings\**\*.cs;$(WinSrc)AppInfo.cs;$(WinSrc)InlineProgress.cs;$(WinSrc)App\Text.cs;$(WinSrc)App\HotkeyParser.cs;$(WinSrc)App\HotkeyDefaults.cs;$(WinSrc)App\Ipc.cs;$(WinSrc)App\ClipIndex.cs;$(WinSrc)App\ShareRequest.cs;$(WinSrc)App\StorageJanitor.cs;$(WinSrc)App\TakenKeyNotice.cs;$(WinSrc)App\InstallChoices.cs;$(WinSrc)App\ClipDeleter.cs;$(WinSrc)App\Chime.cs;$(WinSrc)App\ShotSound.cs;$(WinSrc)Ui\StatusLogic.cs;$(WinSrc)Ui\Edit\EditorViewModel.cs;$(WinSrc)Ui\Edit\EditorViewModel.Commands.cs;$(WinSrc)Ui\Edit\EditorViewModel.Inspector.cs;$(WinSrc)Ui\Edit\EditorViewModel.Captions.cs;$(WinSrc)Ui\Edit\EditorViewModel.Saving.cs;$(WinSrc)Ui\Edit\EditGeometry.cs;$(WinSrc)Ui\Edit\TimelineLayout.cs;$(WinSrc)Ui\Edit\TimelineMath.cs;$(WinSrc)Ui\Edit\EditorShortcuts.cs;$(WinSrc)Ui\Edit\ColourMath.cs;$(WinSrc)Ui\Edit\CaptionMaker.cs;$(WinSrc)Ui\Edit\EditJobs.cs;$(WinSrc)Ui\PreviewPlayer.cs;$(WinSrc)Ui\SettingsViewModel.cs;$(WinSrc)App\ObsHotkeys.cs;$(WinSrc)Ui\ClipsViewModel.cs;$(WinSrc)Ui\KeyState.cs;$(WinSrc)Ui\PublishRunner.cs;$(WinSrc)Ui\PublishMocks.cs;$(WinSrc)Ui\SiteSessions.cs;$(WinSrc)Ui\SiteCaches.cs;$(WinSrc)Ui\ShareViewModel.cs;$(WinSrc)Ui\ShareViewModel.Choices.cs;$(WinSrc)Ui\ShareViewModel.Preview.cs;$(WinSrc)Ui\ShareViewModel.Sharing.cs;$(WinSrc)Ui\SiteJob.cs;$(WinSrc)Ui\ConnectionsViewModel.cs;$(WinSrc)Ui\EmojiPicks.cs" />
+    <Compile Include="$(WinSrc)Native\**\*.cs" LinkBase="Native" />
+    <Compile Include="**\*.cs" Exclude="obj\**;bin\**" />
+    <EmbeddedResource Include="$(WinSrc)App\Lang\*.json" LogicalName="Lang.%(Filename).json" />
+    <EmbeddedResource Include="Lang\*.json" LogicalName="Lang.%(Filename).json" />
+  </ItemGroup>
+
+  <!-- libobs finds its helper programs (obs-ffmpeg-mux saves clips, obs-nvenc-test probes NVENC) beside the executable. -->
+  <PropertyGroup>
+    <ObsPrefix Condition="'$(KAIROS_OBS_PREFIX)' != ''">$(KAIROS_OBS_PREFIX)</ObsPrefix>
+    <ObsPrefix Condition="'$(ObsPrefix)' == ''">$(HOME)/obs-prefix</ObsPrefix>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(ObsPrefix)/bin')">
+    <Content Include="$(ObsPrefix)/bin/*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Smart Save: openWakeWord feature models (Apache-2.0) and Silero VAD (MIT), loaded from the program folder's models\ -->
+    <Content Include="$(WinSrc)Models\*.onnx" Link="models\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The window's pictures, from the Windows app's own folder -->
+    <AvaloniaResource Include="$(WinSrc)Ui\Assets\*.png" Link="Ui/Assets/%(Filename)%(Extension)" />
+    <AvaloniaResource Include="$(WinSrc)Ui\Assets\Emoji\*.png" Link="Ui/Assets/Emoji/%(Filename)%(Extension)" />
+    <!-- The app icon at every size (tools/make-linux-icons.py extracts them from the Windows app's app.ico) -->
+    <AvaloniaResource Include="Assets\icons\*.png" />
+    <!-- The text tool's fonts (SIL Open Font License) -->
+    <AvaloniaResource Include="$(WinSrc)Ui\Assets\Fonts\*.ttf" Link="Ui/Assets/Fonts/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="FFmpeg.AutoGen" Version="8.1.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
+</Project>

@@ -65,7 +65,7 @@ internal static unsafe class WhisperNative
         {
             if (_library != 0)
                 return;
-            string path = Path.Combine(folder, "whisper.dll");
+            string path = Path.Combine(folder, CaptionRuntime.MainLibrary);
             if (!File.Exists(path))
                 throw new CaptionException("The captions runtime is missing from Kairos's folder.");
             nint library;

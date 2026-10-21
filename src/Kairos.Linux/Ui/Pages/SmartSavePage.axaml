@@ -1,0 +1,203 @@
+<UserControl x:Class="Kairos.Ui.Pages.SmartSavePage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <UserControl.Styles>
+    <Style Selector="Ellipse.st1"><Setter Property="Fill" Value="{StaticResource StrokeStrong}"/></Style>
+    <Style Selector="Ellipse.st1.v1"><Setter Property="Fill" Value="{DynamicResource Accent}"/></Style>
+    <Style Selector="Ellipse.st2"><Setter Property="Fill" Value="{StaticResource StrokeStrong}"/></Style>
+    <Style Selector="Ellipse.st2.v1"><Setter Property="Fill" Value="{DynamicResource Accent}"/></Style>
+    <Style Selector="Ellipse.st3"><Setter Property="Fill" Value="{StaticResource StrokeStrong}"/></Style>
+    <Style Selector="Ellipse.st3.v1"><Setter Property="Fill" Value="{DynamicResource Accent}"/></Style>
+    <Style Selector="TextBlock.st4"><Setter Property="Foreground" Value="{StaticResource TextSecondary}"/></Style>
+    <Style Selector="TextBlock.st4.v1"><Setter Property="Foreground" Value="{StaticResource Success}"/></Style>
+    </UserControl.Styles>
+    <UserControl.Resources>
+        <!-- Recording a phrase (either one): three dots, the step, the microphone level and what went wrong -->
+        <DataTemplate x:Key="Enrolling">
+    <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="10" Height="10" Margin="0,0,6,0" Classes="st1" Classes.v1="{Binding VoiceDone1, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                            <Ellipse Width="10" Height="10" Margin="0,0,6,0" Classes="st2" Classes.v1="{Binding VoiceDone2, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                            <Ellipse Width="10" Height="10" Margin="0,0,14,0" Classes="st3" Classes.v1="{Binding VoiceDone3, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                            <TextBlock Classes="Label" FontSize="16" FontWeight="SemiBold" Text="{Binding VoiceStep}"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="Ghost" Content="{l:T voice.cancel}" Command="{Binding VoiceCancelCommand}"/>
+                    </Grid>
+                    <l:LevelBar Channel="mic" Margin="0,16,0,0" AutomationProperties.Name="{l:T audio.level}"/>
+                    <TextBlock Text="{Binding VoiceMessage}" Foreground="{StaticResource Warning}" Margin="0,12,0,0" TextWrapping="Wrap"
+                               IsVisible="{Binding VoiceMessage, Converter={StaticResource Truthy}}"/>
+                </StackPanel>
+        </DataTemplate>
+        <!-- Testing (from either card): say a phrase, see which one matched and how strongly -->
+        <DataTemplate x:Key="Testing">
+    <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" FontSize="16" FontWeight="SemiBold" Text="{l:T voice.testing}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Classes="Ghost" Content="{l:T voice.done}" Command="{Binding VoiceCancelCommand}"/>
+                    </Grid>
+                    <l:LevelBar Channel="mic" Margin="0,16,0,0" AutomationProperties.Name="{l:T audio.level}"/>
+                    <Grid Margin="0,16,0,0" IsVisible="{Binding VoiceResult, Converter={StaticResource Truthy}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding VoiceResult}" FontWeight="SemiBold" VerticalAlignment="Center" Classes="st4" Classes.v1="{Binding VoiceLastMatch, Converter={StaticResource Eq}, ConverterParameter=True}"/>
+                        <ProgressBar Grid.Column="1" Height="6" Minimum="0" Maximum="1" Value="{Binding VoiceStrength, Mode=OneWay}" Margin="16,0"
+                                     Foreground="{DynamicResource Accent}" Background="{StaticResource Stroke}" BorderThickness="0" VerticalAlignment="Center"
+                                     AutomationProperties.Name="{l:T voice.strength}"/>
+                        <TextBlock Grid.Column="2" Classes="Caption" Text="{l:T voice.strength}" VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+    <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.voice}"/>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <l:Icon Glyph="E720" FontSize="18" Foreground="{DynamicResource Accent}" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" Classes="Section" Text="{l:T voice.enable}" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Column="2" Classes="Switch" IsChecked="{Binding VoiceEnabled}" AutomationProperties.Name="{l:T voice.enable}"/>
+                </Grid>
+                <TextBlock Classes="Caption" Text="{l:T voice.enableTip}" Margin="30,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="Section" Text="{l:T voice.phrase}"/>
+
+                <!-- No phrase yet -->
+                <Grid Margin="0,14,0,0" IsVisible="{Binding VoiceView, Converter={StaticResource EqVisible}, ConverterParameter=none}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T voice.none}"/>
+                        <TextBlock Classes="Caption" Text="{l:T voice.noneTip}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="Ghost" Content="{l:T voice.record}" Command="{Binding VoiceRecordCommand}"
+                            Margin="16,0,0,0" VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- Phrase ready -->
+                <Grid Margin="0,14,0,0" IsVisible="{Binding VoiceView, Converter={StaticResource EqVisible}, ConverterParameter=ready}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="28" Height="28" CornerRadius="14" Background="{StaticResource SuccessSoft}" VerticalAlignment="Center">
+                        <l:Icon Glyph="E73E" FontSize="13" Foreground="{StaticResource Success}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Grid.Column="1" Classes="Label" Text="{l:T voice.ready}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Classes="Primary" Content="{l:T voice.test}" Command="{Binding VoiceTestCommand}"/>
+                        <Button Classes="Ghost" Content="{l:T voice.recordAgain}" Command="{Binding VoiceRecordCommand}" Margin="8,0,0,0"/>
+                        <Button Classes="Ghost" Command="{Binding VoiceDeleteCommand}" Margin="8,0,0,0" Padding="11,9"
+                                ToolTip.Tip="{l:T voice.delete}" AutomationProperties.Name="{l:T voice.delete}">
+                            <l:Icon Glyph="E74D" FontSize="13"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Recording the phrase -->
+                <ContentControl Margin="0,14,0,0" Content="{Binding}" ContentTemplate="{StaticResource Enrolling}"
+                                IsVisible="{Binding VoiceView, Converter={StaticResource EqVisible}, ConverterParameter=enrolling}"/>
+
+                <!-- Testing -->
+                <ContentControl Margin="0,14,0,0" Content="{Binding}" ContentTemplate="{StaticResource Testing}"
+                                IsVisible="{Binding VoiceView, Converter={StaticResource EqVisible}, ConverterParameter=testing}"/>
+
+                <TextBlock Text="{Binding VoiceNote}" Foreground="{StaticResource Warning}" Margin="0,12,0,0" TextWrapping="Wrap"
+                           IsVisible="{Binding VoiceNote, Converter={StaticResource Truthy}}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- The second phrase: takes a screenshot instead of saving a clip -->
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="Section" Text="{l:T voice.shotPhrase}"/>
+
+                <Grid Margin="0,14,0,0" IsVisible="{Binding ShotView, Converter={StaticResource EqVisible}, ConverterParameter=none}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T voice.shotNone}"/>
+                        <TextBlock Classes="Caption" Text="{l:T voice.shotNoneTip}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="Ghost" Content="{l:T voice.record}" Command="{Binding VoiceRecordShotCommand}"
+                            Margin="16,0,0,0" VerticalAlignment="Center"/>
+                </Grid>
+
+                <Grid Margin="0,14,0,0" IsVisible="{Binding ShotView, Converter={StaticResource EqVisible}, ConverterParameter=ready}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="28" Height="28" CornerRadius="14" Background="{StaticResource SuccessSoft}" VerticalAlignment="Center">
+                        <l:Icon Glyph="E73E" FontSize="13" Foreground="{StaticResource Success}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Grid.Column="1" Classes="Label" Text="{l:T voice.shotReady}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Classes="Primary" Content="{l:T voice.test}" Command="{Binding VoiceTestShotCommand}"/>
+                        <Button Classes="Ghost" Content="{l:T voice.recordAgain}" Command="{Binding VoiceRecordShotCommand}" Margin="8,0,0,0"/>
+                        <Button Classes="Ghost" Command="{Binding VoiceDeleteShotCommand}" Margin="8,0,0,0" Padding="11,9"
+                                ToolTip.Tip="{l:T voice.delete}" AutomationProperties.Name="{l:T voice.delete}">
+                            <l:Icon Glyph="E74D" FontSize="13"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <ContentControl Margin="0,14,0,0" Content="{Binding}" ContentTemplate="{StaticResource Enrolling}"
+                                IsVisible="{Binding ShotView, Converter={StaticResource EqVisible}, ConverterParameter=enrolling}"/>
+                <ContentControl Margin="0,14,0,0" Content="{Binding}" ContentTemplate="{StaticResource Testing}"
+                                IsVisible="{Binding ShotView, Converter={StaticResource EqVisible}, ConverterParameter=testing}"/>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T voice.sensitivity}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <RadioButton Classes="Segment" GroupName="vs" Content="{l:T voice.strict}"
+                                     IsChecked="{Binding VoiceSensitivity, Converter={StaticResource Eq}, ConverterParameter=Strict}"/>
+                        <RadioButton Classes="Segment" GroupName="vs" Content="{l:T voice.normal}"
+                                     IsChecked="{Binding VoiceSensitivity, Converter={StaticResource Eq}, ConverterParameter=Normal}"/>
+                        <RadioButton Classes="Segment" GroupName="vs" Content="{l:T voice.easy}" Margin="0"
+                                     IsChecked="{Binding VoiceSensitivity, Converter={StaticResource Eq}, ConverterParameter=Easy}"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock Classes="Caption" Text="{l:T voice.sensitivityTip}" Margin="0,10,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

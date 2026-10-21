@@ -1,0 +1,129 @@
+<UserControl x:Class="Kairos.Ui.Pages.CapturePage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.capture}"/>
+
+        <UniformGrid Columns="3" Margin="0,0,-12,12">
+            <RadioButton Classes="ChoiceCard" GroupName="mode" AutomationProperties.Name="{l:T mode.screen}"
+                         IsChecked="{Binding Mode, Converter={StaticResource Eq}, ConverterParameter=Screen}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E7F4" FontSize="22" Foreground="{DynamicResource Accent}"/>
+                    <TextBlock Text="{l:T mode.screen}" FontSize="15" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </RadioButton>
+            <RadioButton Classes="ChoiceCard" GroupName="mode" AutomationProperties.Name="{l:T mode.window}"
+                         IsChecked="{Binding Mode, Converter={StaticResource Eq}, ConverterParameter=Window}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E737" FontSize="22" Foreground="{DynamicResource Accent}"/>
+                    <TextBlock Text="{l:T mode.window}" FontSize="15" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </RadioButton>
+            <RadioButton Classes="ChoiceCard" GroupName="mode" AutomationProperties.Name="{l:T mode.game}"
+                         IsChecked="{Binding Mode, Converter={StaticResource Eq}, ConverterParameter=Game}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E7FC" FontSize="22" Foreground="{DynamicResource Accent}"/>
+                    <TextBlock Text="{l:T mode.game}" FontSize="15" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </RadioButton>
+        </UniformGrid>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T capture.cardWhat}"/>
+                <Grid IsVisible="{Binding Mode, Converter={StaticResource EqVisible}, ConverterParameter=Screen}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="340"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T capture.monitor}"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Monitors}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                              SelectedValue="{Binding MonitorId}" AutomationProperties.Name="{l:T capture.monitor}"/>
+                </Grid>
+                <Grid IsVisible="{Binding Mode, Converter={StaticResource EqVisible}, ConverterParameter=Window}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="300"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T capture.window}"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Windows}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                              SelectedValue="{Binding WindowTarget}" AutomationProperties.Name="{l:T capture.window}"/>
+                    <Button Grid.Column="2" Classes="Ghost" Command="{Binding RefreshCapsCommand}" Padding="10,8" Margin="8,0,0,0"
+                            ToolTip.Tip="{l:T capture.refresh}" AutomationProperties.Name="{l:T capture.refresh}">
+                        <l:Icon Glyph="E72C" FontSize="13"/>
+                    </Button>
+                </Grid>
+                <Grid IsVisible="{Binding Mode, Converter={StaticResource EqVisible}, ConverterParameter=Game}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T capture.fallback}"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding GameFallback}" AutomationProperties.Name="{l:T capture.fallback}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T capture.cursor}"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding CaptureCursor}" AutomationProperties.Name="{l:T capture.cursor}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <!-- From General: it decides when capture runs, so it sits with what is captured -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T general.onlyGames}" Margin="0,0,16,0"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding OnlyWhenGaming}" VerticalAlignment="Center"
+                              AutomationProperties.Name="{l:T general.onlyGames}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <!-- Off: nothing is kept in the background; full recordings still work (a plain recorder) -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Section" Text="{l:T capture.replay}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding ReplayEnabled}" VerticalAlignment="Center"
+                              AutomationProperties.Name="{l:T capture.replay}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid IsEnabled="{Binding ReplayEnabled}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Section" Text="{l:T capture.length}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="{Binding BufferLength}" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
+                               FlowDirection="LeftToRight" VerticalAlignment="Center"/>
+                </Grid>
+                <Slider Minimum="0" Maximum="{Binding SecondsMaxIndex}" Value="{Binding SecondsIndex}" TickFrequency="1" IsEnabled="{Binding ReplayEnabled}"
+                        IsSnapToTickEnabled="True" TickPlacement="BottomRight" Margin="0,10,0,0" AutomationProperties.Name="{l:T capture.length}"/>
+                <Border Classes="Divider"/>
+                <Grid IsEnabled="{Binding ReplayEnabled}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T capture.quick}" Margin="0,0,16,0"/>
+                    <ComboBox Grid.Column="1" Width="96" Margin="0,0,16,0" ItemsSource="{Binding QuickOptions}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                              SelectedValue="{Binding QuickSeconds}" IsEnabled="{Binding QuickEnabled}" VerticalAlignment="Center"
+                              AutomationProperties.Name="{l:T capture.quick}"/>
+                    <CheckBox Grid.Column="2" Classes="Switch" IsChecked="{Binding QuickEnabled}" AutomationProperties.Name="{l:T capture.quick}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

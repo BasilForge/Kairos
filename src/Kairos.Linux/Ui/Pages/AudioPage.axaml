@@ -1,0 +1,127 @@
+<UserControl x:Class="Kairos.Ui.Pages.AudioPage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.audio}"/>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <l:Icon Glyph="E767" FontSize="18" Foreground="{DynamicResource Accent}" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" Classes="Section" Text="{l:T audio.system}" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Column="2" Classes="Switch" IsChecked="{Binding AudioSystem}" AutomationProperties.Name="{l:T audio.system}"/>
+                </Grid>
+                <l:LevelBar Channel="system" Margin="30,12,0,0" IsVisible="{Binding AudioSystem, Converter={StaticResource Truthy}}" AutomationProperties.Name="{l:T audio.level}"/>
+                <StackPanel IsEnabled="{Binding AudioSystem}" Margin="30,14,0,0">
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="320"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T audio.device}"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding Speakers}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                                  SelectedValue="{Binding SystemDevice}" AutomationProperties.Name="{l:T audio.device}"/>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="272"/>
+                            <ColumnDefinition Width="48"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T audio.volume}"/>
+                        <Slider Grid.Column="1" Minimum="0" Maximum="200" Value="{Binding SystemVolume}" IsSnapToTickEnabled="True" TickFrequency="5"
+                                VerticalAlignment="Center" AutomationProperties.Name="{l:T audio.volume}"/>
+                        <TextBlock Grid.Column="2" FlowDirection="LeftToRight" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Run Text="{Binding SystemVolume, Mode=OneWay}"/><Run Text="%"/>
+                        </TextBlock>
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <l:Icon Glyph="E720" FontSize="18" Foreground="{DynamicResource Accent}" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" Classes="Section" Text="{l:T audio.mic}" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Column="2" Classes="Switch" IsChecked="{Binding Mic}" AutomationProperties.Name="{l:T audio.mic}"/>
+                </Grid>
+                <l:LevelBar Channel="mic" Margin="30,12,0,0" IsVisible="{Binding Mic, Converter={StaticResource Truthy}}" AutomationProperties.Name="{l:T audio.level}"/>
+                <StackPanel Margin="30,14,0,0">
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="320"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T audio.device}"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding Mics}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                                  SelectedValue="{Binding MicDevice}" AutomationProperties.Name="{l:T audio.device}"/>
+                    </Grid>
+                    <Grid IsEnabled="{Binding Mic}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="272"/>
+                            <ColumnDefinition Width="48"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T audio.volume}"/>
+                        <Slider Grid.Column="1" Minimum="0" Maximum="200" Value="{Binding MicVolume}" IsSnapToTickEnabled="True" TickFrequency="5"
+                                VerticalAlignment="Center" AutomationProperties.Name="{l:T audio.volume}"/>
+                        <TextBlock Grid.Column="2" FlowDirection="LeftToRight" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Run Text="{Binding MicVolume, Mode=OneWay}"/><Run Text="%"/>
+                        </TextBlock>
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T audio.cardOptions}"/>
+                <Grid ToolTip.Tip="{l:T audio.separateTip}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Classes="Label" Text="{l:T audio.separate}"/>
+                        <TextBlock Classes="Caption" Text="{l:T audio.separateTip}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding SeparateTracks}" AutomationProperties.Name="{l:T audio.separate}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid IsEnabled="{Binding SourceAudioPossible}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Classes="Label" Text="{l:T audio.sourceOnly}"/>
+                        <TextBlock Classes="Caption" Text="{l:T audio.sourceOnlyTip}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding SourceAudioOnly}" AutomationProperties.Name="{l:T audio.sourceOnly}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="140"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T audio.bitrate}"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding AudioBitrates}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                              SelectedValue="{Binding AudioBitrate}" AutomationProperties.Name="{l:T audio.bitrate}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

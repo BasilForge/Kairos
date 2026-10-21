@@ -1,0 +1,53 @@
+<UserControl x:Class="Kairos.Ui.Pages.ConnectionsPage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <!-- The site accounts Kairos posts to: connected or not, sign in or out of each, or of all at once -->
+    <UserControl.Styles>
+        <Style Selector="Ellipse.dot"><Setter Property="Fill" Value="{StaticResource StrokeStrong}"/></Style>
+        <Style Selector="Ellipse.dot.on"><Setter Property="Fill" Value="{StaticResource Success}"/></Style>
+    </UserControl.Styles>
+    <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.connections}"/>
+        <TextBlock Classes="Caption" Text="{l:T accounts.subtitle}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+
+        <Border Classes="Card" IsVisible="{Binding Available, Converter={StaticResource Truthy}}">
+            <ItemsControl ItemsSource="{Binding Accounts}" Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,8" ColumnDefinitions="Auto,*,Auto">
+                            <Image Source="{Binding Platform, Converter={x:Static l:PlatformLogoConverter.Instance}}" Width="40" Height="40" FlowDirection="LeftToRight"/>
+                            <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,7,0"
+                                             Classes="dot" Classes.on="{Binding IsConnected}"/>
+                                    <TextBlock Classes="Caption" Text="{Binding StatusText}" Margin="0"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <!-- Sign in stands out; sign out is the quieter action; while still checking, neither -->
+                            <Grid Grid.Column="2" VerticalAlignment="Center" MinWidth="130">
+                                <Button Classes="Primary" Command="{Binding ActionCommand}" MinWidth="130" Content="{Binding ActionText}"
+                                        AutomationProperties.Name="{Binding ActionText}" IsVisible="{Binding ShowSignIn}"/>
+                                <Button Classes="Ghost" Command="{Binding ActionCommand}" MinWidth="130" Content="{Binding ActionText}"
+                                        AutomationProperties.Name="{Binding ActionText}" IsVisible="{Binding IsConnected}"/>
+                            </Grid>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
+        <Button Classes="Ghost" Command="{Binding SignOutAllCommand}" HorizontalAlignment="Left" Margin="0,4,0,0"
+                IsVisible="{Binding Available, Converter={StaticResource Truthy}}">
+            <StackPanel Orientation="Horizontal">
+                <l:Icon Glyph="F3B1" FontSize="13" Margin="0,0,8,0"/>
+                <TextBlock Text="{l:T accounts.signOutAll}"/>
+            </StackPanel>
+        </Button>
+
+        <Border Classes="Card" IsVisible="{Binding Available, Converter={StaticResource Truthy}, ConverterParameter=invert}">
+            <TextBlock Text="{Binding UnavailableText}" TextWrapping="Wrap"/>
+        </Border>
+    </StackPanel>
+</UserControl>

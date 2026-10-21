@@ -393,6 +393,6 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     static void ShowInFolder(string? path)
     {
         if (path != null && File.Exists(path))
-            Process.Start(new ProcessStartInfo(App.ShellPaths.Explorer, $"/select,\"{path}\"") { UseShellExecute = true });
+            Process.Start(App.ShellPaths.ShowInFolder(path));
     }
 }

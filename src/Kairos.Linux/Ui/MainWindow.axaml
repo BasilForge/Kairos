@@ -1,0 +1,170 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:l="clr-namespace:Kairos.Ui"
+        xmlns:e="clr-namespace:Kairos.Ui.Edit"
+        x:Class="Kairos.Ui.MainWindow"
+        Width="1100" Height="700" MinWidth="860" MinHeight="580"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="None">
+    <Window.Styles>
+        <!-- Window buttons -->
+        <Style Selector="Button.Caption">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="Bd" Background="Transparent">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}"
+                                          Foreground="{TemplateBinding Foreground}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.Caption:pointerover"><Setter Property="Foreground" Value="{StaticResource TextPrimary}"/></Style>
+        <Style Selector="Button.Caption:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+        <Style Selector="Button.Caption:pressed /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource StrokeStrong}"/></Style>
+        <Style Selector="Button.CaptionClose:pointerover"><Setter Property="Foreground" Value="White"/></Style>
+        <Style Selector="Button.CaptionClose:pointerover /template/ Border#Bd"><Setter Property="Background" Value="#E81123"/></Style>
+        <Style Selector="Button.CaptionClose:pressed /template/ Border#Bd"><Setter Property="Background" Value="#B5101C"/></Style>
+    </Window.Styles>
+
+    <Border BorderBrush="{StaticResource Stroke}" BorderThickness="1">
+        <Grid Name="Root" ColumnDefinitions="212,*" RowDefinitions="40,*">
+
+            <!-- Sidebar (spans the title bar so the window reads as one surface) -->
+            <Border Grid.RowSpan="2" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Stroke}" BorderThickness="0,0,1,0"/>
+            <StackPanel Orientation="Horizontal" Margin="22,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                <Grid Width="22" Height="22">
+                    <Ellipse Width="18" Height="18" Stroke="{DynamicResource Accent}" StrokeThickness="2.2" StrokeDashArray="2.7,0.64"/>
+                    <Ellipse Width="6" Height="6" Fill="{DynamicResource Accent}"/>
+                </Grid>
+                <!-- The name as drawn (Kai + rose italic ros; in Arabic كاي + rose slanted روس), set for the language in code -->
+                <Image Name="Wordmark" Height="22" Margin="6,0,0,0" VerticalAlignment="Center" FlowDirection="LeftToRight"/>
+            </StackPanel>
+
+            <!-- A strip along the top that drags the window -->
+            <Border Name="DragBar" Grid.Column="1" Background="Transparent" VerticalAlignment="Top" Height="40"/>
+
+            <!-- Window buttons -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" ZIndex="40">
+                <Button Classes="Caption" Name="MinButton" AutomationProperties.Name="Minimize">
+                    <Path Data="M0,5 L10,5" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1"/>
+                </Button>
+                <Button Classes="Caption" Name="MaxButton" AutomationProperties.Name="Maximize">
+                    <Path Name="MaxGlyph" Data="M0.5,0.5 L9.5,0.5 L9.5,9.5 L0.5,9.5 Z" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1"/>
+                </Button>
+                <Button Classes="Caption CaptionClose" Name="CloseButton" AutomationProperties.Name="Close">
+                    <Path Data="M0,0 L10,10 M10,0 L0,10" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1"/>
+                </Button>
+            </StackPanel>
+
+            <StackPanel Name="Nav" Grid.Row="1" Margin="14,10,14,16">
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E9D9" Content="{l:T nav.status}" Name="NavStatus" IsChecked="True"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E8B9" Content="{l:T nav.clips}" Name="NavClips"/>
+                <!-- The settings, in three groups -->
+                <TextBlock Classes="NavGroup" Text="{l:T nav.groupRecording}"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E7F4" Content="{l:T nav.capture}" Name="NavCapture"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="HD" Content="{l:T nav.quality}" Name="NavQuality"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E767" Content="{l:T nav.audio}" Name="NavAudio"/>
+                <TextBlock Classes="NavGroup" Text="{l:T nav.groupControls}"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E765" Content="{l:T nav.hotkeys}" Name="NavHotkeys"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E720" Content="{l:T nav.voice}" Name="NavVoice"/>
+                <TextBlock Classes="NavGroup" Text="{l:T nav.groupApp}"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E71B" Content="{l:T nav.connections}" Name="NavConnections"/>
+                <RadioButton Classes="Nav" GroupName="nav" Tag="E713" Content="{l:T nav.general}" Name="NavGeneral"/>
+            </StackPanel>
+
+            <!-- Content -->
+            <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto">
+
+                <!-- A newer Kairos: one slim line above the pages, only while there is one -->
+                <Border Grid.Row="0" Margin="36,6,36,2" MaxWidth="860" Padding="16,8,10,8" CornerRadius="10"
+                        Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1"
+                        IsVisible="{Binding UpdateBarVisible}">
+                    <DockPanel LastChildFill="True">
+                        <Button DockPanel.Dock="Right" Classes="Primary" Content="{Binding UpdateActionText}" Command="{Binding UpdateCommand}"
+                                Padding="14,6" IsVisible="{Binding UpdateActionVisible}"/>
+                        <Button DockPanel.Dock="Right" Classes="Ghost" Content="{l:T update.notes}" Command="{Binding UpdateNotesCommand}"
+                                Padding="12,6" Margin="0,0,8,0" IsVisible="{Binding UpdateNotesVisible}"/>
+                        <l:Icon Glyph="E896" Foreground="{DynamicResource Accent}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="{Binding UpdateText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                </Border>
+
+                <ScrollViewer Name="Scroller" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <!-- The Clips page stays here (hidden on other pages): coming back needs no rebuilding or new layout -->
+                    <Grid Margin="36,8,36,24" MaxWidth="860">
+                        <ContentControl Name="PageHost"/>
+                        <ContentControl Name="ClipsHost" IsVisible="False"/>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- The Library's chosen clips: a bar floating at the bottom, over the cards (they never move) -->
+                <Grid Name="LibraryBarLayer" Grid.Row="1" IsVisible="False" IsHitTestVisible="True" VerticalAlignment="Bottom" HorizontalAlignment="Center">
+                    <Border Name="LibraryBar" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,22" Padding="18,8,8,8" CornerRadius="14"
+                            Background="{StaticResource CardHover}" BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1"
+                            BoxShadow="0 6 28 0 #73000000" IsVisible="{Binding HasSelection}">
+                        <Grid>
+                            <!-- How many, and what to do with them -->
+                            <StackPanel Orientation="Horizontal" IsVisible="{Binding !ConfirmingPermanent}">
+                                <TextBlock Text="{Binding SelectedText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                <Button Classes="Ghost" Command="{Binding RecycleSelectedCommand}" Padding="12,7" Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <l:Icon Glyph="E74D" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{l:T clips.recycle}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="Ghost" Command="{Binding AskPermanentCommand}" Padding="12,7" Foreground="{DynamicResource Accent}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <l:Icon Glyph="E74D" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{l:T clips.deleteForever}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="Ghost" Command="{Binding ClearSelectionCommand}" BorderThickness="0" Padding="10,8" Margin="6,0,0,0"
+                                        ToolTip.Tip="{l:T clips.clearSelection}" AutomationProperties.Name="{l:T clips.clearSelection}">
+                                    <l:Icon Glyph="E711" FontSize="12"/>
+                                </Button>
+                            </StackPanel>
+                            <!-- Delete for good: asked here, in the same bar -->
+                            <StackPanel Orientation="Horizontal" IsVisible="{Binding ConfirmingPermanent}">
+                                <l:Icon Glyph="E7BA" Foreground="{DynamicResource Accent}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="{Binding ConfirmText}" VerticalAlignment="Center" Margin="0,0,16,0" MaxWidth="360" TextTrimming="CharacterEllipsis"/>
+                                <Button Classes="Ghost" Content="{l:T clips.cancel}" Command="{Binding CancelPermanentCommand}" Padding="14,7" Margin="0,0,8,0"/>
+                                <Button Classes="Primary" Content="{l:T clips.confirm}" Command="{Binding ConfirmPermanentCommand}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Row="2" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Stroke}" BorderThickness="0,1,0,0" Padding="28,12"
+                        IsVisible="{Binding ShowBar}">
+                    <DockPanel LastChildFill="False">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Warning}" Margin="0,0,8,0" IsVisible="{Binding IsDirty}"/>
+                            <TextBlock Text="{Binding Message}" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Button DockPanel.Dock="Right" Classes="Primary" Content="{l:T bar.apply}" Command="{Binding ApplyCommand}" MinWidth="110"/>
+                        <Button DockPanel.Dock="Right" Classes="Ghost" Content="{l:T bar.revert}" Command="{Binding RevertCommand}" Margin="0,0,10,0"/>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <!-- The viewers, over everything but the window's own buttons -->
+            <l:PictureViewer x:Name="PictureLayer" Grid.RowSpan="2" Grid.ColumnSpan="2" ZIndex="9" IsVisible="False"/>
+            <e:VideoViewer x:Name="VideoLayer" Grid.RowSpan="2" Grid.ColumnSpan="2" ZIndex="9" IsVisible="False"/>
+            <!-- The share panel, over the Library and the viewers -->
+            <ContentControl x:Name="ShareHost" Grid.RowSpan="2" Grid.ColumnSpan="2" ZIndex="12" IsVisible="False" Focusable="False"/>
+            <!-- The editor: over the viewers, under the window's own buttons -->
+            <ContentControl x:Name="EditorLayer" Grid.RowSpan="2" Grid.ColumnSpan="2" ZIndex="10" IsVisible="False"/>
+
+            <!-- Edges for resizing (the window has no frame of its own) -->
+            <Border Name="EdgeLeft" Grid.RowSpan="2" HorizontalAlignment="Left" Width="5" Background="Transparent" Cursor="SizeWestEast" ZIndex="30"/>
+            <Border Name="EdgeRight" Grid.RowSpan="2" Grid.ColumnSpan="2" HorizontalAlignment="Right" Width="5" Background="Transparent" Cursor="SizeWestEast" ZIndex="30"/>
+            <Border Name="EdgeTop" Grid.ColumnSpan="2" VerticalAlignment="Top" Height="4" Background="Transparent" Cursor="SizeNorthSouth" ZIndex="30"/>
+            <Border Name="EdgeBottom" Grid.Row="1" Grid.ColumnSpan="2" VerticalAlignment="Bottom" Height="5" Background="Transparent" Cursor="SizeNorthSouth" ZIndex="30"/>
+        </Grid>
+    </Border>
+</Window>

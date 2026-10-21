@@ -1,0 +1,71 @@
+<UserControl x:Class="Kairos.Ui.Edit.VideoViewer"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui"
+             Focusable="True">
+    <!-- A clip in Kairos's own player over the window: play, seek, sound, edit, share, show, delete. Esc or a click outside closes. -->
+    <Grid Name="Scrim" Background="#E01A1514" RowDefinitions="Auto,*,Auto,Auto">
+
+        <Grid Margin="28,44,20,10" ColumnDefinitions="*,Auto,Auto">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Name="Heading" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Name="Meta" Classes="Caption" FlowDirection="LeftToRight" HorizontalAlignment="Left"/>
+            </StackPanel>
+            <Button Name="EditButton" Grid.Column="1" Classes="Ghost" Click="OnEdit" Padding="14,9" Margin="0,0,8,0" AutomationProperties.Name="{l:T viewer.edit}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E70F" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:T viewer.edit}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Name="CloseButton" Grid.Column="2" Classes="Ghost" Padding="11,9" Click="OnClose"
+                    ToolTip.Tip="{l:T viewer.close}" AutomationProperties.Name="{l:T viewer.close}">
+                <l:Icon Glyph="E711" FontSize="13"/>
+            </Button>
+        </Grid>
+
+        <!-- Never mirrored: a clip plays the same in Arabic -->
+        <Border Name="VideoFrame" Grid.Row="1" Margin="28,0" CornerRadius="10" ClipToBounds="True" HorizontalAlignment="Center" VerticalAlignment="Center"
+                BorderBrush="{StaticResource Stroke}" BorderThickness="1" Background="Black" Cursor="Hand" BoxShadow="0 0 40 0 #80000000">
+            <Grid FlowDirection="LeftToRight">
+                <Image Name="Video" Stretch="Uniform" AutomationProperties.Name="{Binding Text, ElementName=Heading}"/>
+                <!-- Shown while paused: where to click -->
+                <Border Name="PlayMark" Width="64" Height="64" CornerRadius="32" Background="#99000000" IsHitTestVisible="False">
+                    <l:Icon Glyph="E768" FontSize="24" Foreground="White" Margin="4,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Play, where it is, and the sound -->
+        <Grid Grid.Row="2" Margin="28,14,28,0" MaxWidth="900" ColumnDefinitions="Auto,Auto,*,Auto">
+            <Button Name="PlayButton" Classes="Ghost" Padding="11,9" Click="OnPlay" VerticalAlignment="Center">
+                <l:Icon Name="PlayIcon" Glyph="E768" FontSize="13"/>
+            </Button>
+            <TextBlock Name="Time" Grid.Column="1" Classes="Caption" Margin="12,0" VerticalAlignment="Center" FlowDirection="LeftToRight"/>
+            <Slider Name="Seek" Grid.Column="2" VerticalAlignment="Center" Minimum="0" FlowDirection="LeftToRight" AutomationProperties.Name="{Binding Text, ElementName=Time}"/>
+            <Button Name="MuteButton" Grid.Column="3" Classes="Ghost" Padding="11,9" Margin="12,0,0,0" Click="OnMute" VerticalAlignment="Center">
+                <l:Icon Name="MuteIcon" Glyph="E767" FontSize="13"/>
+            </Button>
+        </Grid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,24">
+            <Button Classes="Primary" Click="OnShare" Padding="18,9" Margin="0,0,8,0" AutomationProperties.Name="{l:T clips.share}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E72D" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:T clips.share}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="Ghost" Click="OnShow" Padding="16,9" Margin="0,0,8,0" AutomationProperties.Name="{l:T clips.show}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E838" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:T clips.show}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="Ghost" Click="OnDelete" Padding="16,9" AutomationProperties.Name="{l:T clips.recycle}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E74D" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource Accent}"/>
+                    <TextBlock Text="{l:T clips.recycle}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

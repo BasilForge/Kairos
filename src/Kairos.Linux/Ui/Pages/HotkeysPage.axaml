@@ -1,0 +1,161 @@
+<UserControl x:Class="Kairos.Ui.Pages.HotkeysPage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+        <UserControl.Styles>
+        <Style Selector="l|HotkeyBox.HkBox">
+            <Setter Property="Width" Value="200"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="ToolTip.Tip" Value="{l:T hotkeys.hint}"/>
+        </Style>
+        <!-- Tag: another app holds this key -->
+        <Style Selector="l|HotkeyBox.HkBox[Tag=True]"><Setter Property="BorderBrush" Value="{StaticResource Warning}"/></Style>
+        <Style Selector="Button.TakenLink">
+            <Setter Property="Padding" Value="9,3"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="10,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+    <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.hotkeys}"/>
+
+        <!-- Two or more keys held by other apps: free keys for all of them in one click -->
+        <Border Background="{StaticResource WarningSoft}" CornerRadius="10" Padding="16,10" Margin="0,0,0,12"
+                IsVisible="{Binding ShowsFixAll, Converter={StaticResource Truthy}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <l:Icon Glyph="E7BA" FontSize="14" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="{Binding TakenSummary}" FontSize="13.5" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button Grid.Column="1" Classes="Primary" Content="{l:T hotkeys.fixAll}" Command="{Binding FixAllCommand}" Padding="14,7"/>
+            </Grid>
+        </Border>
+
+        <!-- One card per feature -->
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T hotkeys.cardReplay}"/>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T hotkeys.save}" FontWeight="SemiBold"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" IsVisible="{Binding SaveKey.Taken, Converter={StaticResource Truthy}}">
+                            <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding SaveKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
+                            <Button Classes="Ghost TakenLink" Content="{Binding SaveKey.FixText}" Command="{Binding SaveKey.FixCommand}"
+                                    IsVisible="{Binding SaveKey.CanFix, Converter={StaticResource Truthy}}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <l:HotkeyBox Grid.Column="1" Classes="HkBox" Hotkey="{Binding HkSave}" Tag="{Binding SaveKey.Taken}" AutomationProperties.Name="{l:T hotkeys.save}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid Margin="0,2" IsEnabled="{Binding QuickEnabled}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T hotkeys.quick}"/>
+                    </StackPanel>
+                    <l:HotkeyBox Grid.Column="1" Classes="HkBox" Hotkey="{Binding HkQuick}" AutomationProperties.Name="{l:T hotkeys.quick}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T hotkeys.toggle}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" IsVisible="{Binding ToggleKey.Taken, Converter={StaticResource Truthy}}">
+                            <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding ToggleKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
+                            <Button Classes="Ghost TakenLink" Content="{Binding ToggleKey.FixText}" Command="{Binding ToggleKey.FixCommand}"
+                                    IsVisible="{Binding ToggleKey.CanFix, Converter={StaticResource Truthy}}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <l:HotkeyBox Grid.Column="1" Classes="HkBox" Hotkey="{Binding HkToggle}" Tag="{Binding ToggleKey.Taken}" AutomationProperties.Name="{l:T hotkeys.toggle}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T hotkeys.cardRecording}"/>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T hotkeys.record}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" IsVisible="{Binding RecordKey.Taken, Converter={StaticResource Truthy}}">
+                            <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding RecordKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
+                            <Button Classes="Ghost TakenLink" Content="{Binding RecordKey.FixText}" Command="{Binding RecordKey.FixCommand}"
+                                    IsVisible="{Binding RecordKey.CanFix, Converter={StaticResource Truthy}}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <l:HotkeyBox Grid.Column="1" Classes="HkBox" Hotkey="{Binding HkRecord}" Tag="{Binding RecordKey.Taken}" AutomationProperties.Name="{l:T hotkeys.record}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T hotkeys.pauseRecord}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" IsVisible="{Binding PauseRecordKey.Taken, Converter={StaticResource Truthy}}">
+                            <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding PauseRecordKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
+                            <Button Classes="Ghost TakenLink" Content="{Binding PauseRecordKey.FixText}" Command="{Binding PauseRecordKey.FixCommand}"
+                                    IsVisible="{Binding PauseRecordKey.CanFix, Converter={StaticResource Truthy}}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <l:HotkeyBox Grid.Column="1" Classes="HkBox" Hotkey="{Binding HkPauseRecord}" Tag="{Binding PauseRecordKey.Taken}" AutomationProperties.Name="{l:T hotkeys.pauseRecord}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T hotkeys.cardScreenshot}"/>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="Label" Text="{l:T hotkeys.screenshot}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" IsVisible="{Binding ScreenshotKey.Taken, Converter={StaticResource Truthy}}">
+                            <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding ScreenshotKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
+                            <Button Classes="Ghost TakenLink" Content="{Binding ScreenshotKey.FixText}" Command="{Binding ScreenshotKey.FixCommand}"
+                                    IsVisible="{Binding ScreenshotKey.CanFix, Converter={StaticResource Truthy}}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <l:HotkeyBox Grid.Column="1" Classes="HkBox" Hotkey="{Binding HkScreenshot}" Tag="{Binding ScreenshotKey.Taken}" AutomationProperties.Name="{l:T hotkeys.screenshot}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Back to Kairos's own keys (saved with the rest, so Revert still undoes it) -->
+        <Button Classes="Ghost" Command="{Binding ResetHotkeysCommand}" HorizontalAlignment="Left" Padding="14,8">
+            <StackPanel Orientation="Horizontal">
+                <l:Icon Glyph="E777" FontSize="13" Margin="0,0,8,0"/>
+                <TextBlock Text="{l:T hotkeys.reset}"/>
+            </StackPanel>
+        </Button>
+    </StackPanel>
+</UserControl>

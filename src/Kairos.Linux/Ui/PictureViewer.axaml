@@ -1,0 +1,70 @@
+<UserControl x:Class="Kairos.Ui.PictureViewer"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui"
+             Focusable="True">
+    <!-- A screenshot at full size over the window: copy, share, show in folder, delete. Esc or a click outside closes. -->
+    <Grid Name="Scrim" Background="#E01A1514" RowDefinitions="Auto,*,Auto">
+
+        <Grid Margin="28,44,20,10" ColumnDefinitions="*,Auto,Auto">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Name="Heading" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Name="Meta" Classes="Caption" FlowDirection="LeftToRight" HorizontalAlignment="Left"/>
+            </StackPanel>
+            <Button Name="EditButton" Grid.Column="1" Classes="Ghost" Click="OnEdit" Padding="14,9" Margin="0,0,8,0" AutomationProperties.Name="{l:T viewer.edit}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E70F" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:T viewer.edit}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Name="CloseButton" Grid.Column="2" Classes="Ghost" Padding="11,9" Click="OnClose"
+                    ToolTip.Tip="{l:T viewer.close}" AutomationProperties.Name="{l:T viewer.close}">
+                <l:Icon Glyph="E711" FontSize="13"/>
+            </Button>
+        </Grid>
+
+        <!-- The pictures before and after this one on the Library page (arrow keys too) -->
+        <Grid Grid.Row="1" Margin="12,0" ColumnDefinitions="Auto,*,Auto">
+            <Button Name="PrevButton" Classes="Ghost" Click="OnPrev" Padding="12,14" VerticalAlignment="Center"
+                    ToolTip.Tip="{l:T viewer.previous}" AutomationProperties.Name="{l:T viewer.previous}">
+                <l:Icon Name="PrevIcon" Glyph="E76B" FontSize="14"/>
+            </Button>
+            <Button Name="NextButton" Grid.Column="2" Classes="Ghost" Click="OnNext" Padding="12,14" VerticalAlignment="Center"
+                    ToolTip.Tip="{l:T viewer.next}" AutomationProperties.Name="{l:T viewer.next}">
+                <l:Icon Name="NextIcon" Glyph="E76C" FontSize="14"/>
+            </Button>
+            <!-- Never mirrored: a picture reads the same in Arabic -->
+            <Border Name="PictureFrame" Grid.Column="1" Margin="16,0" CornerRadius="10" ClipToBounds="True" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    BorderBrush="{StaticResource Stroke}" BorderThickness="1" BoxShadow="0 0 40 0 #80000000">
+                <Image Name="Picture" Stretch="Uniform" FlowDirection="LeftToRight" AutomationProperties.Name="{Binding Text, ElementName=Heading}"/>
+            </Border>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,24">
+            <Button Classes="Primary" Click="OnShare" Padding="18,9" Margin="0,0,8,0" AutomationProperties.Name="{l:T clips.share}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E72D" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:T clips.share}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="Ghost" Click="OnCopy" Padding="16,9" Margin="0,0,8,0" AutomationProperties.Name="{l:T viewer.copy}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Name="CopyIcon" Glyph="E8C8" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Name="CopyLabel" Text="{l:T viewer.copy}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="Ghost" Click="OnShow" Padding="16,9" Margin="0,0,8,0" AutomationProperties.Name="{l:T clips.show}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E838" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:T clips.show}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="Ghost" Click="OnDelete" Padding="16,9" AutomationProperties.Name="{l:T clips.recycle}">
+                <StackPanel Orientation="Horizontal">
+                    <l:Icon Glyph="E74D" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource Accent}"/>
+                    <TextBlock Text="{l:T clips.recycle}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

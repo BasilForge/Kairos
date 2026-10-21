@@ -1,0 +1,131 @@
+<UserControl x:Class="Kairos.Ui.Pages.GeneralPage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.general}"/>
+
+        <!-- Startup -->
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T general.cardStartup}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T general.startup}"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding StartWithWindows}" AutomationProperties.Name="{l:T general.startup}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T general.checkUpdates}"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding CheckUpdates}" AutomationProperties.Name="{l:T general.checkUpdates}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Storage: where clips and screenshots go, and how much room they may take -->
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T general.cardStorage}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T saving.folder}" Margin="0,0,16,0"/>
+                    <TextBox Grid.Column="1" Text="{Binding Folder}" IsReadOnly="True" FlowDirection="LeftToRight" VerticalContentAlignment="Center"
+                             ToolTip.Tip="{Binding Folder}" l:PathBox.ShowEnd="True"
+                             AutomationProperties.Name="{l:T saving.folder}"/>
+                    <Button Grid.Column="2" Classes="Ghost" Content="{l:T saving.browse}" Command="{Binding BrowseFolderCommand}" Margin="8,0,0,0"/>
+                    <Button Grid.Column="3" Classes="Ghost" Command="{Binding OpenFolderCommand}" Margin="8,0,0,0" Padding="11,9"
+                            ToolTip.Tip="{l:T status.openFolder}" AutomationProperties.Name="{l:T status.openFolder}">
+                        <l:Icon Glyph="E838" FontSize="13"/>
+                    </Button>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T saving.perApp}"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding PerAppFolders}" AutomationProperties.Name="{l:T saving.perApp}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Classes="Label" Text="{l:T saving.limit}"/>
+                        <TextBlock Classes="Caption" Text="{l:T saving.limitTip}"/>
+                    </StackPanel>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding FolderLimits}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}" VerticalAlignment="Center"
+                              SelectedValue="{Binding MaxFolderGb}" AutomationProperties.Name="{l:T saving.limit}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <!-- The Whisper model the editor's auto captions use (downloaded only when asked for) -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Classes="Label" Text="{l:T general.captions}"/>
+                        <TextBlock Classes="Caption" Text="{Binding CaptionModelText}"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="Ghost" Content="{l:T general.captionsRemove}" Command="{Binding RemoveCaptionModelCommand}"
+                            VerticalAlignment="Center" IsVisible="{Binding CaptionModelOnDisk, Converter={StaticResource Truthy}}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- What happens when something is saved -->
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="CardTitle" Text="{l:T general.cardAlerts}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T general.sound}"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding SoundOnSave}" AutomationProperties.Name="{l:T general.sound}"/>
+                </Grid>
+                <Border Classes="Divider"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Classes="Label" Text="{l:T general.toast}"/>
+                    <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding ToastOnSave}" AutomationProperties.Name="{l:T general.toast}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Language -->
+        <Border Classes="Card">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="150"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Classes="Section" Text="{l:T general.language}" VerticalAlignment="Center"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding Languages}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                          SelectedValue="{Binding Language}" AutomationProperties.Name="{l:T general.language}"/>
+            </Grid>
+        </Border>
+
+        <TextBlock Text="{Binding VersionText}" Classes="Caption" HorizontalAlignment="Center" Margin="0,6,0,0" Opacity="0.7"/>
+    </StackPanel>
+</UserControl>

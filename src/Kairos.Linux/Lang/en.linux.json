@@ -1,0 +1,7 @@
+{
+  "general.startup": "Start with your desktop",
+  "saving.limitTip": "Oldest Kairos clips go to the Trash; other files stay",
+  "clips.deleteConfirm": "Move this clip to the Trash?",
+  "clips.recycle": "Move to Trash",
+  "editor.replaceTip": "The original goes to the Trash"
+}

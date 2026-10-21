@@ -142,11 +142,16 @@ public static class Obs
 
     // Properties
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_get_source_properties([MarshalAs(U8)] string id);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_source_properties(IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_update(IntPtr source, IntPtr settings);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_properties_get(IntPtr props, [MarshalAs(U8)] string name);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_properties_destroy(IntPtr props);
     [DllImport(Lib, CallingConvention = Cc)] public static extern UIntPtr obs_property_list_item_count(IntPtr p);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_property_list_item_name(IntPtr p, UIntPtr idx);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_property_list_item_string(IntPtr p, UIntPtr idx);
+    /// <summary>obs_combo_format: 0 invalid, 1 int, 2 float, 3 string. A list's values are read the way its format says.</summary>
+    [DllImport(Lib, CallingConvention = Cc)] public static extern int obs_property_list_format(IntPtr p);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern long obs_property_list_item_int(IntPtr p, UIntPtr idx);
 
     // Sources and scenes
     [DllImport(Lib, CallingConvention = Cc)]

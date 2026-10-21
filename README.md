@@ -109,6 +109,22 @@ The build copies libobs 32.2.2 from an installed OBS Studio.
 
 </details>
 
+## Linux
+
+A native Linux build lives in `src/Kairos.Linux` (Avalonia UI, X11). It shares the engine, editor logic and view models with the Windows app.
+
+```bash
+tools/build-libobs.sh                   # once: libobs 32.2.2 with the Linux capture, PulseAudio/PipeWire and NVENC/x264 plugins
+tools/get-ffmpeg.sh                     # once: the FFmpeg 8 libraries (or point KAIROS_FFMPEG at a folder that has them)
+tools/build-whisper.sh                  # optional: the auto captions engine (CPU; Vulkan when glslc is installed)
+dotnet run --project src/Kairos.Linux   # starts the engine and tray; "kairos --settings" opens the window
+dotnet run --project tests/Kairos.Linux.Tests
+```
+
+- Games mode follows the focused window; Screen mode captures the desktop (it costs more CPU).
+- Share posts to X, TikTok and Instagram through a Chromium-family browser (Brave, Chrome, Chromium, Edge) with a sign-in profile of its own in `~/.local/share/Kairos/WebView`. Without one, Share opens the site in your normal browser. `KAIROS_BROWSER` picks a browser by hand.
+- Wayland is not supported yet.
+
 ## License
 
 Kairos is free software under the [GNU General Public License v2.0 or later](LICENSE), the same license as libobs. Every release includes its complete source code. Third-party components and their licenses are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

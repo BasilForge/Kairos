@@ -126,7 +126,8 @@ public static unsafe class EditExportTests
         var text = new TextItem(Guid.NewGuid(), 0, info.Duration, "WWWW", new System.Windows.Rect(0.05, 0.05, 0.6, 0.3), "#FFFFFF", 0.25, TextEffect.Plain);
         Overlay? png = null;
         var sta = new Thread(() => png = ItemRenderer.RenderPng(text, info.Width, info.Height, dir));
-        sta.SetApartmentState(ApartmentState.STA);
+        if (OperatingSystem.IsWindows())
+            sta.SetApartmentState(ApartmentState.STA); // WPF draws on an STA thread; Linux has no apartments
         sta.Start();
         sta.Join();
         var result = Export(Av1, EditProject.For(Av1, info.Duration).With(text), Path.Combine(dir, "text.mp4"),
@@ -243,7 +244,8 @@ public static unsafe class EditExportTests
             foreach (var item in items)
                 pngs[item.Id] = ItemRenderer.RenderPng(item, info.Width, info.Height, dir);
         });
-        sta.SetApartmentState(ApartmentState.STA);
+        if (OperatingSystem.IsWindows())
+            sta.SetApartmentState(ApartmentState.STA); // WPF draws on an STA thread; Linux has no apartments
         sta.Start();
         sta.Join();
         long pictures = pngs.Values.Sum(o => new FileInfo(o.Path).Length);

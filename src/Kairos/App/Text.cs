@@ -70,7 +70,13 @@ public static class Text
     {
         using var stream = typeof(Text).Assembly.GetManifestResourceStream($"Lang.{c}.json")
             ?? throw new InvalidOperationException($"The {c} words are missing from the program.");
-        return JsonSerializer.Deserialize<Dictionary<string, string>>(stream) ?? [];
+        var words = JsonSerializer.Deserialize<Dictionary<string, string>>(stream) ?? [];
+        // A platform may reword what names its own system (Lang.<code>.linux.json: "Start with your desktop", "Trash").
+        if (OperatingSystem.IsLinux() && typeof(Text).Assembly.GetManifestResourceStream($"Lang.{c}.linux.json") is { } overrides)
+            using (overrides)
+                foreach (var (key, value) in JsonSerializer.Deserialize<Dictionary<string, string>>(overrides) ?? [])
+                    words[key] = value;
+        return words;
     });
 
     public static string Get(string key) =>

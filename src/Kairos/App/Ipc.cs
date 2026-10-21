@@ -29,7 +29,9 @@ public sealed record CapsDto(
 
 public static class Ipc
 {
-    public const string PipeName = AppInfo.PipeName;
+    /// <summary>The engine's pipe. A development copy with its own data folder (KAIROS_DATA) gets a pipe of its own, so it never talks to the real one.</summary>
+    public static readonly string PipeName = AppInfo.PipeName +
+        (Environment.GetEnvironmentVariable("KAIROS_DATA") is { Length: > 0 } dev ? "." + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(dev)))[..8] : "");
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
@@ -122,7 +124,7 @@ public sealed class PipeServer : IDisposable
                 }
                 else if (request != null)
                 {
-                    if (_onRequest != null && GetNamedPipeClientProcessId(server.SafePipeHandle, out uint client))
+                    if (_onRequest != null && OperatingSystem.IsWindows() && GetNamedPipeClientProcessId(server.SafePipeHandle, out uint client))
                         _onRequest(request, (int)client);
                     await writer.WriteLineAsync(_handle(request));
                 }

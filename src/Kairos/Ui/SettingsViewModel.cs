@@ -998,7 +998,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     static void OpenFolder(string folder)
     {
         Directory.CreateDirectory(folder);
-        Process.Start(new ProcessStartInfo(App.ShellPaths.Explorer, $"\"{folder}\"") { UseShellExecute = true });
+        Process.Start(App.ShellPaths.OpenFolder(folder));
     }
 
     static void Shell(string? path)

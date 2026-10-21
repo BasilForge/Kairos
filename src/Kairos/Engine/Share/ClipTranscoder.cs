@@ -40,7 +40,7 @@ public static unsafe class ClipTranscoder
         {
             if (_loaded)
                 return;
-            if (!File.Exists(Path.Combine(libraryDir, "avcodec-62.dll")))
+            if (!File.Exists(Path.Combine(libraryDir, CaptureBackend.FfmpegMainLibrary)))
                 throw new ShareException($"FFmpeg was not found in {libraryDir}");
             ffmpeg.RootPath = libraryDir;
             DynamicallyLoadedBindings.FunctionResolver = new FolderResolver(libraryDir);
@@ -136,7 +136,7 @@ public static unsafe class ClipTranscoder
     /// </summary>
     sealed class FolderResolver(string dir) : FunctionResolverBase
     {
-        protected override string GetNativeLibraryName(string libraryName, int version) => $"{libraryName}-{version}.dll";
+        protected override string GetNativeLibraryName(string libraryName, int version) => CaptureBackend.FfmpegLibraryName(libraryName, version);
 
         protected override IntPtr LoadNativeLibrary(string libraryName) =>
             NativeLibrary.TryLoad(Path.Combine(dir, libraryName), out IntPtr handle) ? handle : IntPtr.Zero;
@@ -167,7 +167,7 @@ public static unsafe class ClipTranscoder
 
     /// <summary>Kairos's FFmpeg: beside Kairos.exe (KAIROS_FFMPEG points a development build at another copy).</summary>
     public static string DefaultFolder =>
-        Environment.GetEnvironmentVariable("KAIROS_FFMPEG") is { Length: > 0 } folder ? folder : AppContext.BaseDirectory;
+        Environment.GetEnvironmentVariable("KAIROS_FFMPEG") is { Length: > 0 } folder ? folder : CaptureBackend.FfmpegFolder;
 
     /// <summary>Loads FFmpeg from <see cref="DefaultFolder"/> on first use (a screenshot can be the first thing edited).</summary>
     internal static void RequireLoaded()

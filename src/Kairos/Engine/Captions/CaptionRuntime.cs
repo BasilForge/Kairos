@@ -21,7 +21,12 @@ public sealed class CaptionRuntime(string folder, string source)
     public const string Tag = $"captions-runtime-{WhisperVersion}";
     public const long Bytes = 14_848_938;
     const string Sha256 = "9b0a98ccfdc482b21e4d4a6a33ce825d735043e2dc3a40e6f269214fb031d18a";
-    public static readonly string[] Files = ["whisper.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll"];
+    public static readonly string[] Files = OperatingSystem.IsWindows()
+        ? ["whisper.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll"]
+        : ["libwhisper.so", "libggml.so", "libggml-base.so", "libggml-cpu.so"];
+
+    /// <summary>The library Kairos loads (the others are found beside it).</summary>
+    public static string MainLibrary => Files[0];
 
     /// <summary>From the GitHub release, or (testing before publishing) the local update folder's captions-runtime\.</summary>
     public static CaptionRuntime Default { get; } = new(Path.Combine(CaptionFiles.Root, "runtime"),
@@ -39,6 +44,8 @@ public sealed class CaptionRuntime(string folder, string source)
     {
         if (!consent)
             throw new InvalidOperationException("The captions engine is only downloaded after the user agreed.");
+        if (!OperatingSystem.IsWindows())
+            throw new InvalidOperationException("Build the captions engine once with tools/build-whisper.sh, then try again.");
         string parent = Path.GetDirectoryName(Path.GetFullPath(folder))!;
         Directory.CreateDirectory(parent);
         string stem = Path.Combine(parent, Path.GetFileName(folder) + "." + Guid.NewGuid().ToString("N"));

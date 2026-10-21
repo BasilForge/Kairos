@@ -1,0 +1,76 @@
+<UserControl x:Class="Kairos.Ui.Edit.ColourRow" Name="Root"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui"
+             xmlns:e="clr-namespace:Kairos.Ui.Edit">
+    <UserControl.Styles>
+        <!-- One colour of the palette: a dot, ringed when chosen (its own style, not the theme's wide radio button) -->
+        <Style Selector="RadioButton.SwatchDot">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="0,0,3,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid Background="Transparent">
+                        <Ellipse Name="Ring" Stroke="{DynamicResource Accent}" StrokeThickness="2" IsVisible="False"/>
+                        <Ellipse Margin="4" Fill="{Binding Brush}" Stroke="{StaticResource ControlStroke}" StrokeThickness="1"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.SwatchDot:checked /template/ Ellipse#Ring"><Setter Property="IsVisible" Value="True"/></Style>
+        <Style Selector="RadioButton.SwatchDot:focus-visible /template/ Ellipse#Ring"><Setter Property="IsVisible" Value="True"/></Style>
+
+        <!-- Any other colour: a rainbow dot that opens the picker, and shows the colour chosen there -->
+        <Style Selector="RadioButton.CustomDot">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid Background="Transparent">
+                        <Ellipse Name="Ring" Stroke="{DynamicResource Accent}" StrokeThickness="2" IsVisible="False"/>
+                        <Ellipse Margin="4" Stroke="{StaticResource ControlStroke}" StrokeThickness="1">
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#FF5A5A" Offset="0"/>
+                                    <GradientStop Color="#FFD54A" Offset="0.3"/>
+                                    <GradientStop Color="#3DDC84" Offset="0.55"/>
+                                    <GradientStop Color="#4FC3F7" Offset="0.8"/>
+                                    <GradientStop Color="#C58BF4" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Name="Chosen" Margin="8" Fill="{Binding CustomBrush, ElementName=Root}" IsVisible="False"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.CustomDot:checked /template/ Ellipse#Ring"><Setter Property="IsVisible" Value="True"/></Style>
+        <Style Selector="RadioButton.CustomDot:checked /template/ Ellipse#Chosen"><Setter Property="IsVisible" Value="True"/></Style>
+        <Style Selector="RadioButton.CustomDot:focus-visible /template/ Ellipse#Ring"><Setter Property="IsVisible" Value="True"/></Style>
+    </UserControl.Styles>
+    <StackPanel Orientation="Horizontal">
+        <ItemsControl ItemsSource="{Binding Swatches, ElementName=Root}" Focusable="False">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <RadioButton Classes="SwatchDot" IsChecked="{Binding IsSelected, Mode=TwoWay}" GroupName="{Binding GroupName, ElementName=Root}"
+                                 ToolTip.Tip="{Binding Hex}" AutomationProperties.Name="{Binding Hex}"/>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <RadioButton Name="Custom" Classes="CustomDot" GroupName="{Binding GroupName, ElementName=Root}" Click="OnCustom"
+                     ToolTip.Tip="{l:T editor.colour.custom}" AutomationProperties.Name="{l:T editor.colour.custom}"/>
+        <Popup Name="PickerPopup" PlacementTarget="{Binding #Custom}" Placement="Bottom" IsLightDismissEnabled="True" HorizontalOffset="-200" VerticalOffset="6">
+            <Border Background="#3A3130" BorderBrush="#4E4241" BorderThickness="1" CornerRadius="10" Padding="12">
+                <e:ColourPicker Colour="{Binding Colour, ElementName=Root, Mode=TwoWay}"/>
+            </Border>
+        </Popup>
+    </StackPanel>
+</UserControl>

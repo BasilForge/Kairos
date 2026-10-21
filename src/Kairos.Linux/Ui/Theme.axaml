@@ -1,0 +1,344 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:l="clr-namespace:Kairos.Ui">
+
+    <Styles.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://kairos/Ui/Assets/Icons.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Tokens (the Windows app's Theme.xaml) -->
+            <SolidColorBrush x:Key="Bg" Color="#2E2726"/>
+            <SolidColorBrush x:Key="NavBg" Color="#282120"/>
+            <SolidColorBrush x:Key="Surface" Color="#3A3130"/>
+            <SolidColorBrush x:Key="CardHover" Color="#443A39"/>
+            <SolidColorBrush x:Key="Stroke" Color="#4E4241"/>
+            <SolidColorBrush x:Key="StrokeStrong" Color="#625453"/>
+            <!-- The outline of a control (field, outlined button): 3:1 against the cards, so it reads as something to press or fill -->
+            <SolidColorBrush x:Key="ControlStroke" Color="#8A7875"/>
+            <SolidColorBrush x:Key="TextPrimary" Color="#F5ECEA"/>
+            <SolidColorBrush x:Key="TextSecondary" Color="#BBAAA7"/>
+            <SolidColorBrush x:Key="Accent" Color="#F48BA4"/>
+            <SolidColorBrush x:Key="AccentHover" Color="#F69CB2"/>
+            <SolidColorBrush x:Key="AccentSoft" Color="#483436"/>
+            <SolidColorBrush x:Key="OnAccent" Color="#221C1B"/>
+            <SolidColorBrush x:Key="Success" Color="#2ED47A"/>
+            <SolidColorBrush x:Key="SuccessSoft" Color="#2F3A2E"/>
+            <SolidColorBrush x:Key="Warning" Color="#FFB020"/>
+            <SolidColorBrush x:Key="WarningSoft" Color="#41352A"/>
+            <SolidColorBrush x:Key="Idle" Color="#AD9C99"/>
+            <SolidColorBrush x:Key="IdleSoft" Color="#413736"/>
+            <SolidColorBrush x:Key="FieldFill" Color="#2A2322"/>
+            <l:TruthyConverter x:Key="Truthy"/>
+            <l:EqualsConverter x:Key="Eq"/>
+            <l:EqualsVisibleConverter x:Key="EqVisible"/>
+            <FontFamily x:Key="UiFont">Inter, Noto Sans, Cantarell, Ubuntu, sans-serif</FontFamily>
+
+            <!-- Fluent's own controls (drop-down lists, text boxes, sliders, menus) on the warm brown, not Fluent's grey -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="ComboBoxBackground" Color="#2A2322"/>
+                    <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#302827"/>
+                    <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#2A2322"/>
+                    <SolidColorBrush x:Key="ComboBoxBackgroundFocused" Color="#2A2322"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#8A7875"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#BBAAA7"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#8A7875"/>
+                    <SolidColorBrush x:Key="ComboBoxBackgroundDisabled" Color="#3A3130"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushDisabled" Color="#4E4241"/>
+                    <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#3A3130"/>
+                    <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#4E4241"/>
+                    <SolidColorBrush x:Key="TextControlBackground" Color="#2A2322"/>
+                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#302827"/>
+                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#2A2322"/>
+                    <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#3A3130"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#8A7875"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#BBAAA7"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#4E4241"/>
+                    <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#3A3130"/>
+                    <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#4E4241"/>
+                    <SolidColorBrush x:Key="ToolTipBackground" Color="#3A3130"/>
+                    <SolidColorBrush x:Key="ToolTipBorderBrush" Color="#4E4241"/>
+                    <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumLowBrush" Color="#3A3130"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Styles.Resources>
+
+    <!-- Window text -->
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{StaticResource Bg}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="14"/>
+    </Style>
+
+    <!-- Text -->
+    <Style Selector="TextBlock.Title">
+        <Setter Property="Margin" Value="0,0,0,18"/>
+        <Setter Property="FontSize" Value="26"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    </Style>
+    <Style Selector="TextBlock.Sub">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Margin" Value="0,6,0,22"/>
+    </Style>
+    <Style Selector="TextBlock.Section">
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    </Style>
+    <Style Selector="TextBlock.Label">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <!-- A card's own title, so a group of settings says what it is about -->
+    <Style Selector="TextBlock.CardTitle">
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+    <!-- A heading between groups of pages in the side bar -->
+    <Style Selector="TextBlock.NavGroup">
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+        <Setter Property="Margin" Value="12,14,12,4"/>
+    </Style>
+    <Style Selector="TextBlock.Caption">
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Margin" Value="0,3,0,0"/>
+    </Style>
+    <Style Selector="TextBlock.Value">
+        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="FlowDirection" Value="LeftToRight"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+    </Style>
+    <Style Selector="l|Icon">
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="FlowDirection" Value="LeftToRight"/>
+    </Style>
+
+    <!-- Surfaces -->
+    <Style Selector="Border.Card">
+        <Setter Property="Background" Value="{StaticResource Surface}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="12"/>
+        <Setter Property="Padding" Value="20,16"/>
+        <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+    <Style Selector="Border.Divider">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource Stroke}"/>
+        <Setter Property="Margin" Value="0,14"/>
+    </Style>
+
+    <!-- Navigation item -->
+    <Style Selector="RadioButton.Nav">
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Margin" Value="0,2"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="Transparent" CornerRadius="8" Padding="12,10" BorderThickness="1" BorderBrush="Transparent">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <l:Icon Name="Ic" Glyph="{TemplateBinding Tag}" Margin="0,0,12,0" Foreground="{TemplateBinding Foreground}"/>
+                        <!-- Tag "HD": a small outlined badge in the icon's place and colour (no such icon in the set) -->
+                        <Border Name="Badge" Width="18" Height="13" CornerRadius="3" BorderThickness="1.4" Margin="-1,0,11,0"
+                                BorderBrush="{TemplateBinding Foreground}" VerticalAlignment="Center" IsVisible="False">
+                            <TextBlock Text="HD" FontSize="8" FontWeight="Bold" Foreground="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" FlowDirection="LeftToRight"/>
+                        </Border>
+                        <ContentPresenter Grid.Column="1" VerticalAlignment="Center" Content="{TemplateBinding Content}"/>
+                        <Border Name="Bar" Width="3" Height="18" CornerRadius="2" Background="{DynamicResource Accent}"
+                                HorizontalAlignment="Left" Margin="-12,0,0,0" IsVisible="False"/>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton.Nav[Tag=HD] /template/ l|Icon#Ic"><Setter Property="IsVisible" Value="False"/></Style>
+    <Style Selector="RadioButton.Nav[Tag=HD] /template/ Border#Badge"><Setter Property="IsVisible" Value="True"/></Style>
+    <Style Selector="RadioButton.Nav:pointerover"><Setter Property="Foreground" Value="{StaticResource TextPrimary}"/></Style>
+    <Style Selector="RadioButton.Nav:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="RadioButton.Nav:checked"><Setter Property="Foreground" Value="{StaticResource TextPrimary}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="RadioButton.Nav:checked /template/ Border#Bd"><Setter Property="Background" Value="{DynamicResource AccentSoft}"/></Style>
+    <Style Selector="RadioButton.Nav:checked /template/ Border#Bar"><Setter Property="IsVisible" Value="True"/></Style>
+    <Style Selector="RadioButton.Nav:checked /template/ l|Icon#Ic"><Setter Property="Foreground" Value="{DynamicResource Accent}"/></Style>
+    <Style Selector="RadioButton.Nav:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/></Style>
+
+    <!-- Big selectable card (capture mode, codec) -->
+    <Style Selector="RadioButton.ChoiceCard">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Margin" Value="0,0,12,0"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1.5"
+                        CornerRadius="12" Padding="18,16">
+                    <Grid>
+                        <!-- Room for the check so long content (AV1 + "Recommended") never runs under it. -->
+                        <ContentPresenter Margin="0,0,30,0" Content="{TemplateBinding Content}"/>
+                        <Border Name="Check" Width="20" Height="20" CornerRadius="10" Background="{DynamicResource Accent}"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" IsVisible="False">
+                            <l:Icon Glyph="E73E" FontSize="11" Foreground="{DynamicResource OnAccent}" HorizontalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton.ChoiceCard:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="RadioButton.ChoiceCard:checked /template/ Border#Bd">
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+        <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    </Style>
+    <Style Selector="RadioButton.ChoiceCard:checked /template/ Border#Check"><Setter Property="IsVisible" Value="True"/></Style>
+    <Style Selector="RadioButton.ChoiceCard:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/></Style>
+    <Style Selector="RadioButton.ChoiceCard:disabled /template/ Border#Bd"><Setter Property="Opacity" Value="0.45"/></Style>
+
+    <!-- Segmented choice -->
+    <Style Selector="RadioButton.Segment">
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+        <Setter Property="FontSize" Value="13.5"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="{StaticResource Bg}" BorderBrush="{StaticResource Stroke}" BorderThickness="1"
+                        CornerRadius="8" Padding="14,8" MinWidth="64">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton.Segment:pointerover"><Setter Property="Foreground" Value="{StaticResource TextPrimary}"/></Style>
+    <Style Selector="RadioButton.Segment:pointerover /template/ Border#Bd"><Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Style>
+    <Style Selector="RadioButton.Segment:checked"><Setter Property="Foreground" Value="{DynamicResource OnAccent}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="RadioButton.Segment:checked /template/ Border#Bd">
+        <Setter Property="Background" Value="{DynamicResource Accent}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    </Style>
+    <Style Selector="RadioButton.Segment:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/></Style>
+
+    <!-- Toggle switch -->
+    <Style Selector="CheckBox.Switch">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Track" Width="42" Height="22" CornerRadius="11" Background="{StaticResource Bg}"
+                        BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1.5">
+                    <Ellipse Name="Thumb" Width="12" Height="12" Fill="{StaticResource TextSecondary}" HorizontalAlignment="Left" Margin="4,0,0,0"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="CheckBox.Switch:checked /template/ Border#Track">
+        <Setter Property="Background" Value="{DynamicResource Accent}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    </Style>
+    <Style Selector="CheckBox.Switch:checked /template/ Ellipse#Thumb">
+        <Setter Property="Fill" Value="{DynamicResource OnAccent}"/>
+        <Setter Property="Width" Value="14"/>
+        <Setter Property="Height" Value="14"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="Margin" Value="0,0,3,0"/>
+    </Style>
+    <Style Selector="CheckBox.Switch:pointerover /template/ Border#Track"><Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/></Style>
+    <Style Selector="CheckBox.Switch:focus-visible /template/ Border#Track"><Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/></Style>
+    <Style Selector="CheckBox.Switch:disabled /template/ Border#Track"><Setter Property="Opacity" Value="0.4"/></Style>
+
+    <!-- Buttons -->
+    <Style Selector="Button.Primary">
+        <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="{DynamicResource Accent}" CornerRadius="8" Padding="18,10" BorderThickness="2" BorderBrush="Transparent">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button.Primary:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{DynamicResource AccentHover}"/></Style>
+    <Style Selector="Button.Primary:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="White"/></Style>
+    <Style Selector="Button.Primary:disabled /template/ Border#Bd"><Setter Property="Opacity" Value="0.4"/></Style>
+
+    <Style Selector="Button.Ghost">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="16,9"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Background="Transparent" BorderBrush="{StaticResource ControlStroke}" BorderThickness="1"
+                        CornerRadius="8" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button.Ghost:pointerover /template/ Border#Bd"><Setter Property="Background" Value="{StaticResource CardHover}"/></Style>
+    <Style Selector="Button.Ghost:focus-visible /template/ Border#Bd"><Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/></Style>
+    <Style Selector="Button.Ghost:disabled /template/ Border#Bd"><Setter Property="Opacity" Value="0.4"/></Style>
+
+    <!-- Round selection check on clip cards -->
+    <Style Selector="CheckBox.SelectCheck">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="Bd" Width="24" Height="24" CornerRadius="12" Background="#99000000" BorderBrush="#CCFFFFFF" BorderThickness="1.5">
+                    <l:Icon Name="Mark" Glyph="E73E" FontSize="11" Foreground="{DynamicResource OnAccent}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="False"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="CheckBox.SelectCheck:checked /template/ Border#Bd">
+        <Setter Property="Background" Value="{DynamicResource Accent}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    </Style>
+    <Style Selector="CheckBox.SelectCheck:checked /template/ l|Icon#Mark"><Setter Property="IsVisible" Value="True"/></Style>
+    <Style Selector="CheckBox.SelectCheck:pointerover /template/ Border#Bd"><Setter Property="BorderBrush" Value="White"/></Style>
+
+    <!-- Fields: the same inset look as the segmented buttons (dark fill, hairline border, 8 px corners) -->
+    <Style Selector="ComboBox, TextBox">
+        <Setter Property="CornerRadius" Value="8"/>
+    </Style>
+    <!-- Typing a text in place on the picture: no field frame, fill or focus line (the app's text fields have them) -->
+    <Style Selector="TextBox.Plain">
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4">
+                    <TextPresenter Name="PART_TextPresenter" Text="{TemplateBinding Text, Mode=TwoWay}" CaretBrush="{TemplateBinding CaretBrush}"
+                                   CaretIndex="{TemplateBinding CaretIndex}" SelectionStart="{TemplateBinding SelectionStart}" SelectionEnd="{TemplateBinding SelectionEnd}"
+                                   TextAlignment="{TemplateBinding TextAlignment}" VerticalAlignment="Center"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <Style Selector="ToolTip">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+    </Style>
+</Styles>

@@ -63,7 +63,9 @@ public static class ObsLog
         try
         {
             byte* buffer = stackalloc byte[4096];
-            int n = __stdio_common_vsprintf(StandardSnprintfBehavior, buffer, 4096, format, IntPtr.Zero, args);
+            int n = OperatingSystem.IsWindows()
+                ? __stdio_common_vsprintf(StandardSnprintfBehavior, buffer, 4096, format, IntPtr.Zero, args)
+                : vsnprintf(buffer, 4096, format, args);
             string text = n < 0 ? Marshal.PtrToStringUTF8(format) ?? "" : Encoding.UTF8.GetString(buffer, Math.Min(n, 4095));
             Write(level switch { ObsConst.LogError => "obs-error", ObsConst.LogWarning => "obs-warn", _ => "obs" }, text);
         }
@@ -72,6 +74,10 @@ public static class ObsLog
             // Never let an exception cross back into libobs.
         }
     }
+
+    // libobs hands its va_list over by pointer, which is what libc's vsnprintf takes on x86-64 Linux.
+    [DllImport("libc", CallingConvention = CallingConvention.Cdecl)]
+    static extern unsafe int vsnprintf(byte* buffer, nuint size, IntPtr format, IntPtr args);
 
     [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl)]
     static extern unsafe int __stdio_common_vsprintf(ulong options, byte* buffer, nuint bufferCount, IntPtr format, IntPtr locale, IntPtr args);

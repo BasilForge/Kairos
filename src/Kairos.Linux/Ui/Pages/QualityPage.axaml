@@ -1,0 +1,138 @@
+<UserControl x:Class="Kairos.Ui.Pages.QualityPage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <UserControl.Resources>
+        <DataTemplate x:Key="Badge">
+            <Border Background="{StaticResource SuccessSoft}" CornerRadius="5" Padding="7,2" Margin="0,2" VerticalAlignment="Center">
+                <TextBlock Text="{l:T quality.recommended}" FontSize="11" Foreground="{StaticResource Success}"/>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+    <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.quality}"/>
+
+        <Border Classes="Card" Background="{StaticResource WarningSoft}" BorderBrush="{StaticResource Warning}"
+                IsVisible="{Binding CpuOnly, Converter={StaticResource Truthy}}">
+            <TextBlock Text="{l:T quality.cpuOnly}" TextWrapping="Wrap"/>
+        </Border>
+
+        <Border Classes="Card">
+            <StackPanel>
+                <TextBlock Classes="Section" Text="{l:T quality.preset}"/>
+                <TextBlock Classes="Caption" Text="{l:T quality.presetTip}" Margin="0,3,0,12"/>
+                <Grid>
+                    <WrapPanel>
+                        <RadioButton Classes="Segment" GroupName="q" Content="{l:T quality.light}"
+                                     IsChecked="{Binding Quality, Converter={StaticResource Eq}, ConverterParameter=Light}"/>
+                        <RadioButton Classes="Segment" GroupName="q" Content="{l:T quality.balanced}"
+                                     IsChecked="{Binding Quality, Converter={StaticResource Eq}, ConverterParameter=Balanced}"/>
+                        <RadioButton Classes="Segment" GroupName="q" Content="{l:T quality.high}"
+                                     IsChecked="{Binding Quality, Converter={StaticResource Eq}, ConverterParameter=High}"/>
+                        <RadioButton Classes="Segment" GroupName="q" Content="{l:T quality.ultra}"
+                                     IsChecked="{Binding Quality, Converter={StaticResource Eq}, ConverterParameter=Ultra}"/>
+                        <RadioButton Classes="Segment" GroupName="q" Content="{l:T quality.custom}" Margin="0"
+                                     IsChecked="{Binding Quality, Converter={StaticResource Eq}, ConverterParameter=Custom}"/>
+                    </WrapPanel>
+                </Grid>
+
+                <StackPanel IsVisible="{Binding Quality, Converter={StaticResource EqVisible}, ConverterParameter=Custom}" Margin="0,16,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T quality.cq}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding CustomCq}" FontWeight="SemiBold" FlowDirection="LeftToRight"/>
+                    </Grid>
+                    <Slider Minimum="12" Maximum="45" Value="{Binding CustomCq}" IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,6,0,12"
+                            AutomationProperties.Name="{l:T quality.cq}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T quality.maxBitrate}"/>
+                        <TextBlock Grid.Column="1" FontWeight="SemiBold" FlowDirection="LeftToRight">
+                            <Run Text="{Binding CustomMbps, Mode=OneWay}"/><Run Text=" Mbps"/>
+                        </TextBlock>
+                    </Grid>
+                    <Slider Minimum="5" Maximum="200" Value="{Binding CustomMbps}" IsSnapToTickEnabled="True" TickFrequency="5" Margin="0,6,0,0"
+                            AutomationProperties.Name="{l:T quality.maxBitrate}"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding EstimateText}" Classes="Caption" Margin="0,14,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Format -->
+        <TextBlock Classes="Section" Text="{l:T quality.codec}" Margin="2,6,0,10"/>
+        <UniformGrid Columns="3" Margin="0,0,-12,12">
+            <RadioButton Classes="ChoiceCard" GroupName="codec" IsEnabled="{Binding Av1Available}" AutomationProperties.Name="AV1"
+                         IsChecked="{Binding Codec, Converter={StaticResource Eq}, ConverterParameter=Av1}" ToolTip.ShowOnDisabled="True">
+                <WrapPanel>
+                    <TextBlock Text="AV1" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <ContentControl ContentTemplate="{StaticResource Badge}" IsVisible="{Binding Av1Recommended, Converter={StaticResource Truthy}}"/>
+                </WrapPanel>
+            </RadioButton>
+            <RadioButton Classes="ChoiceCard" GroupName="codec" IsEnabled="{Binding HevcAvailable}" AutomationProperties.Name="HEVC"
+                         IsChecked="{Binding Codec, Converter={StaticResource Eq}, ConverterParameter=Hevc}">
+                <WrapPanel>
+                    <TextBlock Text="HEVC" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <ContentControl ContentTemplate="{StaticResource Badge}" IsVisible="{Binding HevcRecommended, Converter={StaticResource Truthy}}"/>
+                </WrapPanel>
+            </RadioButton>
+            <RadioButton Classes="ChoiceCard" GroupName="codec" IsEnabled="{Binding H264Available}" AutomationProperties.Name="H.264"
+                         IsChecked="{Binding Codec, Converter={StaticResource Eq}, ConverterParameter=H264}">
+                <WrapPanel>
+                    <TextBlock Text="H.264" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <ContentControl ContentTemplate="{StaticResource Badge}" IsVisible="{Binding H264Recommended, Converter={StaticResource Truthy}}"/>
+                </WrapPanel>
+            </RadioButton>
+        </UniformGrid>
+        <!-- Picture size, frame rate and encoder speed -->
+        <Border Classes="Card">
+            <StackPanel>
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="250"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T quality.resolution}"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding Resolutions}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}"
+                                  SelectedValue="{Binding Resolution}" AutomationProperties.Name="{l:T quality.resolution}"/>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="250"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T quality.fps}"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding FpsOptions}" DisplayMemberBinding="{Binding Label}" SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Fps}"
+                                  AutomationProperties.Name="{l:T quality.fps}"/>
+                    </Grid>
+                    <Border Classes="Divider"/>
+                    <Grid ToolTip.Tip="{l:T quality.encoderPresetTip}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="250"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="Label" Text="{l:T quality.encoderPreset}"/>
+                        <StackPanel Grid.Column="1">
+                            <Slider Minimum="1" Maximum="7" Value="{Binding PresetLevel}" IsSnapToTickEnabled="True" TickFrequency="1"
+                                    TickPlacement="BottomRight" AutomationProperties.Name="{l:T quality.encoderPreset}"/>
+                            <Grid Margin="0,2,0,0">
+                                <TextBlock Classes="Caption" Text="{l:T quality.faster}" HorizontalAlignment="Left" Margin="0"/>
+                                <TextBlock Classes="Caption" HorizontalAlignment="Center" Margin="0" FontWeight="SemiBold">
+                                    <Run Text=""/><Run Text="{Binding PresetWord, Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock Classes="Caption" Text="{l:T quality.better}" HorizontalAlignment="Right" Margin="0"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

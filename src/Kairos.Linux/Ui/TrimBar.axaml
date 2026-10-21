@@ -1,0 +1,49 @@
+<UserControl x:Class="Kairos.Ui.TrimBar"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui"
+             FlowDirection="LeftToRight" Height="50" Focusable="False">
+    <!-- Time runs left to right in every language. The handles sit just outside the cut, so 12 px of room on each side. -->
+    <UserControl.Styles>
+        <!-- A keyboard-focused handle gets a white outline -->
+        <Style Selector="Border.Handle:focus-visible">
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+        </Style>
+    </UserControl.Styles>
+    <!-- A click or drag on the strip moves the playhead (inside the cut) -->
+    <Grid Name="Hit" Background="Transparent" Cursor="Hand">
+        <Border Name="StripBox" Margin="12,4" CornerRadius="5" Background="#231D1C" ClipToBounds="True">
+            <ItemsControl Name="Strip" Focusable="False" IsHitTestVisible="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Rows="1"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Image Source="{Binding}" Stretch="UniformToFill"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+        <Canvas Name="Overlay">
+            <Rectangle Name="ShadeLeft" Fill="#C0201A19" IsHitTestVisible="False"/>
+            <Rectangle Name="ShadeRight" Fill="#C0201A19" IsHitTestVisible="False"/>
+            <!-- The cut: drag its middle to move it (a plain click there moves the playhead) -->
+            <Border Name="Range" BorderBrush="{DynamicResource Accent}" BorderThickness="0,2.5" Background="Transparent" Cursor="SizeAll"/>
+            <!-- Playhead: where the playback is -->
+            <Grid Name="PlayheadMark" Width="12" IsHitTestVisible="False" IsVisible="False">
+                <Rectangle Width="2" HorizontalAlignment="Center" Fill="White" RadiusX="1" RadiusY="1"/>
+            </Grid>
+            <Border Name="StartHandle" Classes="Handle" Width="12" CornerRadius="6,0,0,6" Background="{DynamicResource Accent}" Cursor="SizeWestEast"
+                    Focusable="True" AutomationProperties.Name="{l:T share.trimStart}">
+                <Rectangle Width="2" Height="16" RadiusX="1" RadiusY="1" Fill="{DynamicResource OnAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <Border Name="EndHandle" Classes="Handle" Width="12" CornerRadius="0,6,6,0" Background="{DynamicResource Accent}" Cursor="SizeWestEast"
+                    Focusable="True" AutomationProperties.Name="{l:T share.trimEnd}">
+                <Rectangle Width="2" Height="16" RadiusX="1" RadiusY="1" Fill="{DynamicResource OnAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+        </Canvas>
+    </Grid>
+</UserControl>

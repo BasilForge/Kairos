@@ -1,0 +1,24 @@
+diff --git a/plugins/obs-ffmpeg/obs-ffmpeg-audio-encoders.c b/plugins/obs-ffmpeg/obs-ffmpeg-audio-encoders.c
+index a03d5a0..f61b3eb 100644
+--- a/plugins/obs-ffmpeg/obs-ffmpeg-audio-encoders.c
++++ b/plugins/obs-ffmpeg/obs-ffmpeg-audio-encoders.c
+@@ -22,6 +22,7 @@
+ #include <obs-module.h>
+ 
+ #include <libavutil/channel_layout.h>
++#include <libavutil/opt.h>
+ #include <libavformat/avformat.h>
+ 
+ #include "obs-ffmpeg-formats.h"
+@@ -218,6 +219,11 @@ static void *enc_create(obs_data_t *settings, obs_encoder_t *encoder, const char
+ 	else
+ 		enc->context->bit_rate = bitrate * 1000;
+ 
++	/* Kairos: FFmpeg's default AAC coder ("twoloop") spends about 3% of a core per track on a 48 kHz stereo stream; "fast"
++	 * is several times cheaper and, at the 192 kbps Kairos records, indistinguishable for game and voice audio. */
++	if (strcmp(type, "aac") == 0)
++		av_opt_set(enc->context, "aac_coder", "fast", AV_OPT_SEARCH_CHILDREN);
++
+ 	const struct audio_output_info *aoi;
+ 	aoi = audio_output_get_info(audio);
+ 

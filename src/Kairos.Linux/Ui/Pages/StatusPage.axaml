@@ -1,0 +1,327 @@
+<UserControl x:Class="Kairos.Ui.Pages.StatusPage"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="clr-namespace:Kairos.Ui">
+    <UserControl.Styles>
+    <!-- The button's hotkey, small inside it (the user's own keys; hidden when there is none) -->
+    <Style Selector="Border.KeyChip">
+        <Setter Property="Margin" Value="8,1,0,0"/>
+        <Setter Property="Padding" Value="3,0,3,0"/>
+        <Setter Property="CornerRadius" Value="3"/>
+        <Setter Property="BorderThickness" Value="0.8"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Opacity" Value="0.6"/>
+        <Setter Property="FlowDirection" Value="LeftToRight"/>
+        <Setter Property="BorderBrush" Value="{Binding $parent[Button].Foreground}"/>
+    </Style>
+    <!-- A slim line when something needs attention: a small icon, one sentence, at most one button -->
+    <Style Selector="Border.Notice">
+        <Setter Property="Background" Value="{StaticResource Surface}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="Padding" Value="14,6"/>
+        <Setter Property="MinHeight" Value="40"/>
+        <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+    <Style Selector="l|Icon.NoticeIcon">
+        <Setter Property="Glyph" Value="E7BA"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{StaticResource Warning}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,0,10,0"/>
+    </Style>
+    <Style Selector="TextBlock.NoticeText">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,3"/>
+    </Style>
+    <Style Selector="Ellipse.st1"><Setter Property="Fill" Value="{StaticResource IdleSoft}"/></Style>
+    <Style Selector="Ellipse.st1.v1"><Setter Property="Fill" Value="{DynamicResource AccentSoft}"/></Style>
+    <Style Selector="Ellipse.st1.v2"><Setter Property="Fill" Value="{StaticResource WarningSoft}"/></Style>
+    <Style Selector="Ellipse.st2"><Setter Property="Fill" Value="{StaticResource Idle}"/></Style>
+    <Style Selector="Ellipse.st2.v1"><Setter Property="Fill" Value="{DynamicResource Accent}"/></Style>
+    <Style Selector="Ellipse.st2.v2"><Setter Property="Fill" Value="{StaticResource Warning}"/></Style>
+    <Style Selector="l|Icon.st3"><Setter Property="Glyph" Value="E769"/></Style>
+    <Style Selector="l|Icon.st3.v1"><Setter Property="Glyph" Value="E768"/></Style>
+    <Style Selector="Ellipse.st4"><Setter Property="Fill" Value="{StaticResource IdleSoft}"/></Style>
+    <Style Selector="Ellipse.st4.v1"><Setter Property="Fill" Value="{DynamicResource AccentSoft}"/></Style>
+    <Style Selector="l|Icon.st5"><Setter Property="Glyph" Value="E714"/></Style>
+    <Style Selector="l|Icon.st5.v1"><Setter Property="IsVisible" Value="False"/></Style>
+    <Style Selector="l|Icon.st5.v2"><Setter Property="Glyph" Value="E769"/></Style>
+    <Style Selector="l|Icon.st6"><Setter Property="Glyph" Value="E769"/></Style>
+    <Style Selector="l|Icon.st6.v1"><Setter Property="Glyph" Value="E768"/></Style>
+    </UserControl.Styles>
+        <StackPanel>
+        <TextBlock Classes="Title" Text="{l:T nav.status}"/>
+
+        <!-- Only when something needs attention -->
+        <Border Classes="Notice" IsVisible="{Binding FolderWarning, Converter={StaticResource Truthy}}">
+            <DockPanel>
+                <l:Icon Classes="NoticeIcon" DockPanel.Dock="Left"/>
+                <TextBlock Classes="NoticeText" Text="{Binding FolderWarning}"/>
+            </DockPanel>
+        </Border>
+
+        <!-- State -->
+        <Border Classes="Card" Padding="22,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid Width="48" Height="48" VerticalAlignment="Center">
+                    <Ellipse Classes="st1" Classes.v1="{Binding State, Converter={StaticResource Eq}, ConverterParameter=active}" Classes.v2="{Binding State, Converter={StaticResource Eq}, ConverterParameter=error}"/>
+                    <Ellipse Width="16" Height="16" Classes="st2" Classes.v1="{Binding State, Converter={StaticResource Eq}, ConverterParameter=active}" Classes.v2="{Binding State, Converter={StaticResource Eq}, ConverterParameter=error}"/>
+                </Grid>
+                <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StateTitle}" FontSize="19" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding StateDetail}" Classes="Caption" FontSize="13"
+                               IsVisible="{Binding StateDetail, Converter={StaticResource Truthy}}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Instant replay's own pause, next to its Save clip -->
+                    <Button Classes="Ghost" Command="{Binding PauseCommand}" Padding="11,9" Margin="0,0,10,0" VerticalAlignment="Center"
+                            ToolTip.Tip="{Binding ReplayPauseTip}" AutomationProperties.Name="{Binding ReplayPauseTip}"
+                            IsVisible="{Binding ReplayPauseVisible, Converter={StaticResource Truthy}}">
+                        <l:Icon FontSize="14" Classes="st3" Classes.v1="{Binding State, Converter={StaticResource Eq}, ConverterParameter=paused}"/>
+                    </Button>
+                    <Button Classes="Ghost" Command="{Binding SaveNowCommand}" VerticalAlignment="Center"
+                            IsVisible="{Binding SaveVisible, Converter={StaticResource Truthy}}">
+                        <StackPanel Orientation="Horizontal">
+                            <l:Icon Glyph="E74E" Margin="0,0,8,0" FontSize="13" Foreground="{DynamicResource Accent}"/>
+                            <TextBlock Text="{l:T status.saveNow}"/>
+                            <Border Classes="KeyChip" IsVisible="{Binding HkSave, Converter={StaticResource Truthy}}">
+                                <TextBlock Text="{Binding HkSave}" FontSize="9.5"/>
+                            </Border>
+                            <!-- Another app holds the save key: said here too, not only on the Hotkeys page -->
+                            <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
+                                       VerticalAlignment="Center" ToolTip.Tip="{Binding SaveKey.TakenText}" AutomationProperties.Name="{Binding SaveKey.TakenText}"
+                                       IsVisible="{Binding SaveKey.Taken, Converter={StaticResource Truthy}}"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="Primary" Command="{Binding StartEngineCommand}" VerticalAlignment="Center"
+                            Content="{l:T status.start}" IsVisible="{Binding EngineOnline, Converter={StaticResource Truthy}, ConverterParameter=invert}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <StackPanel IsVisible="{Binding EngineOnline, Converter={StaticResource Truthy}}">
+            <!-- Metrics -->
+            <UniformGrid Columns="3" Margin="-6,0,-6,6">
+                <Border Classes="Card" Margin="6,0,6,6">
+                    <StackPanel>
+                        <TextBlock Text="{l:T status.buffer}" Classes="Caption" Margin="0"/>
+                        <TextBlock Classes="Value" Text="{Binding BufferText}" Margin="0,6,0,8"/>
+                        <ProgressBar Height="4" Minimum="0" Maximum="1" Value="{Binding BufferProgress, Mode=OneWay}"
+                                     Foreground="{DynamicResource Accent}" Background="{StaticResource Stroke}" BorderThickness="0"/>
+                    </StackPanel>
+                </Border>
+                <Border Classes="Card" Margin="6,0,6,6">
+                    <StackPanel>
+                        <TextBlock Text="{l:T status.memory}" Classes="Caption" Margin="0"/>
+                        <TextBlock Classes="Value" Text="{Binding MemoryText}" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+                <Border Classes="Card" Margin="6,0,6,6" ToolTip.Tip="{Binding EncoderText}">
+                    <StackPanel>
+                        <TextBlock Text="{l:T status.quality}" Classes="Caption" Margin="0"/>
+                        <TextBlock Classes="Value" Text="{Binding QualityText}" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Recording: started here; while it runs, stop and pause sit side by side -->
+            <Border Classes="Card" Padding="22,18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="48" Height="48" VerticalAlignment="Center">
+                        <Ellipse Classes="st4" Classes.v1="{Binding RecordState, Converter={StaticResource Eq}, ConverterParameter=recording}"/>
+                        <l:Icon FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}" Classes="st5" Classes.v1="{Binding RecordState, Converter={StaticResource Eq}, ConverterParameter=recording}" Classes.v2="{Binding RecordState, Converter={StaticResource Eq}, ConverterParameter=paused}"/>
+                        <Ellipse Width="16" Height="16" Fill="{DynamicResource Accent}" IsVisible="{Binding IsRecordingLive, Converter={StaticResource Truthy}}"/>
+                    </Grid>
+                    <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding RecordTitle}" FontSize="17" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding RecordDetail}" Classes="Caption" FontSize="13"
+                                   IsVisible="{Binding RecordDetail, Converter={StaticResource Truthy}}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Classes="Primary" Command="{Binding RecordCommand}"
+                                IsVisible="{Binding StartPrimaryVisible, Converter={StaticResource Truthy}}">
+                            <StackPanel Orientation="Horizontal">
+                                <l:Icon Glyph="E7C8" FontSize="14" Margin="0,0,8,0"/>
+                                <TextBlock Text="{l:T status.record}"/>
+                                <Border Classes="KeyChip" IsVisible="{Binding HkRecord, Converter={StaticResource Truthy}}">
+                                    <TextBlock Text="{Binding HkRecord}" FontSize="9.5"/>
+                                </Border>
+                                <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
+                                           VerticalAlignment="Center" ToolTip.Tip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
+                                           IsVisible="{Binding RecordKey.Taken, Converter={StaticResource Truthy}}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="Ghost" Command="{Binding RecordCommand}"
+                                IsVisible="{Binding StartGhostVisible, Converter={StaticResource Truthy}}">
+                            <StackPanel Orientation="Horizontal">
+                                <l:Icon Glyph="E7C8" FontSize="13" Margin="0,0,8,0" Foreground="{DynamicResource Accent}"/>
+                                <TextBlock Text="{l:T status.record}"/>
+                                <Border Classes="KeyChip" IsVisible="{Binding HkRecord, Converter={StaticResource Truthy}}">
+                                    <TextBlock Text="{Binding HkRecord}" FontSize="9.5"/>
+                                </Border>
+                                <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
+                                           VerticalAlignment="Center" ToolTip.Tip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
+                                           IsVisible="{Binding RecordKey.Taken, Converter={StaticResource Truthy}}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="Ghost" Command="{Binding RecordCommand}"
+                                IsVisible="{Binding IsRecording, Converter={StaticResource Truthy}}">
+                            <StackPanel Orientation="Horizontal">
+                                <l:Icon Glyph="E71A" FontSize="13" Margin="0,0,8,0"/>
+                                <TextBlock Text="{l:T status.stopRecord}"/>
+                                <Border Classes="KeyChip" IsVisible="{Binding HkRecord, Converter={StaticResource Truthy}}">
+                                    <TextBlock Text="{Binding HkRecord}" FontSize="9.5"/>
+                                </Border>
+                                <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
+                                           VerticalAlignment="Center" ToolTip.Tip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
+                                           IsVisible="{Binding RecordKey.Taken, Converter={StaticResource Truthy}}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="Ghost" Command="{Binding PauseRecordCommand}" Margin="10,0,0,0"
+                                IsVisible="{Binding IsRecording, Converter={StaticResource Truthy}}">
+                            <StackPanel Orientation="Horizontal">
+                                <l:Icon FontSize="13" Margin="0,0,8,0" Classes="st6" Classes.v1="{Binding RecordState, Converter={StaticResource Eq}, ConverterParameter=paused}"/>
+                                <TextBlock Text="{Binding RecordPauseLabel}"/>
+                                <Border Classes="KeyChip" IsVisible="{Binding HkPauseRecord, Converter={StaticResource Truthy}}">
+                                    <TextBlock Text="{Binding HkPauseRecord}" FontSize="9.5"/>
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Screenshot: what is being captured, as a picture beside the clips -->
+            <Border Classes="Card" Padding="22,14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="48" Height="48" VerticalAlignment="Center">
+                        <Ellipse Fill="{StaticResource IdleSoft}"/>
+                        <l:Icon Glyph="E722" FontSize="18" Foreground="{StaticResource TextSecondary}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+                    <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center">
+                        <TextBlock Text="{l:T status.shotTitle}" FontSize="17" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <Button Grid.Column="2" Classes="Ghost" Command="{Binding ScreenshotCommand}" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <l:Icon Glyph="E722" FontSize="13" Margin="0,0,8,0" Foreground="{DynamicResource Accent}"/>
+                            <TextBlock Text="{l:T status.shot}"/>
+                            <Border Classes="KeyChip" IsVisible="{Binding HkScreenshot, Converter={StaticResource Truthy}}">
+                                <TextBlock Text="{Binding HkScreenshot}" FontSize="9.5"/>
+                            </Border>
+                            <l:Icon Glyph="E7BA" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
+                                       VerticalAlignment="Center" ToolTip.Tip="{Binding ScreenshotKey.TakenText}" AutomationProperties.Name="{Binding ScreenshotKey.TakenText}"
+                                       IsVisible="{Binding ScreenshotKey.Taken, Converter={StaticResource Truthy}}"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- One-time introduction to Smart Save -->
+            <Border Classes="Card" IsVisible="{Binding ShowVoiceHint, Converter={StaticResource Truthy}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <l:Icon Glyph="E720" FontSize="20" Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center">
+                        <TextBlock Classes="Section" Text="{l:T voice.hint}"/>
+                        <TextBlock Classes="Caption" Text="{l:T voice.hintTip}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="2" Classes="Primary" Content="{l:T voice.setUp}" Command="{Binding VoiceSetUpCommand}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="3" Classes="Ghost" Command="{Binding VoiceDismissHintCommand}" Margin="8,0,0,0" Padding="10,9"
+                            VerticalAlignment="Center" ToolTip.Tip="{l:T voice.cancel}" AutomationProperties.Name="{l:T voice.cancel}">
+                        <l:Icon Glyph="E711" FontSize="12"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- The latest clip and screenshot: play, view or share them from here -->
+            <Border Classes="Card">
+                <StackPanel>
+                    <TextBlock Classes="CardTitle" Text="{l:T status.latest}"/>
+                    <UniformGrid Columns="2">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Width="112" Height="63" CornerRadius="8" Background="#231D1C" ClipToBounds="True" VerticalAlignment="Top">
+                            <Grid>
+                                <l:Icon Glyph="E714" FontSize="18" Foreground="{StaticResource StrokeStrong}" HorizontalAlignment="Center"/>
+                                <Image Source="{Binding LastClipThumbnail}" Stretch="UniformToFill" FlowDirection="LeftToRight"/>
+                            </Grid>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                            <TextBlock Text="{l:T status.lastClip}" Classes="Caption" Margin="0"/>
+                            <TextBlock Text="{Binding LastClipName}" FontSize="13.5" TextTrimming="CharacterEllipsis" FlowDirection="LeftToRight"
+                                       HorizontalAlignment="Left" Margin="0,1,0,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0" IsEnabled="{Binding HasLastClip}">
+                                <Button Classes="Ghost" Command="{Binding OpenLastClipCommand}" Padding="10,5" Margin="0,0,6,0">
+                                    <TextBlock Text="{l:T clips.play}" FontSize="13"/>
+                                </Button>
+                                <Button Classes="Ghost" Command="{Binding ShareLastClipCommand}" Padding="9,5" Margin="0,0,6,0"
+                                        ToolTip.Tip="{l:T clips.share}" AutomationProperties.Name="{l:T clips.share}">
+                                    <l:Icon Glyph="E72D" FontSize="12"/>
+                                </Button>
+                                <Button Classes="Ghost" Command="{Binding OpenFolderCommand}" Padding="9,5"
+                                        ToolTip.Tip="{l:T status.openFolder}" AutomationProperties.Name="{l:T status.openFolder}">
+                                    <l:Icon Glyph="E838" FontSize="12"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Width="112" Height="63" CornerRadius="8" Background="#231D1C" ClipToBounds="True" VerticalAlignment="Top">
+                            <Grid>
+                                <l:Icon Glyph="E722" FontSize="18" Foreground="{StaticResource StrokeStrong}" HorizontalAlignment="Center"/>
+                                <Image Source="{Binding LastShotThumbnail}" Stretch="UniformToFill" FlowDirection="LeftToRight"/>
+                            </Grid>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                            <TextBlock Text="{l:T status.lastShot}" Classes="Caption" Margin="0"/>
+                            <TextBlock Text="{Binding LastShotName}" FontSize="13.5" TextTrimming="CharacterEllipsis" FlowDirection="LeftToRight"
+                                       HorizontalAlignment="Left" Margin="0,1,0,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0" IsEnabled="{Binding HasLastShot}">
+                                <Button Classes="Ghost" Command="{Binding ViewLastShotCommand}" Padding="10,5" Margin="0,0,6,0">
+                                    <TextBlock Text="{l:T clips.view}" FontSize="13"/>
+                                </Button>
+                                <Button Classes="Ghost" Command="{Binding ShareLastShotCommand}" Padding="9,5" Margin="0,0,6,0"
+                                        ToolTip.Tip="{l:T clips.share}" AutomationProperties.Name="{l:T clips.share}">
+                                    <l:Icon Glyph="E72D" FontSize="12"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </StackPanel>
+</UserControl>
