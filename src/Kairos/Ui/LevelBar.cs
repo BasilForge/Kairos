@@ -13,7 +13,11 @@ namespace Kairos.Ui;
 public sealed class LevelBar : FrameworkElement
 {
     public static readonly DependencyProperty ChannelProperty =
-        DependencyProperty.Register(nameof(Channel), typeof(string), typeof(LevelBar), new PropertyMetadata("system"));
+        DependencyProperty.Register(nameof(Channel), typeof(string), typeof(LevelBar),
+            new PropertyMetadata("system", (d, e) => ((LevelBar)d)._channel = (string)e.NewValue));
+
+    /// <summary>The channel, as a plain field: the stream's thread reads it (a dependency property is the window's thread's only).</summary>
+    volatile string _channel = "system";
 
     static readonly Brush Fill = Frozen(new LinearGradientBrush(
         [
@@ -80,10 +84,10 @@ public sealed class LevelBar : FrameworkElement
         }
     }
 
-    /// <summary>A new level (on the stream's thread): a resting meter starts drawing again.</summary>
+    /// <summary>A new level (on the stream's thread): a resting meter starts drawing again when its own level moved.</summary>
     void OnLevels()
     {
-        if (!Rendering)
+        if (!Rendering && Target != _ballistics.BarDb)
             Dispatcher.BeginInvoke(Resume);
     }
 
@@ -101,7 +105,7 @@ public sealed class LevelBar : FrameworkElement
             CompositionTarget.Rendering -= OnFrame;
     }
 
-    double Target => _stream == null ? LevelMeter.Silent : Channel == "mic" ? _stream.MicDb : _stream.SystemDb;
+    double Target => _stream is { } stream ? stream.Level(_channel) : LevelMeter.Silent;
 
     void OnFrame(object? sender, EventArgs e) => Frame(((RenderingEventArgs)e).RenderingTime);
 

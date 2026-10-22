@@ -13,15 +13,17 @@ sealed class EncoderFailedException(string message) : ShareException(message);
 sealed class HardwareDecodeFailedException(string message) : ShareException(message);
 
 /// <param name="Bytes">Size of the clip's file.</param>
+/// <param name="AudioNames">Each sound track's name in the file (Kairos writes them: <see cref="Audio.Mp4TrackNames"/>).</param>
 public sealed record MediaInfo(double Duration, int Width, int Height, double Fps, string VideoCodec, string? AudioCodec,
-    long AudioBitrate, int AudioStreams, long Bytes = 0);
+    long AudioBitrate, int AudioStreams, long Bytes = 0, IReadOnlyList<string>? AudioNames = null);
 
 public sealed record ShareResult(string Path, long Bytes, string Encoder);
 
 /// <summary>
 /// Converts a clip to H.264 + AAC MP4 with the FFmpeg that OBS ships (already next to Kairos), so sharing adds
 /// nothing to the download. Video: hardware decode (needed for AV1), crop/scale/fps on the CPU, hardware H.264
-/// encode when there is one. Audio: the first track (the full mix) is copied as it is.
+/// encode when there is one. Audio: the first track (the full mix), copied as it is, or re-encoded to AAC at the
+/// plan's bitrate when a size asks for less.
 /// </summary>
 public static unsafe class ClipTranscoder
 {
@@ -63,7 +65,7 @@ public static unsafe class ClipTranscoder
         return new MediaInfo(duration, v->codecpar->width, v->codecpar->height, Fps(v),
             ffmpeg.avcodec_get_name(v->codecpar->codec_id),
             a == null ? null : ffmpeg.avcodec_get_name(a->codecpar->codec_id),
-            a == null ? 0 : a->codecpar->bit_rate, input.AudioStreams, new FileInfo(path).Length);
+            a == null ? 0 : a->codecpar->bit_rate, input.AudioStreams, new FileInfo(path).Length, input.AudioNames);
     }
 
     /// <summary>NVENC runs on the decoder's D3D11 device (tests turn it off to compare the files).</summary>
@@ -145,7 +147,11 @@ public static unsafe class ClipTranscoder
             NativeLibrary.TryGetExport(nativeLibraryHandle, functionName, out IntPtr address) ? address : IntPtr.Zero;
     }
 
-    /// <summary>Replaces an older copy; if that one is still open (an upload in progress), takes "name (2).mp4".</summary>
+    /// <summary>
+    /// Replaces an older copy; if that one is still open (an upload in progress), takes "name (2).mp4" at once. The new
+    /// file held a moment (an antivirus reading it) is waited for under its own name (<see cref="HeldFile"/>): another
+    /// name cannot help that.
+    /// </summary>
     internal static string Place(string temp, string target)
     {
         string stem = Path.Combine(Path.GetDirectoryName(target)!, Path.GetFileNameWithoutExtension(target));
@@ -155,10 +161,10 @@ public static unsafe class ClipTranscoder
         {
             try
             {
-                File.Move(temp, candidate, overwrite: true);
+                HeldFile.Retry(() => File.Move(temp, candidate, overwrite: true), unless: () => HeldFile.InUse(candidate));
                 return candidate;
             }
-            catch (Exception e) when ((e is IOException or UnauthorizedAccessException) && n < 50)
+            catch (Exception e) when ((e is IOException or UnauthorizedAccessException) && n < 50 && HeldFile.InUse(candidate))
             {
                 candidate = $"{stem} ({n}){ext}";
             }
@@ -166,8 +172,16 @@ public static unsafe class ClipTranscoder
     }
 
     /// <summary>Kairos's FFmpeg: beside Kairos.exe (KAIROS_FFMPEG points a development build at another copy).</summary>
-    public static string DefaultFolder =>
-        Environment.GetEnvironmentVariable("KAIROS_FFMPEG") is { Length: > 0 } folder ? folder : AppContext.BaseDirectory;
+    public static string DefaultFolder => FfmpegFolder(AppContext.BaseDirectory, Environment.GetEnvironmentVariable("KAIROS_FFMPEG"));
+
+    /// <summary>
+    /// Whether <paramref name="appDir"/> has FFmpeg of its own: an installed Kairos, which loads DLLs only from its own
+    /// folders, so no setting or argument can make it (or a signed copy) load another program's DLLs.
+    /// </summary>
+    internal static bool Installed(string appDir) => Directory.EnumerateFiles(appDir, "avformat-*.dll").Any();
+
+    /// <summary>The FFmpeg folder: <paramref name="appDir"/>, or the one <paramref name="asked"/> for in a development build.</summary>
+    internal static string FfmpegFolder(string appDir, string? asked) => Installed(appDir) || string.IsNullOrEmpty(asked) ? appDir : asked;
 
     /// <summary>Loads FFmpeg from <see cref="DefaultFolder"/> on first use (a screenshot can be the first thing edited).</summary>
     internal static void RequireLoaded()
@@ -176,11 +190,12 @@ public static unsafe class ClipTranscoder
             Load(DefaultFolder);
     }
 
+    /// <summary>Deletes <paramref name="path"/> if it can, waiting for it while it is held a moment (no half file left).</summary>
     internal static void TryDelete(string path)
     {
         try
         {
-            File.Delete(path);
+            HeldFile.Retry(() => File.Delete(path));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -215,6 +230,8 @@ public static unsafe class ClipTranscoder
         public AVStream* Video { get; }
         public AVStream* Audio { get; }
         public int AudioStreams { get; }
+        /// <summary>Each sound track's name (its handler name; "" when it has none).</summary>
+        public List<string> AudioNames { get; } = [];
 
         public Input(string path)
         {
@@ -236,6 +253,8 @@ public static unsafe class ClipTranscoder
                         if (Audio == null)
                             Audio = s;
                         AudioStreams++;
+                        AVDictionaryEntry* name = ffmpeg.av_dict_get(s->metadata, "handler_name", null, 0);
+                        AudioNames.Add(name == null ? "" : Marshal.PtrToStringUTF8((IntPtr)name->value) ?? "");
                     }
                 }
                 if (Video == null)
@@ -274,6 +293,14 @@ public static unsafe class ClipTranscoder
         AVFormatContext* _output;
         AVStream* _outVideo;
         AVStream* _outAudio;
+        // Only when the plan re-encodes the sound (a size to fit): its decoder, graph (to 48 kHz stereo) and AAC encoder.
+        AVCodecContext* _soundDecoder;
+        AVCodecContext* _soundEncoder;
+        AVFilterGraph* _soundGraph;
+        AVFilterContext* _soundSource;
+        AVFilterContext* _soundSink;
+        AVFrame* _sound;
+        AVFrame* _soundOut;
         AVFrame* _frame;
         AVFrame* _transfer;
         AVFrame* _filtered;
@@ -409,9 +436,18 @@ public static unsafe class ClipTranscoder
             if (_input.Audio != null)
             {
                 _outAudio = ffmpeg.avformat_new_stream(output, null);
-                Check(ffmpeg.avcodec_parameters_copy(_outAudio->codecpar, _input.Audio->codecpar), "Audio track");
-                _outAudio->codecpar->codec_tag = 0;
-                _outAudio->time_base = _input.Audio->time_base;
+                if (_plan.AudioBitrate > 0)
+                {
+                    OpenSound();
+                    Check(ffmpeg.avcodec_parameters_from_context(_outAudio->codecpar, _soundEncoder), "Audio track");
+                    _outAudio->time_base = _soundEncoder->time_base;
+                }
+                else
+                {
+                    Check(ffmpeg.avcodec_parameters_copy(_outAudio->codecpar, _input.Audio->codecpar), "Audio track");
+                    _outAudio->codecpar->codec_tag = 0;
+                    _outAudio->time_base = _input.Audio->time_base;
+                }
             }
 
             Check(ffmpeg.avio_open(&output->pb, path, ffmpeg.AVIO_FLAG_WRITE), "Writing the MP4");
@@ -421,6 +457,19 @@ public static unsafe class ClipTranscoder
             int result = ffmpeg.avformat_write_header(output, &options);
             ffmpeg.av_dict_free(&options);
             Check(result, "Writing the MP4 header");
+        }
+
+        void OpenSound()
+        {
+            AVStream* a = _input.Audio;
+            _soundDecoder = SoundCodecs.OpenDecoder(a);
+            _soundEncoder = SoundCodecs.OpenAac(_plan.AudioBitrate);
+            _soundGraph = ffmpeg.avfilter_graph_alloc();
+            FilterChain.Build(_soundGraph, sound: true, SoundCodecs.BufferArgs(_soundDecoder, a->time_base), SoundCodecs.AacFormat,
+                "Sound filters", out _soundSource, out _soundSink);
+            ffmpeg.av_buffersink_set_frame_size(_soundSink, (uint)_soundEncoder->frame_size);
+            _sound = ffmpeg.av_frame_alloc();
+            _soundOut = ffmpeg.av_frame_alloc();
         }
 
         void Convert(IProgress<double>? progress, CancellationToken ct)
@@ -444,7 +493,7 @@ public static unsafe class ClipTranscoder
                         videoDone = ReceiveDecoded(progress, ct);
                     }
                     else if (_packet->stream_index == audioIndex && !audioDone)
-                        audioDone = CopyAudio();
+                        audioDone = _soundEncoder != null ? DecodeSound() : CopyAudio();
                 }
                 finally
                 {
@@ -461,6 +510,14 @@ public static unsafe class ClipTranscoder
             {
                 Check(ffmpeg.av_buffersrc_add_frame(_source, null), "Finishing the picture");
                 DrainFilter(progress, ct);
+            }
+            if (_soundEncoder != null)
+            {
+                ffmpeg.avcodec_send_packet(_soundDecoder, null);
+                ReceiveSound();
+                Check(ffmpeg.av_buffersrc_add_frame(_soundSource, null), "Finishing the sound");
+                DrainSound();
+                EncodeSound(null);
             }
             Encode(null);
             Check(ffmpeg.av_write_trailer(_output), "Finishing the MP4");
@@ -558,22 +615,76 @@ public static unsafe class ClipTranscoder
             }
         }
 
-        void Encode(AVFrame* frame)
+        /// <summary>A picture to the H.264 encoder (null: the end); its failures let the next encoder try.</summary>
+        void Encode(AVFrame* frame) => Write(_encoder, _outVideo, frame, ref _videoBytes, e => new EncoderFailedException(ErrorText(e)));
+
+        /// <summary>A piece of sound to the AAC encoder (null: the end).</summary>
+        void EncodeSound(AVFrame* frame) => Write(_soundEncoder, _outAudio, frame, ref _audioBytes, e => new ShareException($"Encoding the sound: {ErrorText(e)}"));
+
+        /// <summary>Sends <paramref name="frame"/> to <paramref name="encoder"/> and writes what it gives into <paramref name="stream"/>.</summary>
+        void Write(AVCodecContext* encoder, AVStream* stream, AVFrame* frame, ref long bytes, Func<int, Exception> failed)
         {
-            int sent = ffmpeg.avcodec_send_frame(_encoder, frame);
+            int sent = ffmpeg.avcodec_send_frame(encoder, frame);
             if (sent < 0 && sent != ffmpeg.AVERROR_EOF)
-                throw new EncoderFailedException(ErrorText(sent));
+                throw failed(sent);
             while (true)
             {
-                int result = ffmpeg.avcodec_receive_packet(_encoder, _packet);
+                int result = ffmpeg.avcodec_receive_packet(encoder, _packet);
                 if (result == ffmpeg.AVERROR(ffmpeg.EAGAIN) || result == ffmpeg.AVERROR_EOF)
                     return;
                 if (result < 0)
-                    throw new EncoderFailedException(ErrorText(result));
-                _packet->stream_index = _outVideo->index;
-                ffmpeg.av_packet_rescale_ts(_packet, _encoder->time_base, _outVideo->time_base);
-                _videoBytes += _packet->size;
-                Check(ffmpeg.av_interleaved_write_frame(_output, _packet), "Writing the video");
+                    throw failed(result);
+                _packet->stream_index = stream->index;
+                ffmpeg.av_packet_rescale_ts(_packet, encoder->time_base, stream->time_base);
+                bytes += _packet->size;
+                Check(ffmpeg.av_interleaved_write_frame(_output, _packet), stream == _outVideo ? "Writing the video" : "Writing the audio");
+            }
+        }
+
+        /// <summary>Decodes one sound packet (its pieces inside the cut go on to the AAC encoder); true once past the end.</summary>
+        bool DecodeSound()
+        {
+            if (_packet->pts != ffmpeg.AV_NOPTS_VALUE && _packet->pts >= _audioEnd)
+                return true;
+            Check(ffmpeg.avcodec_send_packet(_soundDecoder, _packet), "Decoding the sound");
+            ReceiveSound();
+            return false;
+        }
+
+        void ReceiveSound()
+        {
+            while (true)
+            {
+                int result = ffmpeg.avcodec_receive_frame(_soundDecoder, _sound);
+                if (result == ffmpeg.AVERROR(ffmpeg.EAGAIN) || result == ffmpeg.AVERROR_EOF)
+                    return;
+                Check(result, "Decoding the sound");
+                long pts = _sound->best_effort_timestamp;
+                if (pts == ffmpeg.AV_NOPTS_VALUE)
+                    pts = _sound->pts;
+                if (pts == ffmpeg.AV_NOPTS_VALUE || pts < _audioStart || pts >= _audioEnd)
+                {
+                    ffmpeg.av_frame_unref(_sound);
+                    continue;
+                }
+                _sound->pts = pts - _audioStart;
+                Check(ffmpeg.av_buffersrc_add_frame(_soundSource, _sound), "Preparing the sound");
+                ffmpeg.av_frame_unref(_sound);
+                DrainSound();
+            }
+        }
+
+        void DrainSound()
+        {
+            while (true)
+            {
+                int result = ffmpeg.av_buffersink_get_frame(_soundSink, _soundOut);
+                if (result == ffmpeg.AVERROR(ffmpeg.EAGAIN) || result == ffmpeg.AVERROR_EOF)
+                    return;
+                Check(result, "Preparing the sound");
+                _soundOut->pts = ffmpeg.av_rescale_q(_soundOut->pts, ffmpeg.av_buffersink_get_time_base(_soundSink), _soundEncoder->time_base);
+                EncodeSound(_soundOut);
+                ffmpeg.av_frame_unref(_soundOut);
             }
         }
 
@@ -611,6 +722,17 @@ public static unsafe class ClipTranscoder
             if (graph != null)
                 ffmpeg.avfilter_graph_free(&graph);
             _graph = null;
+            graph = _soundGraph;
+            if (graph != null)
+                ffmpeg.avfilter_graph_free(&graph);
+            _soundGraph = null;
+            AVCodecContext* sound = _soundEncoder;
+            if (sound != null)
+                ffmpeg.avcodec_free_context(&sound);
+            sound = _soundDecoder;
+            if (sound != null)
+                ffmpeg.avcodec_free_context(&sound);
+            _soundEncoder = _soundDecoder = null;
             AVCodecContext* encoder = _encoder;
             if (encoder != null)
                 ffmpeg.avcodec_free_context(&encoder);
@@ -627,9 +749,13 @@ public static unsafe class ClipTranscoder
             ffmpeg.av_frame_free(&frame);
             frame = _filtered;
             ffmpeg.av_frame_free(&frame);
+            frame = _sound;
+            ffmpeg.av_frame_free(&frame);
+            frame = _soundOut;
+            ffmpeg.av_frame_free(&frame);
             AVPacket* packet = _packet;
             ffmpeg.av_packet_free(&packet);
-            _frame = _transfer = _filtered = null;
+            _frame = _transfer = _filtered = _sound = _soundOut = null;
             _packet = null;
             _input.Dispose();
         }

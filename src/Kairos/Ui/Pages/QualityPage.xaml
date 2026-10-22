@@ -17,10 +17,46 @@
             <TextBlock Text="{l:T quality.cpuOnly}" TextWrapping="Wrap"/>
         </Border>
 
+        <!-- Automatic: what this PC records best with; the choices below show only when it is off -->
+        <Border Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Icon}" Text="&#xE945;" FontSize="18" Foreground="{DynamicResource Accent}" Margin="0,2,12,0" VerticalAlignment="Top"/>
+                <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                    <TextBlock Style="{StaticResource Section}" Text="{l:T quality.auto}"/>
+                    <TextBlock Style="{StaticResource Caption}" Text="{Binding AutoLine}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                </StackPanel>
+                <CheckBox Grid.Column="2" Style="{StaticResource Switch}" IsChecked="{Binding AutoQuality}" VerticalAlignment="Center"
+                          AutomationProperties.Name="{l:T quality.auto}"/>
+            </Grid>
+        </Border>
+
+        <!-- AV1 recorded, but Windows cannot play it (no AV1 Video Extension): the free extension, one click -->
+        <Border Style="{StaticResource Card}" Visibility="{Binding Av1NeedsExtension, Converter={StaticResource Vis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{l:T quality.av1Note}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <Button Grid.Column="1" Style="{StaticResource Primary}" Command="{Binding InstallAv1Command}" IsEnabled="{Binding Av1InstallReady}"
+                        AutomationProperties.Name="{l:T quality.av1Install}">
+                    <Grid>
+                        <TextBlock Text="{l:T quality.av1Install}" Visibility="{Binding Av1InstallReady, Converter={StaticResource Vis}}"/>
+                        <TextBlock Text="{l:T quality.av1Installing}" Visibility="{Binding Av1Installing, Converter={StaticResource Vis}}"/>
+                    </Grid>
+                </Button>
+            </Grid>
+        </Border>
+
+        <StackPanel Visibility="{Binding ManualQuality, Converter={StaticResource Vis}}">
         <Border Style="{StaticResource Card}">
             <StackPanel>
-                <TextBlock Style="{StaticResource Section}" Text="{l:T quality.preset}"/>
-                <TextBlock Style="{StaticResource Caption}" Text="{l:T quality.presetTip}" Margin="0,3,0,12"/>
+                <TextBlock Style="{StaticResource Section}" Text="{l:T quality.preset}" Margin="0,0,0,12"/>
                 <Grid>
                     <WrapPanel>
                         <RadioButton Style="{StaticResource Segment}" GroupName="q" Content="{l:T quality.light}"
@@ -70,24 +106,31 @@
         <UniformGrid Columns="3" Margin="0,0,-12,12">
             <RadioButton Style="{StaticResource ChoiceCard}" GroupName="codec" IsEnabled="{Binding Av1Available}" AutomationProperties.Name="AV1"
                          IsChecked="{Binding Codec, Converter={StaticResource Eq}, ConverterParameter=Av1}" ToolTipService.ShowOnDisabled="True">
-                <WrapPanel>
-                    <TextBlock Text="AV1" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                    <ContentControl ContentTemplate="{StaticResource Badge}" Visibility="{Binding Av1Recommended, Converter={StaticResource Vis}}" Focusable="False"/>
-                </WrapPanel>
+                <StackPanel>
+                    <WrapPanel>
+                        <TextBlock Text="AV1" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource Caption}" Text="{Binding Av1Tip}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
             </RadioButton>
             <RadioButton Style="{StaticResource ChoiceCard}" GroupName="codec" IsEnabled="{Binding HevcAvailable}" AutomationProperties.Name="HEVC"
                          IsChecked="{Binding Codec, Converter={StaticResource Eq}, ConverterParameter=Hevc}">
-                <WrapPanel>
-                    <TextBlock Text="HEVC" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                    <ContentControl ContentTemplate="{StaticResource Badge}" Visibility="{Binding HevcRecommended, Converter={StaticResource Vis}}" Focusable="False"/>
-                </WrapPanel>
+                <StackPanel>
+                    <WrapPanel>
+                        <TextBlock Text="HEVC" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource Caption}" Text="{Binding HevcTip}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
             </RadioButton>
             <RadioButton Style="{StaticResource ChoiceCard}" GroupName="codec" IsEnabled="{Binding H264Available}" AutomationProperties.Name="H.264"
                          IsChecked="{Binding Codec, Converter={StaticResource Eq}, ConverterParameter=H264}">
-                <WrapPanel>
-                    <TextBlock Text="H.264" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                    <ContentControl ContentTemplate="{StaticResource Badge}" Visibility="{Binding H264Recommended, Converter={StaticResource Vis}}" Focusable="False"/>
-                </WrapPanel>
+                <StackPanel>
+                    <WrapPanel>
+                        <TextBlock Text="H.264" FontSize="17" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                        <ContentControl ContentTemplate="{StaticResource Badge}" Focusable="False"/>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource Caption}" Text="{Binding H264Tip}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
             </RadioButton>
         </UniformGrid>
         <!-- Picture size, frame rate and encoder speed -->
@@ -103,6 +146,8 @@
                         <ComboBox Grid.Column="1" ItemsSource="{Binding Resolutions}" DisplayMemberPath="Label" SelectedValuePath="Value"
                                   SelectedValue="{Binding Resolution}" AutomationProperties.Name="{l:T quality.resolution}"/>
                     </Grid>
+                    <TextBlock Style="{StaticResource Caption}" Text="{Binding ResolutionHint}" Margin="0,-6,0,12" TextWrapping="Wrap"
+                               Visibility="{Binding ResolutionHint, Converter={StaticResource Vis}}"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -112,6 +157,8 @@
                         <ComboBox Grid.Column="1" ItemsSource="{Binding FpsOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Fps}"
                                   AutomationProperties.Name="{l:T quality.fps}"/>
                     </Grid>
+                    <TextBlock Style="{StaticResource Caption}" Text="{Binding FpsWarning}" Foreground="{StaticResource Warning}" Margin="0,2,0,0"
+                               Visibility="{Binding FpsWarning, Converter={StaticResource Vis}}"/>
                     <Border Style="{StaticResource Divider}"/>
                     <Grid ToolTip="{l:T quality.encoderPresetTip}">
                         <Grid.ColumnDefinitions>
@@ -134,5 +181,6 @@
                 </StackPanel>
             </StackPanel>
         </Border>
+        </StackPanel>
     </StackPanel>
 </UserControl>

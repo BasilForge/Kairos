@@ -62,7 +62,7 @@ public static partial class SettingsApp
 
         public Task Download(IProgress<double> progress, CancellationToken ct) => Task.CompletedTask;
 
-        public Task<IReadOnlyList<Engine.Captions.Caption>> Listen(string clip, int stream, IProgress<double> progress, CancellationToken ct)
+        public Task<IReadOnlyList<Engine.Captions.Caption>> Listen(string clip, IReadOnlyList<int> streams, IProgress<double> progress, CancellationToken ct)
         {
             if (listening)
             {
@@ -105,7 +105,7 @@ public static partial class SettingsApp
             // A cut out part and a faster, louder one.
             var edited = vm.Project.SplitAt(2).SplitAt(3).DeleteSegmentAt(2.5);
             edited = edited.SetSpeed(0, 2, 2);
-            edited = edited.WithParts([0], k => k with { Game = 1.4 });
+            edited = edited.WithParts([0], k => k with { Levels = k.Levels.With(0, 1.4) });
             vm.Apply(edited);
             vm.PlayheadOutput = 0.6;
         }
@@ -219,20 +219,28 @@ public static partial class SettingsApp
                     ? new Engine.Voice.VoiceStatus(true, true, "testing", 0, null, 0.031, true, 0.06)
                     : new Engine.Voice.VoiceStatus(true, false, "enrolling", 1, "voice.err.different", null, false, 0.06),
             };
-        // status idle|recording|record-paused|ready: before a recording, during one, paused, or instant replay off (made-up figures).
-        if (voiceState is "recording" or "record-paused" or "ready" or "idle")
+        // status idle|recording|record-paused|ready: before a recording, during one, paused, or instant replay off;
+        // notice-noapp|notice-gone|notice-guard|notice-nvidia: idle, saying why the full screen is recorded or the driver is old (made-up figures).
+        string? notice = voiceState switch
+        {
+            "notice-noapp" => "status.captureNoApp",
+            "notice-gone" => "status.captureGone",
+            "notice-guard" => "status.antiCheat",
+            _ => null,
+        };
+        if (voiceState is "recording" or "record-paused" or "ready" or "idle" or "notice-nvidia" || notice != null)
         {
             bool recording = voiceState is "recording" or "record-paused";
             var engine = new Engine.EngineStatus(voiceState != "ready", recording, 60, 0, 0, 1000, 300, 300,
                 "obs_nvenc_av1_tex", 2560, 1440, 729, 600, @"D:\Clips", false, null,
-                voiceState == "record-paused", 754, 1_300_000_000);
+                voiceState == "record-paused", 754, 1_300_000_000, notice, NvidiaNote: voiceState == "notice-nvidia" ? "status.nvidiaDriver" : null);
             status = new StatusDto(engine, [], @"D:\Clips\Desktop\Desktop 2026-10-14 20-37-26.mp4", null, false, false, AppInfo.Version);
             if (voiceState == "ready")
                 vm.SeedReplay(false);
         }
         // clips-pictures | viewer: the Clips page over made-up screenshots in a temp folder, and one of them in the viewer.
         // status-latest: the Status page with the made-up clip and screenshot as the latest ones.
-        string? samples = page is "clips-pictures" or "clips-chosen" or "clips-confirm" or "viewer" or "status-latest" or "video-viewer"
+        string? samples = page is "clips-pictures" or "clips-chosen" or "clips-confirm" or "clips-preparing" or "viewer" or "status-latest" or "video-viewer"
             || page.StartsWith("editor", StringComparison.Ordinal)
             || page.StartsWith("share", StringComparison.Ordinal)
             ? SamplePictures() : null;
@@ -242,7 +250,8 @@ public static partial class SettingsApp
             status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
                 700, 600, samples, false, null), [], Newest("*.mp4"), null, false, false, AppInfo.Version, LastShot: Newest("*.png"));
         }
-        // <page> update-available|update-downloading|update-waiting|update-failed: the update bar over the page (made up).
+        // <page> update-available|update-downloading|update-waiting|update-failed: the update bar over the page (made up);
+        // update-important: an important one, the card on the Status page with made-up lines.
         if (voiceState?.StartsWith("update-", StringComparison.Ordinal) == true)
         {
             var state = voiceState switch
@@ -255,14 +264,143 @@ public static partial class SettingsApp
             };
             status = (status ?? new StatusDto(null, [], null, null, false, false, AppInfo.Version)) with
             {
-                Update = new Engine.Updates.UpdateStatus("1.0.1", state, 40, Engine.Updates.UpdateRules.NotesUrl("1.0.1", localSource: false)),
+                Update = new Engine.Updates.UpdateStatus("1.0.1", state, 40, Engine.Updates.UpdateRules.NotesUrl("1.0.1", localSource: false),
+                    Important: voiceState == "update-important",
+                    Summary: Text.Language == "ar" ? ["إصلاح الشاشة السوداء في بعض الألعاب", "التسجيل أخف على الجهاز"] : ["Black screen fix in some games", "Lighter recording"]),
             };
         }
+        // audio separate|separate-full|together: the Audio page over made-up settings, devices and apps (Discord not
+        // running); separate-full adds two apps, so the last one shares the sixth track; separate-new adds Spotify unsaved;
+        // together-sonar has SteelSeries Sonar on (Default is its Gaming device, one pair of headphones); together-goxlr and
+        // separate-goxlr have a GoXLR, Default on its System device and the microphone on its Broadcast Stream Mix.
+        bool audioState = page == "audio" && voiceState is "separate" or "separate-full" or "separate-new" or "together" or "together-sonar"
+            or "together-goxlr" or "separate-goxlr";
+        if (audioState)
+        {
+            bool goxlr = voiceState is "together-goxlr" or "separate-goxlr";
+            var made = new AppSettings();
+            made.Audio.Layout = voiceState is "together" or "together-sonar" or "together-goxlr" ? AudioLayout.Together : AudioLayout.Separate;
+            made.Normalize();
+            if (voiceState == "separate-full")
+                made.Audio.Sources.AddRange([
+                    new AudioSource { Id = "app:spotify", Kind = AudioSourceKind.App, Target = "Spotify", Label = "Spotify", Volume = 0.6 },
+                    new AudioSource { Id = "app:brave", Kind = AudioSourceKind.App, Target = "brave", Label = "Brave", Muted = true },
+                ]);
+            if (goxlr)
+                made.Audio.SelectMic("goxlr-mix");
+            vm.SeedSettings(made);
+            if (voiceState == "separate-new")
+                vm.AddAudioAppCommand.Execute(new NameValue("Spotify", "Spotify"));
+            caps = new CapsDto([], [], [new("Default", "default"), new("Microphone (Shure MV7)", "mv7")], [new("Default", "default")], [], "32.2.2",
+                [new("Chrome", "chrome"), new("Spotify", "Spotify")]);
+            if (voiceState == "together-sonar")
+                caps = caps with
+                {
+                    Speakers = [new("Default", "default"), new("Headphones (Arctis Nova Pro Wireless)", "arctis"),
+                        new("SteelSeries Sonar - Gaming (SteelSeries Sonar Virtual Audio Device)", "sonar-game"),
+                        new("SteelSeries Sonar - Chat (SteelSeries Sonar Virtual Audio Device)", "sonar-chat")],
+                    DefaultSpeaker = "sonar-game",
+                };
+            if (goxlr)
+                caps = caps with
+                {
+                    Mics = [new("Default", "default"), new("Broadcast Stream Mix (TC-Helicon GoXLR)", "goxlr-mix"), new("Chat Mic (TC-Helicon GoXLR)", "goxlr-voice")],
+                    Speakers = [new("Default", "default"), new("System (TC-Helicon GoXLR)", "goxlr-system"), new("Game (TC-Helicon GoXLR)", "goxlr-game"),
+                        new("Chat (TC-Helicon GoXLR)", "goxlr-chat"), new("Music (TC-Helicon GoXLR)", "goxlr-music")],
+                    DefaultSpeaker = "goxlr-system",
+                };
+            status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
+                700, 600, @"D:\Clips", false, null, QuietAudioRows: ["discord", "app:brave"]), [], null, null, false, false, AppInfo.Version);
+        }
+        // capture camera: the Camera card on, a round camera in a corner, its own file kept (made-up camera list).
+        if (page == "capture" && voiceState == "camera")
+        {
+            var made = new AppSettings();
+            made.Camera.Enabled = true;
+            made.Camera.Shape = CameraShape.Round;
+            made.Camera.X = 0.72;
+            made.Camera.Y = 0.55;
+            made.Camera.SeparateFile = true;
+            made.Normalize();
+            vm.SeedSettings(made);
+        }
+        // capture apps: Apps mode with two chosen apps (one closed), more open to add, and Start fresh after each save on.
+        // capture disk: the replay on the disk, its drive this PC's first hard disk when it has one (its line shows).
+        if (page == "capture" && voiceState == "disk")
+        {
+            var made = new AppSettings();
+            made.Replay.OnDisk = true;
+            made.Replay.DiskDrive = App.DriveKinds.Fixed().FirstOrDefault(d => d.Hdd == true)?.Name;
+            made.Normalize();
+            vm.SeedSettings(made);
+        }
+        // capture apps[-win10]: Apps with two chosen apps; -win10: as on Windows 10 (its yellow-frame line shows).
+        if (page == "capture" && voiceState is "apps" or "apps-win10")
+        {
+            Engine.WindowsCaptureFrame.Shown = voiceState == "apps-win10";
+            var made = new AppSettings();
+            made.Capture.Mode = CaptureMode.Window;
+            made.Capture.Apps = ["Roblox:WINDOWSCLIENT:RobloxPlayerBeta.exe", "Minecraft* 1.21:GLFW30:javaw.exe"];
+            made.Replay.FreshAfterSave = true;
+            made.Normalize();
+            vm.SeedSettings(made);
+            caps = new CapsDto([], [new("Roblox", "Roblox:WINDOWSCLIENT:RobloxPlayerBeta.exe"), new("Discord", "Discord:Chrome_WidgetWin_1:Discord.exe"),
+                new("Spotify Premium", "Spotify Premium:Chrome_WidgetWin_1:Spotify.exe")], [], [], [], "32.2.2");
+        }
+        // general cloud: the clips folder in the first cloud folder on this PC (its buttons and Free local copies show).
+        // general no-cloud: a PC with no cloud app (the line saying how to get one).
+        if (page == "general" && voiceState == "no-cloud")
+            SettingsViewModel.Clouds = () => [];
+        if (page == "general" && voiceState == "cloud" && App.CloudFolders.OnThisPc() is [var cloud, ..])
+        {
+            var made = new AppSettings();
+            made.Output.Folder = Path.Combine(cloud.Path, AppInfo.Name);
+            made.Output.FreeLocalCopies = true;
+            made.Normalize();
+            vm.SeedSettings(made);
+        }
+        // quality auto|manual: Automatic on (what it chose on a made-up RTX 3060), or off with 144 fps on a 60 Hz screen.
+        if (page == "quality" && voiceState is "auto" or "manual")
+        {
+            var made = new AppSettings();
+            made.Video.Auto = voiceState == "auto";
+            made.Video.Fps = voiceState == "auto" ? 60 : 144;
+            made.Normalize();
+            vm.SeedSettings(made);
+            caps = new CapsDto([], [], [], [], ["obs_nvenc_hevc_tex", "obs_nvenc_h264_tex", "obs_x264"], "32.2.2", RefreshHz: 60);
+            var auto = new Engine.AutoPick("obs_nvenc_h264_tex", "NVIDIA GeForce RTX 3060", 1440, 60, QualityPreset.High);
+            status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_h264_tex", 2560, 1440,
+                700, 600, @"D:\Clips", false, null, Auto: auto), [], null, null, false, false, AppInfo.Version);
+        }
+        // quality av1-note: AV1 chosen (a made-up RTX 4070) on a Windows without the AV1 extension.
+        if (page == "quality" && voiceState == "av1-note")
+        {
+            var made = new AppSettings();
+            made.Video.Codec = VideoCodec.Av1;
+            made.Normalize();
+            vm.SeedSettings(made);
+            SettingsViewModel.Plays = c => c != VideoCodec.Av1;
+            caps = new CapsDto([], [], [], [], ["obs_nvenc_av1_tex", "obs_nvenc_hevc_tex", "obs_nvenc_h264_tex", "obs_x264"], "32.2.2", RefreshHz: 144);
+            status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
+                700, 600, @"D:\Clips", false, null), [], null, null, false, false, AppInfo.Version);
+        }
+        // general check-idle|check-checking|check-uptodate|check-failed: the update row's Check now (never sent to an engine).
+        if (page == "general" && voiceState is "check-idle" or "check-checking" or "check-uptodate" or "check-failed")
+            status = new StatusDto(null, [], null, null, false, false, AppInfo.Version, Look: new Engine.Updates.UpdateLook(true, false, 1, Engine.Updates.LookResult.None));
         vm.Seed(status, caps);
+        if (page == "general" && voiceState is "check-checking" or "check-uptodate" or "check-failed")
+        {
+            SettingsViewModel.PipeSend = _ => null;
+            vm.CheckUpdatesNowCommand.Execute(null);
+            if (voiceState != "check-checking")
+                vm.Seed(status! with { Look = new Engine.Updates.UpdateLook(true, false, 2,
+                    voiceState == "check-failed" ? Engine.Updates.LookResult.Failed : Engine.Updates.LookResult.UpToDate) }, caps);
+        }
         ThemeAccent.Apply(app.Resources);
 
         // share[-x|-tiktok|-instagram|-copy|-all|-picture|-working|-done|-failed|-posting|-posted|-all-posting|-all-done]: the share
-        // panel over the Clips page.
+        // panel over the Clips page; -copysizes: Copy's sizes open under it, -copy-toolong: a cut too long for 10 MB, -copying:
+        // converting to it.
         bool share = page.StartsWith("share", StringComparison.Ordinal);
         var shareHost = share ? new RenderShareHost(page) : null;
         var window = new MainWindow(vm, shareHost, new RenderAccountsHost());
@@ -279,7 +417,8 @@ public static partial class SettingsApp
         else if (page.StartsWith("editor", StringComparison.Ordinal))
         {
             // editor[-picture][-<state>][-share][-min] on the test clip or a sample screenshot (never the user's files):
-            // states empty (nothing added), part, text, captions[-ask|-listening], line, draw, shape, mixed, crop, save, leave.
+            // states empty (nothing added), part, sound, text, captions[-ask|-listening], line, draw, shape, mixed, crop, zoom, zoomed,
+            // save, leave.
             string? clip = SampleClip();
             LoadRenderFfmpeg();
             window.ShowPage("clips");
@@ -299,6 +438,11 @@ public static partial class SettingsApp
                 {
                     case "part":
                         m.SelectPart(0);
+                        break;
+                    case "sound" when m.ClipTracks.Count > 1:
+                        // A clip's own tracks (KAIROS_RENDER_CLIP: a clip with them): the second muted, the first quieter.
+                        m.ClipTracks[1].On = false;
+                        m.ClipTracks[0].Level = 0.6;
                         break;
                     case "text":
                         m.Select(sample.Title);
@@ -362,6 +506,16 @@ public static partial class SettingsApp
                     case "crop":
                         m.EditMode = Edit.EditMode.Crop;
                         break;
+                    case "zoom" or "zoomed":
+                        // The part playing zoomed into the right of the picture: the tool on (its box over the whole
+                        // picture), or off (the preview zoomed, the part's Remove zoom).
+                        m.PlayheadOutput = m.Project.OutputDuration / 2;
+                        m.SelectPart(m.Project.PartAt(m.PlayheadOutput));
+                        m.EditMode = Edit.EditMode.Zoom;
+                        m.ZoomTo(new Rect(0.5, 0.25, 0.42, 0.42));
+                        if (state == "zoomed")
+                            m.EditMode = Edit.EditMode.None;
+                        break;
                     case "save":
                         m.PrimaryCommand.Execute(null); // "how to save it?"
                         break;
@@ -396,6 +550,12 @@ public static partial class SettingsApp
                 if (page == "clips-confirm")
                     window.Library.AskPermanentCommand.Execute(null);
             }
+            // clips-preparing: the first card's H.264 copy being made for a drag (an HEVC clip), 37 % done.
+            if (page == "clips-preparing" && window.Library.Items.FirstOrDefault() is { } first)
+            {
+                first.Preparing = true;
+                first.PrepareProgress = 0.37;
+            }
             if (page == "viewer")
             {
                 // The newest picture, as the Library lists it (so its arrows know what is before and after it).
@@ -403,7 +563,7 @@ public static partial class SettingsApp
             }
         }
         else
-            window.ShowPage(page);
+            window.ShowPage(page.EndsWith("-min", StringComparison.Ordinal) ? page[..^4] : page); // <page>-min: at the smallest size
         var root = (FrameworkElement)window.Content;
         window.Content = null;
         // share-emoji: the caption's emoji picker on its own (it opens in a popup, outside the window's picture).
@@ -418,6 +578,10 @@ public static partial class SettingsApp
             root = Standalone(FontList());
         else if (page == "editor-colour")
             root = Standalone(new Edit.ColourPicker { Colour = "#F48BA4" });
+        // share-copysizes: Copy's sizes as they open under it (a popup: drawn over the panel here, once it is laid out).
+        var sizesLayer = page == "share-copysizes" ? new System.Windows.Controls.Canvas() : null;
+        if (sizesLayer != null)
+            root = new System.Windows.Controls.Grid { Children = { root, sizesLayer } };
         root.DataContext = vm;
         root.FlowDirection = window.FlowDirection;
         TextOptions.SetTextFormattingMode(root, TextFormattingMode.Ideal);
@@ -433,7 +597,9 @@ public static partial class SettingsApp
         System.Windows.Documents.TextElement.SetForeground(border, (Brush)app.Resources["TextPrimary"]);
 
         // The window's own default size, or (…-min) the smallest it can be made.
-        var size = page.EndsWith("-min", StringComparison.Ordinal) ? new Size(window.MinWidth, window.MinHeight) : new Size(window.Width, window.Height);
+        // The audio states are as tall as their whole page, so every row shows; <page> tall: any page's whole length.
+        var size = page.EndsWith("-min", StringComparison.Ordinal) ? new Size(window.MinWidth, window.MinHeight)
+            : new Size(window.Width, audioState ? 1240 : voiceState is "tall" or "cloud" or "camera" or "apps" or "apps-win10" or "disk" ? 1500 : window.Height);
         for (int i = 0; i < 12; i++)
         {
             border.Measure(size);
@@ -444,6 +610,26 @@ public static partial class SettingsApp
         }
 
         const double scale = 1.5;
+        if (sizesLayer != null)
+        {
+            // The menu drawn on its own (a ContextMenu takes no parent), then put where it opens: under its tile.
+            var menu = window.CopySizes();
+            var tile = (FrameworkElement)menu.PlacementTarget;
+            menu.FlowDirection = window.FlowDirection;
+            menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            menu.Arrange(new Rect(menu.DesiredSize));
+            menu.UpdateLayout();
+            var drawn = new RenderTargetBitmap((int)Math.Ceiling(menu.ActualWidth * scale), (int)Math.Ceiling(menu.ActualHeight * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+            drawn.Render(menu);
+            var image = new System.Windows.Controls.Image { Source = drawn, Width = menu.ActualWidth, Height = menu.ActualHeight };
+            var at = tile.TranslatePoint(new Point(0, tile.ActualHeight), sizesLayer);
+            System.Windows.Controls.Canvas.SetLeft(image, at.X); // in a right-to-left layout both count from the right
+            System.Windows.Controls.Canvas.SetTop(image, at.Y);
+            sizesLayer.Children.Add(image);
+            border.Measure(size);
+            border.Arrange(new Rect(size));
+            border.UpdateLayout();
+        }
         var bitmap = new RenderTargetBitmap((int)(size.Width * scale), (int)(size.Height * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
         bitmap.Render(border);
         var encoder = new PngBitmapEncoder();
@@ -695,16 +881,25 @@ public static partial class SettingsApp
     /// <summary>A share panel with a made-up 5:00 1440p60 clip; nothing is converted, copied or opened.</summary>
     sealed class RenderShareHost(string page) : IShareHost
     {
+        public string SharedFolder => @"D:\Clips\Shared";
         public const string Clip = @"D:\Clips\ELDEN RING\ELDEN RING 2026-10-12 21-04-55.mp4";
         public const string Shot = @"D:\Clips\ELDEN RING\ELDEN RING 2026-10-15 21-30-00.png";
         readonly string _state = page.Contains('-') ? page[(page.IndexOf('-') + 1)..] : "";
 
         public MediaInfo Probe(string clip) => _state == "failed"
             ? throw new Engine.Share.ShareException("No H.264 encoder could be started.")
-            : new MediaInfo(300, 2560, 1440, 60, "av1", "aac", 192_000, 3);
+            : new MediaInfo(300, 2560, 1440, 60, "av1", "aac", 192_000, 3, Bytes: 333_000_000);
 
-        public ShareResult Transcode(string source, string target, SharePlan plan, long maxBytes, IProgress<double> progress, CancellationToken ct) =>
-            new(target, 18_240_000, "h264_nvenc");
+        public ShareResult Transcode(string source, string target, SharePlan plan, long maxBytes, IProgress<double> progress, CancellationToken ct)
+        {
+            if (_state == "copying")
+            {
+                // Caught part way: the ring shows 37 % (this thread never ends; the render exits).
+                progress.Report(0.37);
+                Thread.Sleep(Timeout.Infinite);
+            }
+            return new(target, 18_240_000, "h264_nvenc");
+        }
 
         public ShareResult Cut(string source, string target, double start, double end, IProgress<double> progress, CancellationToken ct) =>
             new(target, 33_000_000, "copy");
@@ -764,10 +959,19 @@ public static partial class SettingsApp
         public void After(TimeSpan delay, Action action) { }
         public void ShowInFolder(string path) { }
         public void Remember(Settings.ShareSettings prefs) { }
-        public void Post(Action action) => action();
+        readonly Dispatcher _ui = Dispatcher.CurrentDispatcher;
+        public void Post(Action action)
+        {
+            if (_ui.CheckAccess())
+                action();
+            else
+                _ui.BeginInvoke(action);
+        }
         public void Run(Action work)
         {
-            if (_state != "working")
+            if (_state == "copying")
+                new Thread(() => work()) { IsBackground = true }.Start();
+            else if (_state != "working")
                 work();
         }
 
@@ -796,6 +1000,10 @@ public static partial class SettingsApp
                 vm.TrimStart = 0;
             if (_state is "working" or "done" or "posting" or "posted" or "all-posting" or "all-done")
                 vm.PrepareCommand.Execute(null);
+            if (_state == "copying")
+                vm.TrimStart = 270;
+            if (_state is "copy-toolong" or "copying")
+                vm.CopyAtCommand.Execute(10);
         }
     }
 

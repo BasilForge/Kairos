@@ -11,7 +11,6 @@ public sealed partial class EditorViewModel
     // ---------------------------------------------------------------- auto captions
 
     readonly ICaptionMaker? _captions;
-    readonly int _audioStreams;
     CancellationTokenSource? _captionsRun;
     bool _showingIntro, _captionsBusy;
     double _captionsProgress;
@@ -123,7 +122,7 @@ public sealed partial class EditorViewModel
                 CaptionsProgress = 0;
             }
             CaptionsStatus = Text.Format("editor.captions.listening", 0);
-            var lines = await _captions!.Listen(Project.Source, Captions.Stream(_audioStreams), Reporter("editor.captions.listening"), run.Token);
+            var lines = await _captions!.Listen(Project.Source, Captions.Streams(Layout), Reporter("editor.captions.listening"), run.Token);
             var items = Captions.ToItems(lines, MeasureText, _textColor, _textSize, _textEffect, _textFont);
             if (items.Count == 0)
             {

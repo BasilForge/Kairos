@@ -105,7 +105,8 @@ public static class SharePlannerTests
         var plan = SharePlanner.Plan(spec, 0, 300, 2560, 1440, 60, 192_000, false, 0.5, size.ShortSide);
         Assert.True(plan.Height <= 480, $"{plan.Height}p for 5 minutes in 20 MB");
         Assert.Equal(30.0, plan.Fps, "and 30 fps");
-        Assert.True((plan.VideoBitrate + 192_000) * plan.Duration / 8 <= 20_000_000 * 0.95, "fits");
+        Assert.Equal(64_000L, plan.AudioBitrate, "the sound made smaller too");
+        Assert.True((plan.VideoBitrate + plan.AudioBitrate) * plan.Duration / 8 <= 20_000_000 * 0.95, "fits");
         var x = SharePlanner.Plan(SharePlanner.Spec(SharePlatform.X), 160, 140, 2560, 1440, 60, 192_000, false, 0.5, 1080);
         Assert.Equal((160.0, 140.0), (x.Start, x.Duration), "the trimmed part");
         Assert.True(x.VideoBitrate <= 12_000_000, "quality cap");
@@ -179,5 +180,43 @@ public static class SharePlannerTests
         Assert.True(SharePlanner.OpenTarget(SharePlatform.TikTok, "x").StartsWith("https://www.tiktok.com/"), "tiktok");
         Assert.True(SharePlanner.OpenTarget(SharePlatform.Instagram, "x").StartsWith("https://www.instagram.com/"), "instagram");
         Assert.Equal(long.MaxValue, SharePlanner.Spec(SharePlatform.Copy).MaxBytes, "a copy has no size limit");
+    }
+
+    [Test]
+    public static void Copy_sizes_are_original_and_discords_limits()
+    {
+        Assert.Equal("0,10,50,500", string.Join(",", SharePlanner.CopySizes), "Original, free, Nitro Basic, Nitro");
+        Assert.Equal(long.MaxValue, SharePlanner.CopySpec(0).MaxBytes, "Original: no limit");
+        Assert.Equal(10_000_000L, SharePlanner.CopySpec(10).MaxBytes, "10 MB");
+    }
+
+    [Test]
+    public static void The_audio_bitrate_follows_the_size()
+    {
+        Assert.Equal(96_000L, SharePlanner.AudioFor(SharePlanner.CopySpec(10), 60, 192_000), "10 MB, a minute");
+        Assert.Equal(64_000L, SharePlanner.AudioFor(SharePlanner.CopySpec(10), 120, 192_000), "10 MB, two minutes: never below 64");
+        Assert.Equal(0L, SharePlanner.AudioFor(SharePlanner.CopySpec(50), 60, 192_000), "50 MB: the sound is copied");
+        Assert.Equal(0L, SharePlanner.AudioFor(SharePlanner.CopySpec(0), 60, 192_000), "Original: copied");
+        Assert.Equal(0L, SharePlanner.AudioFor(SharePlanner.Spec(SharePlatform.X), 140, 192_000), "X: copied as before");
+    }
+
+    [Test]
+    public static void A_sized_copy_plans_under_its_limit()
+    {
+        var spec = SharePlanner.CopySpec(10);
+        var size = SharePlanner.DefaultSize(spec, 60, 2560, 1440, 60, 192_000, false);
+        var plan = SharePlanner.Plan(spec, 0, 60, 2560, 1440, 60, 192_000, false, 0.5, size.ShortSide);
+        Assert.True((plan.VideoBitrate + plan.AudioBitrate) * 60 / 8 <= 10_000_000 * 0.92, $"fits: {plan.VideoBitrate} + {plan.AudioBitrate}");
+        Assert.Equal(96_000L, plan.AudioBitrate, "the sound is made smaller too");
+        var big = SharePlanner.Plan(SharePlanner.CopySpec(500), 0, 60, 2560, 1440, 60, 192_000, false, 0.5, 0);
+        Assert.Equal((long)(SharePlanner.QualityCapBitrate * (2560.0 * 1440 / (1920 * 1080))), big.VideoBitrate, "500 MB: the quality cap");
+    }
+
+    [Test]
+    public static void Seconds_that_fit_say_when_trim_is_needed()
+    {
+        double fit = SharePlanner.SecondsThatFit(SharePlanner.CopySpec(10), 2560, 1440, false);
+        Assert.True(fit > 100 && fit < 200, $"10 MB at 1440p: {fit:0} s");
+        Assert.Equal(double.PositiveInfinity, SharePlanner.SecondsThatFit(SharePlanner.CopySpec(0), 2560, 1440, false), "Original");
     }
 }

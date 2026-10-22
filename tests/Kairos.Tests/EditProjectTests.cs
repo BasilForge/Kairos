@@ -59,16 +59,16 @@ public static class EditProjectTests
     [Test]
     public static void Each_part_has_its_own_speed_and_sound()
     {
-        var p = EditProject.For("clip.mp4", 30).SplitAt(10).WithParts([0], k => k with { Speed = 2, Game = 1.5, Mic = 0.5 });
+        var p = EditProject.For("clip.mp4", 30).SplitAt(10).WithParts([0], k => k with { Speed = 2, Levels = Sounds.Part(game: 1.5, mic: 0.5) });
         Assert.Near(25, p.OutputDuration, 1e-9, "the first part twice as fast");
         Assert.Equal(1, p.PartAt(6), "output 6 is in the second part");
         Assert.Equal(0, p.PartAt(4.9), "and 4.9 in the first");
         Assert.True(!p.IsUnchanged, "a part's sound counts as a change");
-        Assert.True(!EditProject.For("clip.mp4", 30).WithParts([0], k => k with { Mic = 0.2 }).IsUnchanged, "even on one part");
+        Assert.True(!EditProject.For("clip.mp4", 30).WithParts([0], k => k with { Levels = Sounds.Part(mic: 0.2) }).IsUnchanged, "even on one part");
         // A split part's halves keep its speed and sound.
         var split = p.SplitAt(2);
         Assert.Equal("0..4 x2 1.5/0.5, 4..10 x2 1.5/0.5, 10..30 x1 1/1",
-            string.Join(", ", split.Kept.Select(k => $"{k.Start:0.##}..{k.End:0.##} x{k.Speed:0.##} {k.Game:0.##}/{k.Mic:0.##}")), "halves");
+            string.Join(", ", split.Kept.Select(k => $"{k.Start:0.##}..{k.End:0.##} x{k.Speed:0.##} {k.Levels[0]:0.##}/{k.Levels[1]:0.##}")), "halves");
     }
 
     [Test]

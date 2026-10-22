@@ -15,8 +15,8 @@ public static partial class Captions
     /// <summary>The space under a caption (share of the picture's height).</summary>
     public const double BottomMargin = 0.08;
 
-    /// <summary>The audio stream to listen to: Kairos's clips keep the mic on track 3; anything else, the mix.</summary>
-    public static int Stream(int audioStreams) => audioStreams >= 3 ? 2 : 0;
+    /// <summary>The audio streams to listen to: the clip's voice tracks (the mic, Discord) heard together; else the mix.</summary>
+    public static IReadOnlyList<int> Streams(Audio.TrackLayout layout) => layout.VoiceTracks is { Count: > 0 } voices ? voices : [0];
 
     /// <param name="measure">The box a line needs at <paramref name="sizeRel"/> (the text and room around it), as shares of the
     /// picture's width and height.</param>

@@ -57,7 +57,7 @@ public sealed class EditCanvas : Canvas
             if (e.PropertyName == nameof(EditorViewModel.PlayheadOutput) && !ShownChanged())
                 return;
             if (e.PropertyName is nameof(EditorViewModel.Project) or nameof(EditorViewModel.PlayheadOutput) or nameof(EditorViewModel.SelectedItems)
-                or nameof(EditorViewModel.EditMode))
+                or nameof(EditorViewModel.EditMode) or nameof(EditorViewModel.SelectedParts))
             {
                 if (e.PropertyName == nameof(EditorViewModel.EditMode))
                 {
@@ -124,7 +124,7 @@ public sealed class EditCanvas : Canvas
         if (_transient is { } fresh && p.Items.All(i => i.Id != fresh.Id))
             DrawItem(dc, fresh, picture);
 
-        if ((_transientCrop ?? p.Crop) is { } crop)
+        if ((_transientCrop ?? (_vm.IsZoomMode ? _vm.ZoomShown : p.Crop)) is { } crop)
             DrawCrop(dc, crop, picture);
 
         // Every chosen item on screen has a dashed frame; the one chosen alone has corners to resize it.
@@ -165,11 +165,10 @@ public sealed class EditCanvas : Canvas
         outside.Children.Add(new RectangleGeometry(picture));
         outside.Children.Add(new RectangleGeometry(box));
         dc.DrawGeometry(Dim, null, outside);
-        if (_vm.IsCropMode)
-        {
+        if (_vm.IsCropMode || _vm.IsZoomMode)
             dc.DrawRectangle(null, _selection, box);
+        if (_vm.IsCropMode)
             DrawCorners(dc, box);
-        }
     }
 
     void DrawCorners(DrawingContext dc, Rect box)
@@ -212,7 +211,7 @@ public sealed class EditCanvas : Canvas
                 _points.Add(_start);
                 _gesture = Gesture.Draw;
                 break;
-            case EditMode.Shapes or EditMode.Blur:
+            case EditMode.Shapes or EditMode.Blur or EditMode.Zoom:
                 _gesture = Gesture.Box;
                 break;
             case EditMode.Crop:
@@ -298,6 +297,8 @@ public sealed class EditCanvas : Canvas
             case Gesture.Box:
                 if (_vm.IsCropMode)
                     _transientCrop = new Rect(_start, now);
+                else if (_vm.IsZoomMode)
+                    _transientCrop = VideoZoom.Fit(new Rect(_start, now)); // the video's shape as it is drawn
                 else
                     _transient = BoxItem(Guid.Empty, _start, now);
                 break;
@@ -328,6 +329,11 @@ public sealed class EditCanvas : Canvas
                 break;
             case Gesture.Draw when _points.Count >= 2:
                 _vm.AddStroke(_points.ToList()); // its own line: the brush stays for the next one
+                break;
+            case Gesture.Box when _vm.IsZoomMode:
+                var drawn = new Rect(_start, end);
+                if (drawn.Width >= EditGeometry.MinSize || drawn.Height >= EditGeometry.MinSize)
+                    _vm.ZoomTo(drawn);
                 break;
             case Gesture.Box:
                 var box = new Rect(_start, end);
@@ -414,7 +420,12 @@ public sealed class EditCanvas : Canvas
                 e.Handled = true;
             }
         };
-        _editor.LostKeyboardFocus += (_, _) => Dispatcher.BeginInvoke(CloseEditor);
+        _editor.LostKeyboardFocus += (_, e) =>
+        {
+            // On to another field (the inspector's words for this text): the text stays and that field keeps the keyboard.
+            bool movedOn = e.NewFocus is System.Windows.Controls.Primitives.TextBoxBase other && !ReferenceEquals(other, _editor);
+            Dispatcher.BeginInvoke(() => CloseEditor(movedOn));
+        };
         Children.Add(_editor);
         PlaceEditor();
         Dispatcher.BeginInvoke(() =>
@@ -498,8 +509,14 @@ public sealed class EditCanvas : Canvas
         _editor.Height = box.Height;
     }
 
-    /// <summary>Ends typing: an empty text is removed (with the same step that made it).</summary>
-    void CloseEditor()
+    /// <summary>A text is being typed on the picture now.</summary>
+    internal bool Typing => _editor != null;
+
+    /// <summary>
+    /// Ends typing: an empty text is removed (with the same step that made it) and the canvas takes the keyboard back;
+    /// unless the keyboard <paramref name="movedOn"/> to another field (the inspector's words), which keeps it and the text.
+    /// </summary>
+    internal void CloseEditor(bool movedOn = false)
     {
         if (_editor == null)
             return;
@@ -509,10 +526,11 @@ public sealed class EditCanvas : Canvas
         var id = _editing;
         _editing = Guid.Empty;
         // Gone from the edit, it is no longer chosen either (whatever was chosen meanwhile stays chosen).
-        if (_vm.Project.Items.FirstOrDefault(i => i.Id == id) is TextItem { Text.Length: 0 })
+        if (!movedOn && _vm.Project.Items.FirstOrDefault(i => i.Id == id) is TextItem { Text.Length: 0 })
             _vm.Amend("text:" + id, _vm.Project.Without(id));
         InvalidateVisual();
-        Keyboard.Focus(this);
+        if (!movedOn)
+            Keyboard.Focus(this);
     }
 
     /// <summary>The pointer over the picture: the usual arrow to choose and move; each tool its own (a pen to draw…).</summary>
@@ -521,7 +539,7 @@ public sealed class EditCanvas : Canvas
         EditMode.Draw => ThemeCursors.Get(ThemeCursors.Shape.Pen),
         EditMode.Shapes => ThemeCursors.Get(ThemeCursors.Shape.ShapeTool),
         EditMode.Blur => ThemeCursors.Get(ThemeCursors.Shape.BlurTool),
-        EditMode.Crop => ThemeCursors.Get(ThemeCursors.Shape.CropTool),
+        EditMode.Crop or EditMode.Zoom => ThemeCursors.Get(ThemeCursors.Shape.CropTool),
         _ => Cursors.Arrow,
     };
 

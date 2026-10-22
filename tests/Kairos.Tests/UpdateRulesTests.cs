@@ -89,7 +89,7 @@ public static class UpdateRulesTests
         public bool Failing { get; set; } = downloadFails;
         public bool ApplyFails { get; init; }
         public string[]? AppliedWith { get; private set; }
-        public Task<string?> Check() => Task.FromResult(check());
+        public Task<UpdateFound?> Check() => Task.FromResult(check() is { } v ? new UpdateFound(v, null) : null);
         public Task Download(Action<int> progress, CancellationToken ct)
         {
             if (Failing)
@@ -123,15 +123,18 @@ public static class UpdateRulesTests
     public static void A_new_version_is_told_once_and_can_be_downloaded_again_after_a_failure()
     {
         string seen = SeenFile();
-        var told = new List<string>();
         var updater = new FakeUpdater(() => "1.0.1", downloadFails: true);
         var service = new UpdateService(updater, seen, localSource: false);
-        service.NewVersion += told.Add;
         service.Check(T0).GetAwaiter().GetResult();
         Assert.Equal(UpdateState.Available, service.Status!.State, "available");
         Assert.Equal("https://github.com/BasilForge/Kairos/releases/tag/v1.0.1", service.Status.NotesUrl, "its notes");
-        new UpdateService(updater, seen, localSource: false).Check(T0.AddDays(1)).GetAwaiter().GetResult();
-        Assert.Equal(1, told.Count, "told once, even after a restart of Kairos");
+        Assert.True(service.RemindDue(T0), "to tell (the engine waits for no game in front)");
+        Assert.True(service.RemindDue(T0.AddMinutes(5)), "still, until it showed");
+        service.Reminded(T0.AddMinutes(5));
+        Assert.True(!service.RemindDue(T0.AddDays(2)), "told: never again");
+        var restarted = new UpdateService(updater, seen, localSource: false);
+        restarted.Check(T0.AddDays(1)).GetAwaiter().GetResult();
+        Assert.True(!restarted.RemindDue(T0.AddDays(1)), "told once, even after a restart of Kairos");
 
         service.Download().GetAwaiter().GetResult();
         Assert.Equal(UpdateState.Failed, service.Status!.State, "a failed download says so");
@@ -139,7 +142,7 @@ public static class UpdateRulesTests
         service.Download().GetAwaiter().GetResult();
         Assert.Equal(100, service.Status!.Percent, "works when tried again: all of it");
         Assert.True(service.Settle(recording: false, windowBusy: false), "and can go in");
-        service.Apply(openWindow: false);
+        Assert.True(service.Apply(openWindow: false), "Velopack took over");
         Assert.Equal("--background", string.Join(" ", updater.AppliedWith!), "after a recording: back in the tray, no window over a game");
         File.Delete(seen);
     }
@@ -177,7 +180,8 @@ public static class UpdateRulesTests
         Exception? thrown = null;
         try
         {
-            service.Apply(openWindow: true);
+            Assert.True(!service.Apply(openWindow: true), "said it could not (Kairos keeps running)");
+            Assert.Equal(UpdateState.Failed, service.Status!.State, "and the bar says the update failed");
         }
         catch (Exception e)
         {

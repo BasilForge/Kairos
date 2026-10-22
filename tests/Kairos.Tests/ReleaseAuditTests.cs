@@ -94,7 +94,7 @@ public static class ReleaseAuditTests
     public static void Silent_pipe_connections_are_dropped_so_others_are_served()
     {
         string name = "kairos-test-" + Guid.NewGuid().ToString("N");
-        using var server = new PipeServer(command => "ok:" + command, () => (0, 0), name, TimeSpan.FromMilliseconds(300));
+        using var server = new PipeServer(command => "ok:" + command, () => [], name, TimeSpan.FromMilliseconds(300));
         var silent = new List<NamedPipeClientStream>();
         for (int i = 0; i < 8; i++)
         {

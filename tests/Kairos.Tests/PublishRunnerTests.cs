@@ -42,4 +42,8 @@ public static class PublishRunnerTests
     [Test]
     public static void When_a_step_never_happens_the_window_is_handed_to_the_user() =>
         Run("stuck", "#gaming");
+
+    [Test]
+    public static void The_site_browser_opens_no_developer_tools_downloads_or_permissions() =>
+        Run("locked", "#gaming");
 }

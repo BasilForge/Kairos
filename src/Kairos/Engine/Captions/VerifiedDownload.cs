@@ -14,6 +14,8 @@ static class VerifiedDownload
     public static async Task To(string part, string source, long bytes, string sha256, string name, IProgress<double>? progress,
         CancellationToken ct)
     {
+        if (App.SideEffects.Held($"download {name}"))
+            throw new IOException($"The {name} download was held (walk check).");
         await using (var output = new FileStream(part, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20, useAsync: true))
         {
             if (Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")

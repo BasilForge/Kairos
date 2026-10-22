@@ -14,6 +14,8 @@ public sealed record SharePicture(BitmapSource? Image, int Width, int Height, lo
 /// <summary>What the share panel needs from the outside world (FFmpeg, clipboard, browser, settings, threads).</summary>
 public interface IShareHost
 {
+    /// <summary>Where Copy keeps its copies: the clips folder's "Shared" (<see cref="ShareFiles.SharedIn"/>).</summary>
+    string SharedFolder { get; }
     MediaInfo Probe(string clip);
     /// <summary>Reads a picture for the panel; null when it cannot be read.</summary>
     SharePicture? ReadPicture(string path);
@@ -88,6 +90,13 @@ public sealed partial class ShareViewModel : INotifyPropertyChanged
     double _previewTime;
     BitmapSource? _previewFrame;
     bool _clipCopying, _clipCopied;
+    /// <summary>Copy made to fit this many MB (0: as it is).</summary>
+    int _copyMb;
+    /// <summary>A copy being made to fit a size; pressing Copy again or closing the panel stops it.</summary>
+    CancellationTokenSource? _copyCts;
+    double _copyProgress;
+    /// <summary>The last copy made to fit a size, and for which size and cut (what a drag takes while they still match).</summary>
+    (int Mb, double Start, double End, string Path)? _prepared;
     double _volume = 1;
     bool _muted;
     int _copiedShow;
@@ -118,7 +127,9 @@ public sealed partial class ShareViewModel : INotifyPropertyChanged
         CloseCommand = new RelayCommand(_ => Close());
         RetryCommand = new RelayCommand(_ => Retry());
         CopyCaptionCommand = new RelayCommand(_ => { _host.CopyToClipboard(null, Caption); _copied = true; Raise(nameof(CopiedVisible)); });
-        CopyCommand = new RelayCommand(_ => CopyClip(), _ => HasClip && !_clipCopying && !IsWorking && !IsPublishing);
+        CopyCommand = new RelayCommand(_ => PressCopy(), _ => CanCopy && (_copyCts != null || !_clipCopying));
+        CopyAtCommand = new RelayCommand(p => { if (p is int mb) CopyAt(mb); }, _ => CanCopy && !_clipCopying);
+        TrimToFitCommand = new RelayCommand(_ => TrimToFit(), _ => _copySizePicked && TooLongForSize && CanEdit);
         MuteCommand = new RelayCommand(_ => ToggleMute());
         CopyFileCommand = new RelayCommand(_ => { if (_result != null) _host.CopyToClipboard(_result.Path, null); });
         ShowFileCommand = new RelayCommand(_ => { if (_result != null) _host.ShowInFolder(_result.Path); });
@@ -145,8 +156,20 @@ public sealed partial class ShareViewModel : INotifyPropertyChanged
     public ICommand ShowFileCommand { get; }
     public ICommand OpenAgainCommand { get; }
     public ICommand PlayCommand { get; }
-    /// <summary>Copy: the cut as it is on the clipboard, at once (the clip itself, or the part cut without converting).</summary>
+    /// <summary>
+    /// Copy pressed: a video asks its size (<see cref="CopySizeAsked"/>), a screenshot is copied as it is; pressed again
+    /// while a copy is made, it stops.
+    /// </summary>
     public ICommand CopyCommand { get; }
+    /// <summary>
+    /// Copies the cut at the size picked (the MB as the parameter, kept for next time): as it is (the clip itself, or the
+    /// part cut without converting), or made to fit the size.
+    /// </summary>
+    public ICommand CopyAtCommand { get; }
+    /// <summary>Copy was pressed on a video: the panel shows the sizes (<see cref="CopySizeChoices"/>) under it.</summary>
+    public event Action? CopySizeAsked;
+    /// <summary>Shortens the cut to what fits the size, keeping its end.</summary>
+    public ICommand TrimToFitCommand { get; }
     /// <summary>Mutes or unmutes the preview (the clip's own sound is never changed).</summary>
     public ICommand MuteCommand { get; }
 
@@ -193,6 +216,12 @@ public sealed partial class ShareViewModel : INotifyPropertyChanged
         Thumbnail = thumbnail;
         _platform = null;
         _clipCopied = false;
+        _copyCts?.Cancel();
+        _copyCts = null;
+        _clipCopying = false;
+        _prepared = null;
+        _copyMb = prefs.CopyMb;
+        _copySizePicked = false;
         Jobs.Clear();
         _volume = prefs.PreviewVolume;
         _muted = prefs.PreviewMuted;
@@ -251,6 +280,7 @@ public sealed partial class ShareViewModel : INotifyPropertyChanged
     public void Close()
     {
         _cts?.Cancel();
+        _copyCts?.Cancel();
         StopPlayback();
         RememberVolume();
         _host.ReleaseFrames();

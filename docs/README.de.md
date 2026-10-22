@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
+  <a href="https://discord.gg/YWgaS6JRzF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
   <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
 </p>
@@ -32,7 +33,7 @@ https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
 
 ## Warum Kairos
 
-- **Verpass keinen Moment.** Kairos hält die letzten 15 Sekunden bis 20 Minuten im Speicher (standardmäßig 5). Drück `Alt+F10`, und daraus wird ein Clip.
+- **Verpass keinen Moment.** Kairos hält die letzten 15 Sekunden bis 20 Minuten (standardmäßig 5) auf deiner Festplatte oder im RAM. Drück `Alt+F10`, und daraus wird ein Clip.
 - **Smart Save.** Nimm einen eigenen Satz auf, in jeder Sprache, und sag ihn einfach, um einen Clip zu speichern oder einen Screenshot aufzunehmen. Läuft offline.
 - **Leicht.** Aufgenommen wird auf der Grafikkarte. Gemessen mit einem laufenden Spiel in 1440p60 AV1: 0,4 % CPU, keine verlorenen Frames.
 - **Direkt bearbeiten.** Schneiden, Tempo ändern, Text einfügen, zeichnen, weichzeichnen und automatische Untertitel auf deinem eigenen PC erstellen.
@@ -72,15 +73,19 @@ Updates kommen direkt in der App und nie während einer Aufnahme. Beim Deinstall
 <details>
 <summary>Alles, was Kairos kann</summary>
 
-- **Aufnahme:** ganzer Bildschirm, ein Fenster oder Spiele (automatisch erkannt), bis 4K bei 30 bis 240 fps.
-- **Encoding:** AV1, HEVC oder H.264 auf NVIDIA (NVENC), AMD (AMF) oder Intel (Quick Sync), mit x264 als Ausweichlösung.
-- **Audio:** Systemsound und Mikrofon, auf Wunsch in getrennten Spuren.
+- **Aufnahme:** ganzer Bildschirm, bis zu 5 Apps (die im Vordergrund wird aufgenommen) oder Spiele (automatisch erkannt, auch gestreckt und im exklusiven Vollbild), bis 4K bei 30 bis 240 fps.
+- **Sofortwiederholung:** bis zu 20 Minuten, auf der Festplatte (SSD oder HDD) oder im RAM, ein kurzer Clip daneben und auf Wunsch ein Neustart nach jedem Speichern.
+- **Automatische Qualität:** Kairos wählt Encoder, Größe, Bildrate und Qualität, die dein PC am besten aufnimmt, und geht bei verlorenen Bildern selbst eine Stufe runter.
+- **Kodierung:** AV1, HEVC oder H.264 auf NVIDIA (NVENC), AMD (AMF) oder Intel (Quick Sync); startet einer nicht, nimmt der nächste auf, bis hin zu x264.
+- **Audio:** ein Mixer mit einer Zeile pro Quelle (Spiel, Discord, Musik, Mikrofon, jede App oder jedes Gerät), jede mit eigener Lautstärke und auf Wunsch eigener Spur.
+- **Kamera:** deine Webcam oder dein Handy in einer Ecke (eckig oder rund) oder oben in einem 9:16-Bild, auf Wunsch auch einzeln gespeichert.
 - **Aufnahmen:** mit Tastenkürzeln starten, pausieren und stoppen; eine pausierte Aufnahme bleibt eine Datei.
 - **Screenshots** mit eigenem Tastenkürzel, gespeichert neben deinen Clips.
-- **Mediathek:** Clips und Screenshots nach Tag, nach Spiel filterbar, mit einem Größenlimit für den Ordner, das die ältesten in den Papierkorb verschiebt.
-- **Editor:** schneiden und zusammenfügen, Tempo und Ton pro Teil, Text in vielen Schriften und Stilen, automatische Untertitel, Zeichnen, Formen, Weichzeichnen, Filter und Zuschneiden von Screenshots.
+- **Bibliothek:** Clips und Screenshots nach Tag, nach Spiel gefiltert; einen Clip direkt in Discord ziehen; ein Ordner-Limit; in OneDrive, Dropbox oder Google Drive speichern und lokale Kopien freigeben.
+- **Editor:** Schneiden und Zusammenfügen, Tempo und Ton pro Teil (alle Spuren), in einen Bereich zoomen, Text in vielen Schriften und Stilen, automatische Untertitel, Zeichnen, Formen, Weichzeichnen, Filter und Zuschneiden für Screenshots.
 - **Automatische Untertitel:** Whisper auf deiner Grafikkarte. Engine und Modell werden einmal heruntergeladen, nachdem du zugestimmt hast, und lassen sich in den Einstellungen entfernen.
-- **Teilen:** X, TikTok, Instagram oder alle, über die eigene Seite jeder Plattform; auf einem Bildstreifen kürzen und auf 9:16 zuschneiden.
+- **Teilen:** X, TikTok, Instagram oder alle zusammen über die Seite der jeweiligen Plattform; Kopieren passend zu Discords 10, 50 oder 500 MB; Kürzen auf einem Bildstreifen und Zuschneiden auf 9:16; Kopien bleiben im Ordner Shared deines Clip-Ordners.
+- **Hilfe:** „Bericht speichern“ auf der Statusseite legt Protokolle und Einstellungen als ZIP auf den Desktop, zum Senden auf Discord.
 - **Sieben Sprachen:** Englisch, Arabisch, Chinesisch, Russisch, Spanisch, Portugiesisch und Deutsch. Beim ersten Start folgt Kairos der Windows-Sprache.
 - **Leise:** startet mit Windows im Infobereich, ohne Pop-ups oder Töne, außer du schaltest sie ein.
 
@@ -89,8 +94,29 @@ Updates kommen direkt in der App und nie während einer Aufnahme. Beim Deinstall
 ## Datenschutz
 
 - Keine Telemetrie, keine Analysen, kein Kairos-Konto.
-- Kairos geht nur online, wenn du es willst: um zu posten, was du teilst, um die automatischen Untertitel einmal herunterzuladen und um einmal am Tag nach einer neuen Version zu suchen (abschaltbar).
-- Smart Save und automatische Untertitel hören nur auf deinem PC zu.
+- Kairos geht nur online, um einmal am Tag auf GitHub nach einer neuen Version zu suchen und sie herunterzuladen (abschaltbar), um über die Seite der jeweiligen Plattform zu posten, was du teilst, und um die automatischen Untertitel einmal herunterzuladen, nachdem du zugestimmt hast (die Engine von GitHub, das Modell von Hugging Face).
+- Deine Clips bleiben in deinem Clip-Ordner (synchronisiert nur, wenn du einen OneDrive-, Dropbox- oder Google-Drive-Ordner wählst), deine Einstellungen und Protokolle auf deinem PC. Smart Save und automatische Untertitel hören nur auf deinem PC zu, und dein Smart-Save-Satz wird nur dort aufgenommen.
+- Anmeldungen bei den Seiten bleiben in Kairos' eigenem Browser auf deinem PC (Microsoft Edge WebView2, von Windows geschützt wie in Edge), nie in den Einstellungen oder Protokollen von Kairos. Wenn du dich von einer Seite abmeldest, wirst du auch vom Google-, Apple- oder Facebook-Konto abgemeldet, mit dem du dich dort angemeldet hast.
+- **Bericht speichern** enthält die Protokolle und Einstellungen von Kairos ohne deinen Windows-Benutzernamen und ohne Fenstertitel, und nie Anmeldungen oder Clips.
+- Eine Sicherheitslücke gefunden? Bitte melde sie vertraulich: siehe [SECURITY.md](../SECURITY.md).
+
+## Häufige Fragen
+
+**Ist Kairos mit Anti-Cheat sicher?**
+
+Kairos liest oder verändert nie den Speicher eines Spiels. Um ein Spiel im Vollbild aufzunehmen (in jedem Modus, damit ein gestrecktes oder exklusives Vollbild nie schwarz ist), nutzt es denselben signierten, Anti-Cheat-kompatiblen Aufnahme-Hook wie OBS Studio, den Riot Vanguard, Easy Anti-Cheat und BattlEye zulassen. Gibt ein Spiel über den Hook einmal kein Bild, nimmt Kairos von selbst den Bildschirm auf, sodass kein Clip schwarz ist.
+
+**Erscheint beim Aufnehmen ein gelber Rahmen?**
+
+Unter Windows 11 nicht. Unter Windows 10 zeichnet Windows selbst im Modus **Apps** einen gelben Rahmen um die App und lässt Programme ihn nicht ausblenden; **Ganzer Bildschirm** und **Spiele** zeigen nie einen.
+
+**Meine Clips ruckeln über 60 fps.**
+
+Ein Clip kann nicht flüssiger sein als dein Bildschirm oder dein Spiel: 144 fps auf einem 60-Hz-Bildschirm wiederholen Bilder ungleichmäßig. Kairos weist unter der Bildrate darauf hin, und **Automatisch** unter Qualität nimmt nie über der Bildwiederholrate deines Bildschirms auf. 60 passt für YouTube, X, TikTok und Instagram.
+
+**Etwas funktioniert nicht. Was soll ich senden?**
+
+Klicke auf der Statusseite auf **Bericht speichern**: Ein ZIP mit den Protokollen und Einstellungen von Kairos landet auf deinem Desktop. Schick es in unserem [Discord](https://discord.gg/YWgaS6JRzF) oder in einem GitHub-Issue.
 
 ## Aus dem Quellcode bauen
 

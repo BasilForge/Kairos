@@ -108,6 +108,15 @@ public static class ClipOrganizer
     /// <summary>A picture (a screenshot) rather than a video, by its extension.</summary>
     public static bool IsPicture(string path) => ClipLibrary.KindOf(path) == ClipKind.Picture;
 
+    /// <summary>
+    /// Whether <paramref name="path"/> is <paramref name="target"/> (in its folder, its name, or that name with " (n)"
+    /// when it was taken): a clip written where it belongs.
+    /// </summary>
+    public static bool IsAt(string path, string? target) =>
+        target != null
+        && string.Equals(Path.GetDirectoryName(path), Path.GetDirectoryName(target), StringComparison.OrdinalIgnoreCase)
+        && Path.GetFileNameWithoutExtension(path).StartsWith(Path.GetFileNameWithoutExtension(target), StringComparison.OrdinalIgnoreCase);
+
     /// <summary><paramref name="target"/>, or with " (n)" added when a file of that name is already there.</summary>
     public static string FreePath(string target)
     {
@@ -119,12 +128,19 @@ public static class ClipOrganizer
         return final;
     }
 
-    /// <summary>Moves <paramref name="source"/> to <paramref name="target"/>, adding " (n)" if taken. Returns the final path.</summary>
+    /// <summary>
+    /// Moves <paramref name="source"/> to <paramref name="target"/>, adding " (n)" if taken. Returns the final path. A file
+    /// another program holds open for a moment (an antivirus or a thumbnail reading a clip just written) is tried again
+    /// for up to 3 s before the move gives up.
+    /// </summary>
     public static string Move(string source, string target)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        string final = FreePath(target);
-        File.Move(source, final);
-        return final;
+        return HeldFile.Retry(() =>
+        {
+            string final = FreePath(target);
+            File.Move(source, final);
+            return final;
+        });
     }
 }

@@ -60,19 +60,57 @@ public static class LevelBarTests
             bar.Frame(TimeSpan.FromMilliseconds(ms));
             Assert.True(!bar.Rendering, "silence that stays: no more frames");
 
-            stream.Push(-12, LevelMeter.Silent);
+            stream.Push([("system", -12), ("mic", LevelMeter.Silent)]);
             Pump();
             Assert.Near(-12, bar.BarDb, 1e-9, "a new level wakes it: the bar jumps to it (a rise is instant)");
             Assert.Near(-12, bar.HoldDb, 1e-9, "its peak mark is on the level");
             Assert.True(!bar.Rendering, "a steady level: resting again");
 
-            stream.Push(LevelMeter.Silent, -20);
+            stream.Push([("system", LevelMeter.Silent), ("mic", -20)]);
             Pump();
             Assert.True(bar.Rendering, "the sound stopped: it falls back, frame by frame");
             Assert.Near(LevelMeter.Silent, Settle(bar, ref ms), 1e-9, "back to silence, then rests");
             Assert.True(ms > 1e7 + 1000, "it fell at its own pace (the peak mark holds a second first)");
             bar.Detach();
             Assert.True(!bar.Rendering, "off screen: nothing");
+        }
+        finally
+        {
+            LevelBar.StreamFactory = () => new LevelStream();
+        }
+    });
+
+    [Test]
+    public static void A_resting_meter_wakes_from_the_streams_own_thread() => OnSta(() =>
+    {
+        var stream = new LevelStream(connect: false);
+        LevelBar.StreamFactory = () => stream;
+        try
+        {
+            var bar = new LevelBar { Channel = "mic" };
+            bar.Attach();
+            double ms = 1e7;
+            bar.Frame(TimeSpan.FromMilliseconds(ms));
+            Assert.True(!bar.Rendering, "resting on silence");
+            // The levels arrive on the stream's reader thread, never the window's (as from the engine's pipe).
+            string? error = null;
+            var reader = new Thread(() =>
+            {
+                try
+                {
+                    stream.Push([("mic", -20)]);
+                }
+                catch (Exception e)
+                {
+                    error = e.GetType().Name + ": " + e.Message;
+                }
+            });
+            reader.Start();
+            reader.Join();
+            Assert.Equal(null, error, "a level from another thread does not touch the meter's own properties");
+            Pump();
+            Assert.Near(-20, bar.BarDb, 1e-9, "and it wakes the meter on its own thread");
+            bar.Detach();
         }
         finally
         {

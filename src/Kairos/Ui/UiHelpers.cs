@@ -33,6 +33,8 @@ public sealed class EqualsConverter : IValueConverter
             return Enum.Parse(targetType, p, ignoreCase: true);
         if (targetType == typeof(int))
             return int.Parse(p, CultureInfo.InvariantCulture);
+        if (targetType == typeof(bool))
+            return bool.Parse(p);
         return p;
     }
 }
@@ -88,7 +90,7 @@ public static class WindowPlacement
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
         // Never the foreground window, even when a control inside takes the keyboard focus (the player and the editor
-        // do as they open): one such window once pulled a game the owner was playing out of focus.
+        // do as they open): one such window once pulled a game being played out of focus.
         window.SourceInitialized += (_, _) =>
         {
             IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
@@ -96,6 +98,26 @@ public static class WindowPlacement
         };
         return window;
     }
+
+    /// <summary>
+    /// Puts <paramref name="to"/> where <paramref name="from"/> is (the window built again in another language): at its
+    /// normal place and size, maximized when it is.
+    /// </summary>
+    public static void Carry(Window from, Window to)
+    {
+        var (bounds, maximized) = Carried(from.WindowState, new Rect(from.Left, from.Top, from.Width, from.Height), from.RestoreBounds);
+        to.WindowStartupLocation = WindowStartupLocation.Manual;
+        (to.Left, to.Top, to.Width, to.Height) = (bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+        if (maximized)
+            to.WindowState = WindowState.Maximized;
+    }
+
+    /// <summary>
+    /// A window's normal place and size, and whether it is maximized: a maximized window's Left and Top are its normal
+    /// place but its Width and Height the screen's (taken as they were, it came back unmaximized and past the screen).
+    /// </summary>
+    internal static (Rect Bounds, bool Maximized) Carried(WindowState state, Rect current, Rect normal) =>
+        state == WindowState.Normal ? (current, false) : (normal, state == WindowState.Maximized);
 
     const int GwlExStyle = -20;
     const nint WsExNoActivate = 0x08000000, WsExToolWindow = 0x00000080;

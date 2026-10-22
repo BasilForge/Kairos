@@ -363,16 +363,15 @@ public sealed class EditTimeline : FrameworkElement
         double right = box.Right - 4;
         if (_vm.HasSound)
         {
-            if (Math.Abs(part.Mic - 1) > 1e-9 && _vm.HasSeparateTracks)
-                right -= Badge(dc, Percent(part.Mic), "", new Point(right, y), alignRight: true) + 4;
-            if (Math.Abs(part.Game - 1) > 1e-9)
-                Badge(dc, Percent(part.Game), _vm.HasSeparateTracks ? "" : "", new Point(right, y), alignRight: true);
+            // Each of its own tracks set apart from the clip's (a one-track clip: its whole sound), the first leftmost.
+            var tracks = _vm.PartTracks;
+            for (int j = tracks.Count - 1; j >= 0; j--)
+                if (Math.Abs(part.Levels[j] - 1) > 1e-9)
+                    right -= Badge(dc, EditorViewModel.Percent(part.Levels[j]), tracks[j].Glyph, new Point(right, y), alignRight: true) + 4;
         }
         dc.Pop();
         dc.DrawRoundedRectangle(null, chosen ? _chosen : new Pen(_stroke, 1), box, Radius, Radius);
     }
-
-    static string Percent(double level) => Math.Round(level * 100).ToString(CultureInfo.InvariantCulture) + "%";
 
     static readonly Brush BadgeFill = Freeze(new SolidColorBrush(Color.FromArgb(0xB0, 0, 0, 0)));
 

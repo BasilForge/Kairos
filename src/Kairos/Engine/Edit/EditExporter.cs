@@ -223,21 +223,13 @@ public static unsafe class EditExporter
                     streams.Add(i);
             _audioGraph = ffmpeg.avfilter_graph_alloc();
             AVFilterInOut* outputs = null;
-            byte* layout = stackalloc byte[64];
             foreach (int n in _graph.AudioStreams)
             {
                 if (n >= streams.Count)
                     throw new ShareException($"The clip has no sound track {n + 1}.");
                 AVStream* s = _input.Format->streams[streams[n]];
-                AVCodec* codec = ffmpeg.avcodec_find_decoder(s->codecpar->codec_id);
-                AVCodecContext* decoder = ffmpeg.avcodec_alloc_context3(codec);
-                ClipTranscoder.Check(ffmpeg.avcodec_parameters_to_context(decoder, s->codecpar), "Preparing the sound");
-                decoder->pkt_timebase = s->time_base;
-                ClipTranscoder.Check(ffmpeg.avcodec_open2(decoder, codec, null), "Opening the sound decoder");
-
-                ffmpeg.av_channel_layout_describe(&decoder->ch_layout, layout, 64);
-                string args = $"time_base={s->time_base.num}/{s->time_base.den}:sample_rate={decoder->sample_rate}" +
-                    $":sample_fmt={ffmpeg.av_get_sample_fmt_name(decoder->sample_fmt)}:channel_layout={new string((sbyte*)layout)}";
+                AVCodecContext* decoder = SoundCodecs.OpenDecoder(s);
+                string args = SoundCodecs.BufferArgs(decoder, s->time_base);
                 AVFilterContext* abuffer = null;
                 ClipTranscoder.Check(ffmpeg.avfilter_graph_create_filter(&abuffer, ffmpeg.avfilter_get_by_name("abuffer"), $"a{n}", args, null,
                     _audioGraph), "Sound input");
@@ -251,21 +243,13 @@ public static unsafe class EditExporter
                 outputs = o;
             }
 
-            AVCodec* aac = ffmpeg.avcodec_find_encoder(AVCodecID.AV_CODEC_ID_AAC);
             AVFilterInOut* inputs = null;
             string text = _graph.Audio;
-            foreach (string label in _graph.AudioOutputs.Reverse())
+            for (int o = _graph.AudioOutputs.Count - 1; o >= 0; o--)
             {
-                AVCodecContext* encoder = ffmpeg.avcodec_alloc_context3(aac);
-                encoder->sample_rate = 48_000;
-                encoder->sample_fmt = AVSampleFormat.AV_SAMPLE_FMT_FLTP;
-                ffmpeg.av_channel_layout_default(&encoder->ch_layout, 2);
-                encoder->bit_rate = 192_000;
-                encoder->time_base = new AVRational { num = 1, den = 48_000 };
-                encoder->flags |= ffmpeg.AV_CODEC_FLAG_GLOBAL_HEADER;
-                var track = new SoundTrack { Encoder = encoder };
+                string label = _graph.AudioOutputs[o];
+                var track = new SoundTrack { Encoder = SoundCodecs.OpenAac(192_000), Name = o < _graph.AudioNames.Count ? _graph.AudioNames[o] : null };
                 _sounds.Insert(0, track);
-                ClipTranscoder.Check(ffmpeg.avcodec_open2(encoder, aac, null), "Opening the AAC encoder");
 
                 AVFilterContext* sink = null;
                 ClipTranscoder.Check(ffmpeg.avfilter_graph_create_filter(&sink, ffmpeg.avfilter_get_by_name("abuffersink"), label, null, null,
@@ -277,7 +261,7 @@ public static unsafe class EditExporter
                 input->pad_idx = 0;
                 input->next = inputs;
                 inputs = input;
-                text = text.Replace($"[{label}]", $",aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[{label}]");
+                text = text.Replace($"[{label}]", $",{SoundCodecs.AacFormat}[{label}]");
             }
             try
             {
@@ -385,6 +369,8 @@ public static unsafe class EditExporter
                 track.Stream = ffmpeg.avformat_new_stream(_output, null);
                 ClipTranscoder.Check(ffmpeg.avcodec_parameters_from_context(track.Stream->codecpar, track.Encoder), "Audio track");
                 track.Stream->time_base = track.Encoder->time_base;
+                if (track.Name != null)
+                    ffmpeg.av_dict_set(&track.Stream->metadata, "handler_name", track.Name, 0); // the track's name, as Kairos records it
             }
             ClipTranscoder.Check(ffmpeg.avio_open(&_output->pb, path, ffmpeg.AVIO_FLAG_WRITE), "Writing the MP4");
             AVDictionary* options = null;
@@ -535,6 +521,8 @@ public static unsafe class EditExporter
                     StartOutput(_path);
                 }
                 Report(progress, picture->pts * ffmpeg.av_q2d(_input.Video->time_base));
+                if (_graph.ZoomAt is { } zoomAt && !_videoEnded)
+                    SetZoom(VideoZoom.Crop(zoomAt(picture->pts * ffmpeg.av_q2d(_input.Video->time_base)), picture->width, picture->height));
                 long t2 = Now();
                 int added = _videoEnded ? ffmpeg.AVERROR_EOF : ffmpeg.av_buffersrc_add_frame(_videoSource, picture);
                 Took(StFilter, t2);
@@ -548,6 +536,19 @@ public static unsafe class EditExporter
                 DrainAudio(ct);
                 Took(StSound, t3);
             }
+        }
+
+        (int W, int H, int X, int Y)? _zoom;
+
+        /// <summary>The graph's <c>crop@zoom</c> shows this area from the next picture on (only what changed is sent).</summary>
+        void SetZoom((int W, int H, int X, int Y) zoom)
+        {
+            if (_zoom == zoom)
+                return;
+            foreach (var (name, value) in new[] { ("w", zoom.W), ("h", zoom.H), ("x", zoom.X), ("y", zoom.Y) })
+                ClipTranscoder.Check(ffmpeg.avfilter_graph_send_command(_videoGraph, "crop@zoom", name, value.ToString(System.Globalization.CultureInfo.InvariantCulture), null, 0, 0),
+                    "Zooming the picture");
+            _zoom = zoom;
         }
 
         void DrainVideo(IProgress<double>? progress, CancellationToken ct)
@@ -642,6 +643,7 @@ public static unsafe class EditExporter
             public AVFilterContext* Sink;
             public AVCodecContext* Encoder;
             public AVStream* Stream;
+            public string? Name;
             public long Samples;
         }
 

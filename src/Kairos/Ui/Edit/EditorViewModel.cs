@@ -9,7 +9,7 @@ namespace Kairos.Ui.Edit;
 public enum EditorMode { Library, Share }
 
 /// <summary>What a press on the picture does: choose and move things (None), or draw lines, a shape, a blur box, a crop.</summary>
-public enum EditMode { None, Draw, Shapes, Blur, Crop }
+public enum EditMode { None, Draw, Shapes, Blur, Crop, Zoom }
 
 /// <summary>A row of the timeline: the clip's parts, then one row per kind of item (shown only when it has some). Captions
 /// and typed texts are all texts: one row.</summary>
@@ -40,10 +40,12 @@ public sealed partial class EditorViewModel : INotifyPropertyChanged
     string? _lastAmend;
 
     /// <param name="captions">What the Captions button uses (none: no button).</param>
-    public EditorViewModel(EditProject start, bool isPicture, EditorMode mode, double aspect, int audioStreams, ICaptionMaker? captions = null)
+    /// <param name="layout">The clip's sound tracks (none: read from <paramref name="audioStreams"/> as a clip without names).</param>
+    public EditorViewModel(EditProject start, bool isPicture, EditorMode mode, double aspect, int audioStreams, ICaptionMaker? captions = null,
+        Engine.Audio.TrackLayout? layout = null)
     {
+        Layout = layout ?? Engine.Audio.TrackLayout.Of([], audioStreams);
         _captions = captions;
-        _audioStreams = audioStreams;
         _history = new EditHistory(start);
         _history.Changed += () =>
         {
@@ -55,7 +57,14 @@ public sealed partial class EditorViewModel : INotifyPropertyChanged
         IsPicture = isPicture;
         Mode = mode;
         _aspect = aspect;
-        HasSeparateTracks = audioStreams >= 3;
+        HasSeparateTracks = Layout.PartitionTracks.Count > 0;
+        // The clip's own tracks by name, for the clip and for a part; a one-track clip's part: its whole sound.
+        var own = HasSeparateTracks
+            ? Layout.PartitionTracks.Select((t, j) => (j, SoundNames.Name(Layout.Roles[t], Layout.Labels[t]), SoundNames.Glyph(Layout.Roles[t]))).ToList()
+            : [];
+        ClipTracks = [.. own.Select(t => new SoundTrackView(this, t.j, t.Item2, t.Item3, part: false))];
+        PartTracks = HasSeparateTracks ? [.. own.Select(t => new SoundTrackView(this, t.j, t.Item2, t.Item3, part: true))]
+            : [new SoundTrackView(this, 0, Text.Get("editor.allSound"), SoundNames.Glyph(Engine.Audio.TrackRole.Mix), part: true)];
         HasSound = audioStreams > 0;
         TextSwatches = Swatches(hex => TextColor = hex, _textColor);
         PenSwatches = Swatches(hex => PenColor = hex, _penColor);
@@ -110,10 +119,10 @@ public sealed partial class EditorViewModel : INotifyPropertyChanged
         ShapesCommand = new RelayCommand(_ => Toggle(EditMode.Shapes));
         BlurCommand = new RelayCommand(_ => Toggle(EditMode.Blur));
         CropCommand = new RelayCommand(_ => Toggle(EditMode.Crop), _ => IsPicture);
+        ZoomCommand = new RelayCommand(_ => Toggle(EditMode.Zoom), _ => CanZoom);
+        RemoveZoomCommand = new RelayCommand(_ => Apply(Project.WithParts(_parts, k => k with { Zoom = null })), _ => PartZoomed);
         ModeDoneCommand = new RelayCommand(_ => EditMode = EditMode.None);
         PlaceCommand = new RelayCommand(p => TextPlace = p as string ?? "bottom");
-        GameMuteCommand = new RelayCommand(_ => GameMuted = !GameMuted);
-        MicMuteCommand = new RelayCommand(_ => MicMuted = !MicMuted);
         CaptionsCommand = new RelayCommand(_ =>
         {
             // Every press asks first: what it does (and the download when the model is not here), or, with captions there
@@ -168,6 +177,9 @@ public sealed partial class EditorViewModel : INotifyPropertyChanged
     public bool HasSound { get; }
     /// <summary>Kairos's clips: game (track 2) and mic (track 3) each with its own slider; else one slider for all.</summary>
     public bool HasSeparateTracks { get; }
+
+    /// <summary>The clip's sound tracks: the mix, and those an edit can set apart.</summary>
+    public Engine.Audio.TrackLayout Layout { get; }
     public bool HasOneTrack => HasSound && !HasSeparateTracks;
     /// <summary>Screenshots can be cropped (clips keep their shape).</summary>
     public bool CanCrop => IsPicture;
@@ -211,22 +223,47 @@ public sealed partial class EditorViewModel : INotifyPropertyChanged
         get => _mode;
         set
         {
-            if (value == EditMode.Crop && !IsPicture)
+            if ((value == EditMode.Crop && !IsPicture) || (value == EditMode.Zoom && !CanZoom))
                 value = EditMode.None;
             if (_mode == value)
                 return;
             _mode = value;
             _lastAmend = null;
-            if (value != EditMode.None)
+            if (value == EditMode.Zoom)
+                ChooseParts(); // the chosen parts, or the one playing
+            else if (value != EditMode.None)
                 ClearChoice();
             Raise();
             Raise(nameof(IsDrawMode));
             Raise(nameof(IsShapesMode));
             Raise(nameof(IsBlurMode));
             Raise(nameof(IsCropMode));
-            RaisePage();
+            Raise(nameof(IsZoomMode));
+            RaisePage(); // ZoomShown too
         }
     }
+
+    /// <summary>Zoom: the chosen parts keep their choice; with none, the one playing is chosen.</summary>
+    void ChooseParts()
+    {
+        _ids.Clear();
+        if (_parts.Count == 0 && Project.PartAt(PlayheadOutput) is >= 0 and var playing)
+            _parts.Add(playing);
+        ChoiceChanged();
+    }
+
+    /// <summary>Zoom (videos; pictures crop): the chosen parts zoom into an area drawn on the picture.</summary>
+    public bool CanZoom => HasTimeline;
+    public bool IsZoomMode => _mode == EditMode.Zoom;
+
+    /// <summary>The chosen parts zoom into <paramref name="drawn"/> (0..1 of the picture), made the video's shape.</summary>
+    public void ZoomTo(System.Windows.Rect drawn) => Apply(Project.WithParts(_parts, k => k with { Zoom = VideoZoom.Fit(drawn) }));
+
+    /// <summary>Some chosen part zooms: Remove zoom shows.</summary>
+    public bool PartZoomed => _parts.Any(i => i < Project.Kept.Count && Project.Kept[i].Zoom != null);
+
+    /// <summary>While the Zoom tool is on: the first chosen part's area, drawn over the whole picture; null otherwise.</summary>
+    public System.Windows.Rect? ZoomShown => IsZoomMode ? FirstPart?.Zoom : null;
 
     public bool IsDrawMode => _mode == EditMode.Draw;
     public bool IsShapesMode => _mode == EditMode.Shapes;
@@ -294,7 +331,8 @@ public sealed partial class EditorViewModel : INotifyPropertyChanged
             _parts.Add(index);
             _partAnchor = index;
         }
-        _mode = EditMode.None;
+        if (_mode != EditMode.Zoom) // Zoom works on parts: choosing another keeps it
+            _mode = EditMode.None;
         ChoiceChanged();
     }
 
@@ -410,6 +448,7 @@ public sealed partial class EditorViewModel : INotifyPropertyChanged
         Raise(nameof(IsShapesMode));
         Raise(nameof(IsBlurMode));
         Raise(nameof(IsCropMode));
+        Raise(nameof(IsZoomMode));
         RaisePage();
         CommandManager.InvalidateRequerySuggested();
     }

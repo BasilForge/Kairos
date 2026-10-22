@@ -18,6 +18,8 @@ public static class TrayMenu
     static readonly Color Muted = Rgb(0xBBAAA7); // TextSecondary
     static readonly Color Highlight = Rgb(ThemeColors.Soft);
     static readonly Font MenuFont = new("Segoe UI", 9.75f);
+    /// <summary>The offered update, first in the menu: bold, in the accent.</summary>
+    internal static readonly Font AccentFont = new("Segoe UI", 9.75f, FontStyle.Bold);
 
     public static ContextMenuStrip Create(bool rightToLeft)
     {
@@ -92,7 +94,7 @@ public static class TrayMenu
         DwmSetWindowAttribute(hwnd, 34, ref edge, sizeof(int)); // DWMWA_BORDER_COLOR
     }
 
-    static Color Rgb(uint rgb) => Color.FromArgb((int)(rgb >> 16) & 0xFF, (int)(rgb >> 8) & 0xFF, (int)rgb & 0xFF);
+    internal static Color Rgb(uint rgb) => Color.FromArgb((int)(rgb >> 16) & 0xFF, (int)(rgb >> 8) & 0xFF, (int)rgb & 0xFF);
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }

@@ -60,16 +60,119 @@ public sealed partial class ShareViewModel
     public bool IsCopied => _clipCopied;
     bool WholeClip => _info != null && _trimStart <= 0.05 && _trimEnd >= _info.Duration - 0.05;
 
-    void CopyClip()
+    /// <summary>Copy's size in MB (0: the clip's own); kept for next time.</summary>
+    public int CopyMb
+    {
+        get => _copyMb;
+        set
+        {
+            if (value == _copyMb || !SharePlanner.CopySizes.Contains(value))
+                return;
+            _copyMb = value;
+            var prefs = _prefs().Copy();
+            prefs.CopyMb = value;
+            _host.Remember(prefs);
+            RaiseCopy();
+        }
+    }
+
+    static string SizeLabel(int mb) => mb == 0 ? Text.Get("share.copyOriginal") : Text.Ltr(Text.Format("share.copyMb", mb));
+    /// <summary>A size in Copy's list: its name and what it is for (Discord's limits).</summary>
+    public sealed record CopySize(string Label, string For, int Mb);
+
+    public IReadOnlyList<CopySize> CopySizeChoices => [.. SharePlanner.CopyTiers.Select(t => new CopySize(SizeLabel(t.Mb), t.For, t.Mb))];
+
+    /// <summary>A size was picked in this panel: only then does a cut too long for it say so.</summary>
+    bool _copySizePicked;
+
+    bool CanCopy => HasClip && !IsWorking && !IsPublishing;
+
+    void PressCopy()
     {
         if (_picture != null)
         {
-            _host.CopyPicture(_clip);
+            _host.CopyPicture(_clip); // a screenshot: as it is
             ShowCopied();
-            return;
         }
+        else if (_copyCts != null)
+            _copyCts.Cancel(); // pressed again: stop making it
+        else
+            CopySizeAsked?.Invoke();
+    }
+
+    void CopyAt(int mb)
+    {
+        _copySizePicked = true;
+        CopyMb = mb;
+        RaiseCopy(); // the note, also when the size stayed the same
+        CopyClip();
+    }
+    /// <summary>
+    /// What dragging Copy gives: the copy made to fit the size while the size and cut still match it, else the clip
+    /// itself (a screenshot: itself).
+    /// </summary>
+    public string? DragFile => !HasClip ? null
+        : _prepared is { } p && p.Mb == _copyMb && Math.Abs(p.Start - _trimStart) < 0.001 && Math.Abs(p.End - _trimEnd) < 0.001 ? p.Path
+        : NeedsH264 ? null
+        : _clip;
+
+    /// <summary>The clip is HEVC: copied and dragged as H.264 (<see cref="SharePlanner.PlaysEverywhere"/>), never as it is.</summary>
+    bool NeedsH264 => _info != null && _picture == null && !SharePlanner.PlaysEverywhere(_info.VideoCodec);
+
+    /// <summary>A drag with nothing to drag yet (an HEVC clip): its H.264 copy is made, with the tile's ring, for the next drag.</summary>
+    public void PrepareDrag()
+    {
+        if (NeedsH264 && _copyCts == null && !_clipCopying && DragFile == null)
+            CopyClip();
+    }
+
+    public bool IsCopyConverting => _copyCts != null;
+    public double CopyProgress => _copyProgress;
+    public string CopyPercent => $"{(int)(_copyProgress * 100)}%";
+
+    ShareSpec CopySpec => SharePlanner.CopySpec(_copyMb);
+
+    /// <summary>The longest cut any picture fits in the size (kept until the size or the clip changes: read on every drag move).</summary>
+    double CopyFits
+    {
+        get
+        {
+            if (_fits.Mb != _copyMb || !ReferenceEquals(_fits.Info, _info))
+                _fits = (_copyMb, _info, _info == null ? double.PositiveInfinity : SharePlanner.SecondsThatFit(CopySpec, _info.Width, _info.Height, false));
+            return _fits.Seconds;
+        }
+    }
+    (int Mb, MediaInfo? Info, double Seconds) _fits = (-1, null, 0);
+
+    /// <summary>The cut's share of the file: about what it takes as it is.</summary>
+    bool FitsAsItIs => _info != null
+        && (_trimEnd - _trimStart) / Math.Max(0.001, _info.Duration) * _info.Bytes <= CopySpec.MaxBytes * SharePlanner.SizeMargin;
+
+    /// <summary>The cut is longer than any picture fits in the size.</summary>
+    bool TooLongForSize => HasVideo && !FitsAsItIs && _trimEnd - _trimStart > CopyFits;
+
+    /// <summary>"Only the last N s fit", once that size was picked (null when it fits).</summary>
+    public string? CopyTooLong => _copySizePicked && TooLongForSize
+        ? Text.Format("share.copyTooLong", (int)CopyFits, SizeLabel(_copyMb))
+        : null;
+
+    void TrimToFit()
+    {
+        double fit = Math.Floor(CopyFits);
+        SetTrim(_trimEnd - fit, _trimEnd, _trimEnd - fit);
+    }
+
+    /// <summary>The video's cut on the clipboard at Copy's size (a cut too long for it waits for a shorter one).</summary>
+    void CopyClip()
+    {
         if (_info == null || _clipCopying)
             return;
+        if (!FitsAsItIs || NeedsH264)
+        {
+            if (!TooLongForSize)
+                CopyAtSize();
+            return;
+        }
         string source = _clip;
         if (WholeClip)
         {
@@ -79,7 +182,7 @@ public sealed partial class ShareViewModel
             return;
         }
         double start = _trimStart, end = _trimEnd;
-        string target = ShareFiles.Target(_host.Folder, SharePlatform.Copy, _clip);
+        string target = ShareFiles.CopyTarget(_host.SharedFolder, _clip, start, end);
         _clipCopying = true;
         RaiseCopy();
         _host.Run(() =>
@@ -107,6 +210,58 @@ public sealed partial class ShareViewModel
         });
     }
 
+    /// <summary>Converts the cut to fit the size (the picture and sound made smaller), then puts it on the clipboard.</summary>
+    async void CopyAtSize()
+    {
+        double start = _trimStart, end = _trimEnd;
+        int mb = _copyMb;
+        var spec = CopySpec;
+        var cts = _copyCts = new CancellationTokenSource();
+        _copyProgress = 0;
+        _clipCopying = true;
+        RaiseCopy();
+        try
+        {
+            var result = await ConvertAsync(ShareFiles.CopyTarget(_host.SharedFolder, _clip, start, end, mb), SharePlanner.CopyPlan(mb, _info!, start, end - start),
+                spec.MaxBytes, p =>
+                {
+                    if (_copyCts != cts)
+                        return;
+                    _copyProgress = p;
+                    Raise(nameof(CopyProgress));
+                    Raise(nameof(CopyPercent));
+                }, cts.Token);
+            if (!EndCopy(cts))
+                return;
+            _prepared = (mb, start, end, result.Path);
+            _host.CopyToClipboard(result.Path, null);
+            ShowCopied();
+        }
+        catch (OperationCanceledException)
+        {
+            EndCopy(cts);
+        }
+        catch (Exception e)
+        {
+            if (!EndCopy(cts))
+                return;
+            _errorDetail = e.Message;
+            _phase = Phase.Failed;
+            RaiseAll();
+        }
+    }
+
+    /// <summary>A copy to a size ended; true when it still counts (not stopped, the panel not moved on).</summary>
+    bool EndCopy(CancellationTokenSource cts)
+    {
+        if (_copyCts != cts)
+            return false;
+        _copyCts = null;
+        _clipCopying = false;
+        RaiseCopy();
+        return !cts.IsCancellationRequested;
+    }
+
     void ShowCopied()
     {
         int show = ++_copiedShow;
@@ -125,6 +280,10 @@ public sealed partial class ShareViewModel
     {
         Raise(nameof(IsCopying));
         Raise(nameof(IsCopied));
+        Raise(nameof(IsCopyConverting));
+        Raise(nameof(CopyProgress));
+        Raise(nameof(CopyPercent));
+        Raise(nameof(CopyTooLong));
         System.Windows.Input.CommandManager.InvalidateRequerySuggested();
     }
 

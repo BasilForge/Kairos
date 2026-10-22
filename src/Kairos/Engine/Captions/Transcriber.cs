@@ -19,10 +19,10 @@ public static unsafe class Transcriber
     /// </summary>
     public const int LineBytes = 2 * Captions.MaxLine;
 
-    /// <param name="stream">Which audio stream (<see cref="Captions.Stream"/>).</param>
+    /// <param name="streams">Which audio streams, heard together (<see cref="Captions.Streams"/>).</param>
     /// <param name="modelPath">Default: the downloaded model.</param>
     /// <param name="runtimeFolder">Default: the downloaded engine (<see cref="CaptionRuntime.Default"/>).</param>
-    public static IReadOnlyList<Caption> Run(string clip, int stream, IProgress<double>? progress, CancellationToken ct,
+    public static IReadOnlyList<Caption> Run(string clip, IReadOnlyList<int> streams, IProgress<double>? progress, CancellationToken ct,
         string? modelPath = null, string? runtimeFolder = null)
     {
         modelPath ??= CaptionModel.Default.Path;
@@ -30,7 +30,7 @@ public static unsafe class Transcriber
             throw new CaptionException("The captions model is not downloaded.");
         WhisperNative.Load(runtimeFolder ?? CaptionRuntime.Default.Folder);
 
-        var sound = TrackAudio.Read(clip, stream, progress == null ? null : new ScaledProgress(progress, 0, ReadShare), ct);
+        var sound = TrackAudio.Read(clip, streams, progress == null ? null : new ScaledProgress(progress, 0, ReadShare), ct);
         double soundStart = sound.Start;
         // Only where someone talks, one part after another: no lines made up in the quiet, and each line timed from
         // its own words.

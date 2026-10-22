@@ -88,6 +88,16 @@ public sealed partial class EditorViewModel
         _lastAmend = kind;
     }
 
+    /// <summary>
+    /// Texts left without words (a new one whose words were to be typed in the inspector, and were not) go, each with
+    /// the step that made it.
+    /// </summary>
+    public void DropEmptyTexts()
+    {
+        foreach (var text in Project.Items.OfType<TextItem>().Where(t => t.Text.Length == 0).ToList())
+            Amend("text:" + text.Id, Project.Without(text.Id));
+    }
+
     /// <summary>Free removes the crop; a ratio takes the largest centred box of that shape.</summary>
     void Crop(string ratio)
     {

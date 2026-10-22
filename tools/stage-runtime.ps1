@@ -9,7 +9,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$plugins = 'win-capture', 'win-wasapi', 'obs-nvenc', 'obs-ffmpeg', 'obs-qsv11', 'obs-x264'
+# win-dshow (cameras) and obs-filters (the round camera's mask) load only when the camera is turned on.
+$plugins = 'win-capture', 'win-wasapi', 'obs-nvenc', 'obs-ffmpeg', 'obs-qsv11', 'obs-x264', 'win-dshow', 'obs-filters'
+# OBS's own virtual camera (a device it registers) is not Kairos's: its files stay out.
+$virtualCam = 'obs-virtualcam-module*.dll', 'virtualcam-install.bat', 'virtualcam-uninstall.bat', 'placeholder.png'
 # Not loaded by anything Kairos ships: the OBS window (Qt), scripting, OpenGL, and WebRTC (datachannel, obs-webrtc's only).
 $skipDlls = '^(Qt6.*|obs-frontend-api|obs-scripting|lua51|libobs-opengl|python.*|datachannel)\.dll$'
 $helperExes = 'obs-ffmpeg-mux.exe', 'obs-nvenc-test.exe', 'obs-amf-test.exe', 'obs-qsv-test.exe'
@@ -39,7 +42,7 @@ foreach ($p in $plugins) {
     $data = "$Obs\data\obs-plugins\$p"
     if (Test-Path $data) {
         # libobs starts in en-US (ObsHost): of a plugin's translations only its en-US.ini is ever read.
-        Copy-Tree $data "$dataRoot\obs-plugins\$p" /XD "$data\locale"
+        Copy-Tree $data "$dataRoot\obs-plugins\$p" /XD "$data\locale" /XF @virtualCam
         if (Test-Path "$data\locale\en-US.ini") {
             New-Item -ItemType Directory -Force "$dataRoot\obs-plugins\$p\locale" | Out-Null
             Copy-Item "$data\locale\en-US.ini" "$dataRoot\obs-plugins\$p\locale" -Force

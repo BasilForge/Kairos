@@ -15,18 +15,19 @@ namespace Kairos.Ui;
 /// Settings being edited plus live engine status. Edits refresh every binding; option lists are cached so
 /// dropdowns are not rebuilt, and the 1 s status poll only refreshes the status properties.
 /// </summary>
-public sealed class SettingsViewModel : INotifyPropertyChanged
+public sealed partial class SettingsViewModel : INotifyPropertyChanged
 {
     static readonly int[] SecondsSteps = [15, 30, 60, 90, 120, 180, 240, 300, 420, 600, 900, 1200];
     static readonly string[] StatusProperties =
     [
+        nameof(CanCheckUpdates), nameof(IsCheckingUpdates), nameof(UpdateLookText), nameof(UpdateLookOk), nameof(UpdateLookFailed), nameof(UpdateLookIdle),
         nameof(EngineOnline), nameof(State), nameof(StateTitle), nameof(StateDetail), nameof(BufferProgress), nameof(BufferText),
         nameof(MemoryText), nameof(QualityText), nameof(EncoderText), nameof(LastClipPath), nameof(LastShotPath),
-        nameof(LastClipName), nameof(LastShotName), nameof(HasLastClip), nameof(HasLastShot), nameof(FolderWarning), nameof(EffectiveFolder),
+        nameof(LastClipName), nameof(LastShotName), nameof(HasLastClip), nameof(HasLastShot), nameof(CloudOff), nameof(FolderWarning), nameof(CaptureWarning), nameof(CameraOn), nameof(EffectiveFolder),
         nameof(SaveVisible), nameof(ReplayPauseVisible), nameof(ReplayPauseTip), nameof(RecordState), nameof(RecordTitle), nameof(RecordDetail),
         nameof(IsRecording), nameof(IsRecordingLive), nameof(StartPrimaryVisible), nameof(StartGhostVisible), nameof(RecordPauseLabel),
         nameof(VoiceView), nameof(ShotView), nameof(VoiceStep), nameof(VoiceDone1), nameof(VoiceDone2), nameof(VoiceDone3), nameof(VoiceMessage),
-        nameof(VoiceResult), nameof(VoiceLastMatch), nameof(VoiceStrength), nameof(VoiceNote),
+        nameof(VoiceResult), nameof(VoiceLastMatch), nameof(VoiceStrength), nameof(VoiceNote), nameof(Av1NeedsExtension),
     ];
 
     AppSettings _s = new();
@@ -53,7 +54,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         RecordCommand = new RelayCommand(_ => SendAsync("record"));
         PauseRecordCommand = new RelayCommand(_ => SendAsync("pause-record"));
         OpenFolderCommand = new RelayCommand(_ => OpenFolder(EffectiveFolder));
-        OpenLastClipCommand = new RelayCommand(_ => Shell(LastClipPath), _ => File.Exists(LastClipPath));
+        ReportCommand = new RelayCommand(_ => SaveReport());
+        OpenLastClipCommand = new RelayCommand(_ => Shell(LastClipPath), _ => HasLastClip);
         StartEngineCommand = new RelayCommand(_ => StartEngine());
         ApplyCommand = new RelayCommand(_ => Apply(), _ => IsDirty);
         RevertCommand = new RelayCommand(_ => Load(), _ => IsDirty);
@@ -75,6 +77,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         ShareLastShotCommand = new RelayCommand(_ => { if (HasLastShot) ShareRequested?.Invoke(LastShotPath!); });
         ViewLastShotCommand = new RelayCommand(_ => { if (HasLastShot) PictureRequested?.Invoke(LastShotPath!); });
         VoiceSetUpCommand = new RelayCommand(_ => NavigateRequested?.Invoke("voice"));
+        ShowHotkeysCommand = new RelayCommand(_ => NavigateRequested?.Invoke("hotkeys"));
+        InstallAv1Command = new RelayCommand(_ => InstallAv1());
         VoiceDismissHintCommand = new RelayCommand(_ => DismissVoiceHint());
     }
 
@@ -92,6 +96,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             PipeClient.Send("voice-cancel", 800);
         _poll.Stop();
         _watcher?.Dispose();
+        // Unsaved volumes and mutes were heard while the window was open: the saved ones come back with it closed (after
+        // any still on their way, so none lands after them).
+        if (_savedJson != null && IsDirty)
+        {
+            string saved = Ipc.LiveLine(SettingsStore.Deserialize(_savedJson).Audio);
+            _liveSends.Wait(1500);
+            Send(saved, 500);
+        }
     }
 
     FileSystemWatcher? _watcher;
@@ -142,9 +154,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public void Seed(StatusDto? status, CapsDto? caps)
     {
         _status = status;
+        ShowLookForAMoment();
         UpdateLatestPictures();
         RefreshKeyStates();
         SetCaps(caps);
+        RefreshAudioRowStates();
     }
 
     /// <summary>A status as if the poll had brought it (used by --render livecheck).</summary>
@@ -160,10 +174,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     void RaiseStatus()
     {
         Raise(StatusProperties);
-        if (Update == _updateShown)
+        ShowLookForAMoment();
+        // The card's lines come as a new list with each status but change only with the version: left out of the comparison.
+        var update = Update is { } u ? u with { Summary = null } : null;
+        if (update == _updateShown)
             return;
-        _updateShown = Update;
-        Raise(nameof(UpdateBarVisible), nameof(UpdateText), nameof(UpdateActionVisible), nameof(UpdateActionText), nameof(UpdateNotesVisible));
+        _updateShown = update;
+        RaiseUpdate();
         // WPF asks a button again only after input: a bar that just appeared would keep its Update grey until a click.
         CommandManager.InvalidateRequerySuggested();
     }
@@ -176,8 +193,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public ICommand ShareLastShotCommand { get; }
     public ICommand ViewLastShotCommand { get; }
 
-    public bool HasLastClip => File.Exists(LastClipPath);
-    public bool HasLastShot => File.Exists(LastShotPath);
+    public bool HasLastClip => _hasLastClip;
+    public bool HasLastShot => _hasLastShot;
+    bool _hasLastClip, _hasLastShot;
     public string LastShotName => HasLastShot ? Path.GetFileNameWithoutExtension(LastShotPath!) : Text.Get("status.noShot");
     public System.Windows.Media.Imaging.BitmapSource? LastClipThumbnail { get; private set; }
     public System.Windows.Media.Imaging.BitmapSource? LastShotThumbnail { get; private set; }
@@ -197,6 +215,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             ShellThumbnail.Request(path, image => dispatcher?.BeginInvoke(() => set(image)));
         }
+        // Checked on disk once per status, not by every reader.
+        _hasLastClip = File.Exists(LastClipPath);
+        _hasLastShot = File.Exists(LastShotPath);
         Fetch(LastClipPath, ref _clipThumbFor, image => { LastClipThumbnail = image; Raise(nameof(LastClipThumbnail)); });
         Fetch(LastShotPath, ref _shotThumbFor, image => { LastShotThumbnail = image; Raise(nameof(LastShotThumbnail)); });
     }
@@ -223,11 +244,49 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         RaiseAll();
     }
 
+    /// <summary>A volume or mute: unsaved like any change, and heard at once (the engine sets it on its sources, no rebuild).</summary>
+    void SetLive(Action change)
+    {
+        Set(change);
+        SendLiveAudio();
+    }
+
+    DateTime _liveSentUtc;
+    bool _livePending;
+    /// <summary>The volume lines in the order they were made: each waits for the one before (never an older one last).</summary>
+    Task _liveSends = Task.CompletedTask;
+
+    /// <summary>The volumes and mutes to the engine, at most 20 times a second (the last one always goes).</summary>
+    void SendLiveAudio()
+    {
+        if (_livePending)
+            return;
+        var wait = TimeSpan.FromMilliseconds(50) - (DateTime.UtcNow - _liveSentUtc);
+        if (wait > TimeSpan.Zero)
+        {
+            _livePending = true;
+            _ = Task.Delay(wait).ContinueWith(_ => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+            {
+                _livePending = false;
+                SendLiveAudio();
+            }));
+            return;
+        }
+        _liveSentUtc = DateTime.UtcNow;
+        string line = Ipc.LiveLine(_s.Audio);
+        var send = Send;
+        _liveSends = _liveSends.ContinueWith(_ => send(line, 500), TaskScheduler.Default);
+    }
+
     public void Load()
     {
+        bool live = _savedJson != null && IsDirty; // Revert: the engine goes back to the saved volumes too
         _s = SettingsStore.Load(SettingsStore.DefaultPath);
         _savedJson = SettingsStore.Serialize(_s);
         IsDirty = false;
+        if (live)
+            SendLiveAudio();
+        RebuildAudioRows();
         BuildTextOptions();
         RebuildOptions();
         ApplyAccent();
@@ -240,13 +299,44 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     Engine.Updates.UpdateStatus? Update => _status?.Update;
 
-    public bool UpdateBarVisible => Update is { State: not Engine.Updates.UpdateState.None };
+    void RaiseUpdate() => Raise(nameof(UpdateBarVisible), nameof(UpdateCardVisible), nameof(UpdateSummary), nameof(UpdateCardTitle),
+        nameof(UpdateText), nameof(UpdateActionVisible), nameof(UpdateActionText), nameof(UpdateNotesVisible), nameof(UpdateCardStatusVisible));
+
+    /// <summary>The Status page is shown (the window sets it): an important update is its card there, not the slim bar.</summary>
+    public bool OnStatusPage
+    {
+        get => _onStatusPage;
+        set
+        {
+            if (_onStatusPage == value)
+                return;
+            _onStatusPage = value;
+            RaiseUpdate();
+        }
+    }
+    bool _onStatusPage;
+
+    bool UpdateOffered => Update is { Offered: true };
+
+    /// <summary>The slim bar above every page; on the Status page an important update has its card instead.</summary>
+    public bool UpdateBarVisible => UpdateOffered && !UpdateCardVisible;
+
+    /// <summary>An important update on the Status page: a card with what it brings and Update now.</summary>
+    public bool UpdateCardVisible => UpdateOffered && Update!.Important && OnStatusPage;
+
+    public string UpdateCardTitle => Update is { } u ? Text.Format("update.ready", AppInfo.Display(u.Version)) : "";
+
+    public IReadOnlyList<string> UpdateSummary => Update?.Summary ?? [];
+
+    /// <summary>While it downloads or waits, the card says so where its buttons were.</summary>
+    public bool UpdateCardStatusVisible => UpdateOffered && !UpdateActionVisible;
 
     public string UpdateText => Update switch
     {
         { State: Engine.Updates.UpdateState.Downloading } u => Text.Format("update.downloading", u.Percent),
         { State: Engine.Updates.UpdateState.WaitingForRecording } => Text.Get("update.waiting"),
         { State: Engine.Updates.UpdateState.WaitingForWindow } => Text.Get("update.waitingWindow"),
+        { State: Engine.Updates.UpdateState.WaitingForGame } => Text.Get("update.waitingGame"),
         { State: Engine.Updates.UpdateState.Failed } => Text.Get("update.failed"),
         { State: Engine.Updates.UpdateState.Ready } => Text.Get("update.restarting"),
         { } u => Text.Format("update.available", AppInfo.Display(u.Version)),
@@ -272,9 +362,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public ICommand UpdateNotesCommand => _updateNotesCommand ??= new RelayCommand(_ =>
     {
         if (Update?.NotesUrl is { } url)
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            App.ShellPaths.Open(url);
     });
     RelayCommand? _updateNotesCommand;
+
+    public ICommand OpenDiscordCommand { get; } = new RelayCommand(_ => App.ShellPaths.Open(AppInfo.DiscordUrl));
     public string Message => IsDirty ? Text.Get("bar.unsaved") : _message;
     public bool ShowBar => IsDirty || _message.Length > 0;
     public string VersionText => Text.Format("general.version", AppInfo.Display(AppInfo.Version));
@@ -308,6 +400,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public ICommand RemoveCaptionModelCommand => _removeCaptionModel ??= new RelayCommand(_ =>
     {
+        if (App.SideEffects.Held("remove the auto captions engine and model"))
+            return;
         try
         {
             _captionModel.Remove();
@@ -343,6 +437,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// <summary>The fixed lists, labelled in the current language (built again after a language switch).</summary>
     void BuildTextOptions()
     {
+        _diskDrives = null;
         FpsOptions = [.. new[] { 30, 60, 90, 120, 144, 165, 240 }.Select(f => new Option(Text.Ltr($"{f} fps"), f))];
         QuickOptions = [.. new[] { 10, 15, 20, 30, 45, 60 }.Select(s => new Option(Text.Format("unit.seconds", s), s))];
         AudioBitrates = [.. new[] { 128, 160, 192, 256, 320 }.Select(b => new Option(Text.Ltr($"{b} kbps"), b))];
@@ -360,20 +455,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         RaiseAll();
     }
 
-    /// <summary>The running apps' windows, the saved one first while it is closed (so the choice still shows).</summary>
-    List<Option> WindowOptions(string saved)
-    {
-        var options = (_caps?.Windows ?? []).Select(w => new Option(w.Name, w.Value)).ToList();
-        if (!string.IsNullOrEmpty(saved) && options.All(o => (string)o.Value != saved))
-            options.Insert(0, new Option(App.WindowTarget.Title(saved) ?? saved, saved));
-        return options;
-    }
-
     void RebuildOptions()
     {
         Monitors = [.. (_caps?.Monitors ?? []).Select(m => new Option(MonitorLabel(m), m.Id))];
 
-        Windows = WindowOptions(_s.Capture.Window);
+        // "[Spotify.exe]: Spotify" read left to right, or a right-to-left window turns its brackets round.
+        Windows = [.. (_caps?.Windows ?? []).Select(w => new Option(Text.Ltr(w.Name), w.Value))];
 
         Speakers = DeviceOptions(_caps?.Speakers);
         Mics = DeviceOptions(_caps?.Mics);
@@ -381,6 +468,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
 
     (int W, int H) _resolutionsFor;
+
+    /// <summary>On a screen above 1440p: what the default 1440p does to its clips, and what Native keeps.</summary>
+    public string ResolutionHint => BaseSize.H > 1440 ? Text.Get("quality.res4k") : "";
 
     void RebuildResolutions()
     {
@@ -409,7 +499,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     static List<Option> DeviceOptions(List<NameValue>? devices)
     {
         var list = (devices ?? [])
-            .Select(d => new Option(d.Value == "default" ? Text.Get("audio.default") : d.Name, d.Value)).ToList();
+            .Select(d => new Option(d.Value == "default" ? Text.Get("audio.default") : Text.Ltr(d.Name), d.Value)).ToList();
         if (list.All(o => (string)o.Value != "default"))
             list.Insert(0, new Option(Text.Get("audio.default"), "default"));
         return list;
@@ -418,6 +508,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     // ------------------------------------------------------------------ capture
 
     public CaptureMode Mode { get => _s.Capture.Mode; set => Set(() => _s.Capture.Mode = value); }
+
+    /// <summary>Windows 10 with Apps chosen: the line saying its yellow frame around the app is not in the clip.</summary>
+    public bool AppsYellowFrame => Mode == CaptureMode.Window && WindowsCaptureFrame.Shown;
 
     /// <summary>Shown selection: the saved monitor, or the one the engine will actually use (primary).</summary>
     public string MonitorId
@@ -433,8 +526,112 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
-    public string WindowTarget { get => _s.Capture.Window; set => Set(() => _s.Capture.Window = value ?? ""); }
+    /// <summary>Apps mode: the chosen apps, named as their windows are (or by their saved title while closed).</summary>
+    public List<Option> ChosenApps => AppLists().Chosen;
+
+    /// <summary>The open apps not chosen yet.</summary>
+    public List<Option> AddableApps => AppLists().Addable;
+
+    (string Apps, List<Option> Windows, List<Option> Chosen, List<Option> Addable)? _appLists;
+
+    /// <summary>The two lists, made again only when the apps or the open windows change (every change raises them all).</summary>
+    (List<Option> Chosen, List<Option> Addable) AppLists()
+    {
+        string apps = string.Join("|", _s.Capture.Apps);
+        if (_appLists is not { } made || made.Apps != apps || made.Windows != Windows)
+        {
+            var chosen = _s.Capture.Apps.Select(App.WindowTarget.AppKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            made = (apps, Windows, [.. _s.Capture.Apps.Select(a => new Option(AppLabel(a), a))],
+                // One line per app: the one in front is recorded, so an app's second window adds nothing.
+                [.. Windows.Where(o => !chosen.Contains(App.WindowTarget.AppKey((string)o.Value)))
+                    .DistinctBy(o => App.WindowTarget.AppKey((string)o.Value), StringComparer.OrdinalIgnoreCase)]);
+            _appLists = made;
+        }
+        return (made.Chosen, made.Addable);
+    }
+
+    public bool CanAddApp => _s.Capture.Apps.Count < CaptureSettings.MaxApps;
+
+    /// <summary>Picking an open app adds it (the list then shows it; this choice empties again).</summary>
+    public string? AppToAdd
+    {
+        get => null;
+        set
+        {
+            if (value is { Length: > 0 } && CanAddApp)
+                Set(() => _s.Capture.Apps.Add(value));
+        }
+    }
+
+    public ICommand RemoveAppCommand => _removeApp ??= new RelayCommand(p =>
+    {
+        if (p is string app)
+            Set(() => _s.Capture.Apps.Remove(app));
+    });
+    RelayCommand? _removeApp;
+
+    string AppLabel(string app) =>
+        Windows.FirstOrDefault(o => (string)o.Value == app)?.Label ?? Text.Ltr(App.WindowTarget.Title(app) ?? App.WindowTarget.ExeName(app) ?? app);
     public bool GameFallback { get => _s.Capture.GameFallbackToScreen; set => Set(() => _s.Capture.GameFallbackToScreen = value); }
+
+    // The camera: off until turned on; its list is asked of the engine only then (win-dshow loads then, never before).
+    public bool CameraEnabled
+    {
+        get => _s.Camera.Enabled;
+        set
+        {
+            Set(() => _s.Camera.Enabled = value);
+            if (value && CameraDevices.Count == 0)
+                LoadCameras();
+        }
+    }
+
+    public List<Option> CameraDevices { get; private set; } = [];
+    /// <summary>The camera (and its light) is on now: the Status page says so.</summary>
+    public bool CameraOn => _status?.Engine?.CameraOn == true;
+    /// <summary>
+    /// The chosen camera. A null from the list (the saved camera unplugged, or the list not read yet) is WPF's, not the
+    /// user's: it never replaces the saved choice.
+    /// </summary>
+    public string CameraDevice
+    {
+        get => _s.Camera.Device;
+        set
+        {
+            if (value != null)
+                Set(() => _s.Camera.Device = value);
+        }
+    }
+    public CameraLayout CameraLayout { get => _s.Camera.Layout; set => Set(() => _s.Camera.Layout = value); }
+    public bool CameraRound { get => _s.Camera.Shape == CameraShape.Round; set => Set(() => _s.Camera.Shape = value ? CameraShape.Round : CameraShape.Square); }
+    public double CameraX { get => _s.Camera.X; set => Set(() => _s.Camera.X = value); }
+    public double CameraY { get => _s.Camera.Y; set => Set(() => _s.Camera.Y = value); }
+    public double CameraSize { get => _s.Camera.Size; set => Set(() => _s.Camera.Size = value); }
+    public bool CameraSeparateFile { get => _s.Camera.SeparateFile; set => Set(() => _s.Camera.SeparateFile = value); }
+
+    void LoadCameras() => Task.Run(LoadCamerasNow);
+
+    void LoadCamerasNow()
+    {
+        string? reply = PipeClient.Send("cameras", 6000);
+        if (reply == null)
+            return; // the engine did not answer: the list stays empty, so it is asked again once the engine is online
+        List<NameValue> found = [];
+        try
+        {
+            if (reply != null)
+                found = JsonSerializer.Deserialize<List<NameValue>>(reply, Ipc.Json) ?? [];
+        }
+        catch (JsonException)
+        {
+        }
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            CameraDevices = [new Option(Text.Get(found.Count > 0 ? "capture.cameraFirst" : "capture.cameraNone"), ""),
+                .. found.Select(c => new Option(c.Name, c.Value))];
+            Raise(nameof(CameraDevices), nameof(CameraDevice));
+        });
+    }
     public bool CaptureCursor { get => _s.Capture.CaptureCursor; set => Set(() => _s.Capture.CaptureCursor = value); }
 
     public int SecondsIndex
@@ -445,22 +642,144 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public int SecondsMaxIndex => SecondsSteps.Length - 1;
     public string BufferLength => Text.Duration(_s.Replay.Seconds);
     public bool QuickEnabled { get => _s.Replay.QuickEnabled; set => Set(() => _s.Replay.QuickEnabled = value); }
+    /// <summary>The quick clip is on but has no hotkey: only the tray menu would save one.</summary>
+    public bool QuickNeedsKey => _s.Replay.QuickEnabled && string.IsNullOrWhiteSpace(_s.Hotkeys.Quick);
+    public ICommand ShowHotkeysCommand { get; }
     public int QuickSeconds { get => _s.Replay.QuickSeconds; set => Set(() => _s.Replay.QuickSeconds = value); }
+    public bool FreshAfterSave { get => _s.Replay.FreshAfterSave; set => Set(() => _s.Replay.FreshAfterSave = value); }
+
+    /// <summary>The replay in a ring file on a drive instead of RAM (<see cref="Engine.Replay.ReplayRing"/>).</summary>
+    public bool ReplayOnDisk { get => _s.Replay.OnDisk; set => Set(() => _s.Replay.OnDisk = value); }
+
+    IReadOnlyList<DriveKinds.Drive>? _drives;
+    List<Option>? _diskDrives;
+
+    /// <summary>The fixed drives, asked once per window (free space and kind barely change while it is open).</summary>
+    IReadOnlyList<DriveKinds.Drive> Drives => _drives ??= FixedDrives();
+
+    /// <summary>The PC's fixed drives; tests set their own.</summary>
+    internal static Func<IReadOnlyList<DriveKinds.Drive>> FixedDrives = DriveKinds.Fixed;
+
+    /// <summary>
+    /// "D: · HDD · 820 GB free" for each drive (right-to-left marks around the dots keep its order in Arabic); asked only
+    /// once the switch is on (a drive scan can wake a sleeping hard disk).
+    /// </summary>
+    public List<Option> DiskDrives => !ReplayOnDisk ? NoDrives : _diskDrives ??= [.. Drives.Select(d => new Option(
+        string.Join(Text.IsRightToLeft ? " \u200F·\u200F " : " · ", new[] { Text.Ltr(d.Name), d.Hdd switch { true => Text.Ltr("HDD"), false => Text.Ltr("SSD"), _ => null },
+            Text.Format("capture.diskFree", Text.Ltr(FormatSize(d.FreeBytes))) }.Where(p => p != null)), d.Name))];
+
+    /// <summary>One empty list while the switch is off: a new one on every refresh would make the list pick again.</summary>
+    static readonly List<Option> NoDrives = [];
+
+    /// <summary>
+    /// The replay's drive: the chosen one, else the clips folder's. The list's own "nothing picked" (null, while it
+    /// fills or empties) and the same drive again change nothing: a change refreshes the list, which would set it again.
+    /// </summary>
+    public string DiskDrive
+    {
+        get => _s.Replay.DiskDrive ?? (Engine.Replay.DiskReplayPlace.IsFixed(EffectiveFolder) && Path.GetPathRoot(EffectiveFolder) is { Length: > 0 } root
+            ? root.TrimEnd('\\').ToUpperInvariant()
+            : (Path.GetPathRoot(Environment.SystemDirectory) ?? "C:").TrimEnd('\\'));
+        set
+        {
+            if (!string.IsNullOrEmpty(value) && !value.Equals(DiskDrive, StringComparison.OrdinalIgnoreCase))
+                Set(() => _s.Replay.DiskDrive = value);
+        }
+    }
+
+    /// <summary>The replay's drive is a hard disk: a game on it may load slower.</summary>
+    public bool DiskDriveIsHdd => ReplayOnDisk && Drives.FirstOrDefault(d => d.Name.Equals(DiskDrive, StringComparison.OrdinalIgnoreCase))?.Hdd == true;
+
+    /// <summary>The place bar's disk side: the drive's kind once chosen, both kinds while RAM is (no drive asked then).</summary>
+    public string DiskKind => !ReplayOnDisk ? "SSD/HDD" : DiskDriveIsHdd ? "HDD" : "SSD";
 
     // ------------------------------------------------------------------ quality
 
     IReadOnlyCollection<string>? EncoderIds => _caps?.Encoders;
 
-    public VideoCodec Codec { get => _s.Video.Codec; set => Set(() => _s.Video.Codec = value); }
+    CapsDto? _cardOf;
+    IReadOnlyCollection<string> _card = [];
+
+    /// <summary>The encoders of the card that records (<see cref="EncoderCatalog.FirstCard"/>), worked out once per engine answer.</summary>
+    IReadOnlyCollection<string>? CardIds
+    {
+        get
+        {
+            if (_caps == null)
+                return null;
+            if (_cardOf != _caps)
+                (_cardOf, _card) = (_caps, EncoderCatalog.FirstCard(_caps.Encoders));
+            return _card;
+        }
+    }
+
+
+    /// <summary>The chosen format, or what records instead when this card cannot (its card greyed out, never ticked).</summary>
+    public VideoCodec Codec
+    {
+        get => CardIds is { } card ? SmartSetup.ManualCodec(_s.Video.Codec, card) : _s.Video.Codec;
+        set => Set(() => _s.Video.Codec = value);
+    }
     public bool Av1Available => CodecAvailable(VideoCodec.Av1);
     public bool HevcAvailable => CodecAvailable(VideoCodec.Hevc);
     public bool H264Available => CodecAvailable(VideoCodec.H264);
-    bool CodecAvailable(VideoCodec c) => EncoderIds == null || EncoderCatalog.HasHardware(c, EncoderIds);
-    VideoCodec Recommended => Av1Available ? VideoCodec.Av1 : HevcAvailable ? VideoCodec.Hevc : VideoCodec.H264;
-    public bool Av1Recommended => Recommended == VideoCodec.Av1;
-    public bool HevcRecommended => Recommended == VideoCodec.Hevc;
-    public bool H264Recommended => Recommended == VideoCodec.H264;
+    bool CodecAvailable(VideoCodec c) => CardIds is not { } card || EncoderCatalog.HasHardware(c, card);
+
+    /// <summary>
+    /// Each format's line: a format the card cannot record says so; AV1 and HEVC their size, and the extension Windows
+    /// still needs to play them only where it lacks it.
+    /// </summary>
+    public string Av1Tip => FormatTip(VideoCodec.Av1, "quality.codecAv1Tip", "quality.codecAv1NeedsExtension");
+    public string HevcTip => FormatTip(VideoCodec.Hevc, "quality.codecHevcTip", "quality.codecHevcNeedsExtension");
+    public string H264Tip => FormatTip(VideoCodec.H264, "quality.codecH264Tip", null);
+
+    string FormatTip(VideoCodec codec, string tip, string? needsExtension) =>
+        !CodecAvailable(codec) ? Text.Get("quality.unsupported")
+        : needsExtension != null && !Plays(codec) ? Text.Get(needsExtension)
+        : Text.Get(tip);
     public bool CpuOnly => EncoderIds != null && !Av1Available && !HevcAvailable && !H264Available;
+
+    /// <summary>Whether Windows plays a format (<see cref="CodecPlayback"/>); tests set their own.</summary>
+    internal static Func<VideoCodec, bool> Plays = CodecPlayback.CanPlay;
+
+    /// <summary>The format recorded: Automatic's (the engine's pick, else its H.264), or the one chosen.</summary>
+    VideoCodec RecordedCodec => AutoQuality
+        ? _status?.Engine?.Auto is { } auto ? EncoderCatalog.ById(auto.Encoder).Codec : SmartSetup.DefaultCodec
+        : Codec;
+
+    /// <summary>AV1 is recorded and Windows cannot play it (Windows 10 often): its free extension is offered.</summary>
+    public bool Av1NeedsExtension => RecordedCodec == VideoCodec.Av1 && !Plays(VideoCodec.Av1);
+    public bool Av1Installing { get; private set; }
+    public bool Av1InstallReady => !Av1Installing;
+    public ICommand InstallAv1Command { get; }
+
+    /// <summary>
+    /// The free AV1 Video Extension from the Microsoft Store through winget, hidden; where that did not install it (no
+    /// winget, no Store), the Store's page opens instead.
+    /// </summary>
+    async void InstallAv1()
+    {
+        Av1Installing = true;
+        Raise(nameof(Av1Installing), nameof(Av1InstallReady));
+        bool plays = await Task.Run(() =>
+        {
+            try
+            {
+                var psi = new ProcessStartInfo(App.ShellPaths.Winget, $"install --id {CodecPlayback.Av1ExtensionId} --source msstore --silent " +
+                                                         "--accept-package-agreements --accept-source-agreements --disable-interactivity")
+                { UseShellExecute = false, CreateNoWindow = true };
+                using var p = Process.Start(psi);
+                p?.WaitForExit(180_000);
+            }
+            catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException) { }
+            CodecPlayback.Forget(VideoCodec.Av1);
+            return Plays(VideoCodec.Av1); // asked off the window's thread
+        });
+        if (!plays)
+            App.ShellPaths.Open($"ms-windows-store://pdp/?ProductId={CodecPlayback.Av1ExtensionId}");
+        Av1Installing = false;
+        Raise(nameof(Av1Installing), nameof(Av1InstallReady), nameof(Av1NeedsExtension));
+    }
 
     /// <summary>Saved resolution, or Native when the saved one is not offered on this monitor.</summary>
     public OutputResolution Resolution
@@ -499,6 +818,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             var (w, h) = VideoMath.OutputSize(bw, bh, _s.Video.Resolution);
             var plan = EncoderPresets.Plan(_s.Video.Codec, _s.Video.Quality, w, h, _s.Video.Fps, _s.Video.CustomCq,
                 _s.Video.CustomMbps, nvencAvailable: true, _s.Video.Preset);
+            if (_s.Replay.OnDisk)
+                return Text.Format("quality.estimateDisk", Text.Ltr(FormatSize(Engine.Replay.DiskReplayPlace.RingBytes(
+                    plan.MaxBitrateKbps + _s.Audio.BitrateKbps * Math.Max(1, _s.Audio.Layout == AudioLayout.Separate ? 6 : 3), _s.Replay.Seconds))));
             int estimate = EncoderPresets.EstimateBufferMb(plan.MaxBitrateKbps, _s.Replay.Seconds);
             int mb = Math.Min(estimate, BufferBudget.CapMb(estimate, BufferBudget.PhysicalMemoryBytes));
             return Text.Format("quality.estimate", Text.Ltr(FormatSize(mb * 1024L * 1024)));
@@ -509,7 +831,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public bool AudioSystem { get => _s.Audio.System; set => Set(() => _s.Audio.System = value); }
     public string SystemDevice { get => _s.Audio.SystemDevice; set => Set(() => _s.Audio.SystemDevice = value ?? "default"); }
-    public double SystemVolume { get => Math.Round(_s.Audio.SystemVolume * 100); set => Set(() => _s.Audio.SystemVolume = value / 100.0); }
+    public double SystemVolume { get => Math.Round(_s.Audio.SystemVolume * 100); set => SetLive(() => _s.Audio.SystemVolume = value / 100.0); }
     public bool Mic { get => _s.Audio.Mic; set => Set(() => _s.Audio.Mic = value); }
     public string MicDevice
     {
@@ -520,11 +842,16 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 Set(() => _s.Audio.SelectMic(value));
         }
     }
-    public double MicVolume { get => Math.Round(_s.Audio.MicVolume * 100); set => Set(() => _s.Audio.MicVolume = value / 100.0); }
+    public double MicVolume { get => Math.Round(_s.Audio.MicVolume * 100); set => SetLive(() => _s.Audio.MicVolume = value / 100.0); }
     public bool SeparateTracks { get => _s.Audio.SeparateTracks; set => Set(() => _s.Audio.SeparateTracks = value); }
     public bool SourceAudioOnly { get => _s.Audio.SourceAudioOnly; set => Set(() => _s.Audio.SourceAudioOnly = value); }
 
-    public bool SourceAudioPossible => _s.Capture.Mode != CaptureMode.Screen;
+    public bool SourceAudioPossible => _s.Capture.Mode != CaptureMode.Screen && Engine.Audio.ProcessAudioSupport.Available;
+
+    /// <summary>Separate sources need Windows 10 version 2004 or later (an app's own sound).</summary>
+    public bool SeparateSourcesAvailable => Engine.Audio.ProcessAudioSupport.Available;
+
+    public string SeparateSourcesNote => SeparateSourcesAvailable ? "" : Text.Get("audio.separateNeedsWindows");
     public int AudioBitrate { get => _s.Audio.BitrateKbps; set => Set(() => _s.Audio.BitrateKbps = value); }
 
 
@@ -678,9 +1005,121 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public string Folder { get => _s.Output.Folder; set => Set(() => _s.Output.Folder = value ?? ""); }
     public bool PerAppFolders { get => _s.Output.PerAppFolders; set => Set(() => _s.Output.PerAppFolders = value); }
+
+    /// <summary>OneDrive, Dropbox and Google Drive on this PC: one press saves new clips in its Kairos folder.</summary>
+    public IReadOnlyList<Option> CloudChoices => _cloudChoices ??= [.. Clouds().Select(c => new Option(CloudName(c.Kind), c.Path))];
+    IReadOnlyList<Option>? _cloudChoices;
+    public bool HasCloud => Clouds().Count > 0;
+
+    /// <summary>The cloud apps on this PC (<see cref="App.CloudFolders.OnThisPc"/>); tests and renders set their own.</summary>
+    internal static Func<IReadOnlyList<App.CloudFolder>> Clouds = App.CloudFolders.OnThisPc;
+    public ICommand SaveToCloudCommand => _saveToCloud ??= new RelayCommand(p =>
+    {
+        if (p is string provider)
+            Set(() => _s.Output.Folder = Path.Combine(provider, AppInfo.Name));
+    });
+    RelayCommand? _saveToCloud;
+
+    static string CloudName(App.CloudKind kind) => kind switch
+    {
+        App.CloudKind.OneDrive => "OneDrive",
+        App.CloudKind.Dropbox => "Dropbox",
+        _ => "Google Drive",
+    };
+
+    App.CloudFolder? FolderCloud => App.CloudFolders.Under(Folder, Clouds());
+    /// <summary>The clips folder is in OneDrive or Dropbox: the switch to keep saved files online only shows.</summary>
+    public bool ShowsFreeLocal => FolderCloud is { Streams: false };
+    /// <summary>The clips folder is in Google Drive, which keeps them online by itself.</summary>
+    public bool ShowsCloudStreams => FolderCloud is { Streams: true };
+    /// <summary>The clips folder is in a cloud whose app is not running: said, as nothing uploads until it runs.</summary>
+    /// <remarks>Read on every change and every status poll: the process snapshot is taken at most every few seconds.</remarks>
+    public string CloudOff
+    {
+        get
+        {
+            var cloud = FolderCloud;
+            if (_cloudOff is not { } c || c.Kind != cloud?.Kind || DateTime.UtcNow - c.At > TimeSpan.FromSeconds(5))
+                _cloudOff = c = (cloud?.Kind, DateTime.UtcNow,
+                    cloud != null && !App.CloudFolders.ClientRunning(cloud.Kind) ? Text.Format("general.cloudOff", CloudName(cloud.Kind)) : "");
+            return c.Text;
+        }
+    }
+    (App.CloudKind? Kind, DateTime At, string Text)? _cloudOff;
+    public bool FreeLocalCopies { get => _s.Output.FreeLocalCopies; set => Set(() => _s.Output.FreeLocalCopies = value); }
     public int MaxFolderGb { get => _s.Output.MaxFolderGb; set => Set(() => _s.Output.MaxFolderGb = value); }
     public bool StartWithWindows { get => _s.General.StartWithWindows; set => Set(() => _s.General.StartWithWindows = value); }
     public bool CheckUpdates { get => _s.General.CheckUpdates; set => Set(() => _s.General.CheckUpdates = value); }
+
+    // ------------------------------------------------------------------ check now (General's update row)
+
+    Engine.Updates.UpdateLook? Look => _status?.Look;
+
+    /// <summary>The engine's count of looks when Check now was pressed; null before any press (a daily look is not shown).</summary>
+    int? _lookAsked;
+
+    /// <summary>An installed Kairos can look (a development run cannot): the button shows.</summary>
+    public bool CanCheckUpdates => Look?.Works == true;
+
+    /// <summary>Pressed, and the engine has not ended a look since: "Checking…", the button waits.</summary>
+    public bool IsCheckingUpdates => _lookAsked is { } asked && (Look?.Done ?? 0) <= asked;
+
+    /// <summary>How the look after the press ended; null before a press or while it runs.</summary>
+    Engine.Updates.LookResult? Answered => _lookAsked is { } asked && Look is { } look && look.Done > asked ? look.Last : null;
+
+    /// <summary>
+    /// The button's words: Check now, "Checking…", then for a moment how it went (up to date, the version found while its
+    /// bar shows, or could not check), and Check now again (no version on the row, the result in the button).
+    /// </summary>
+    public string UpdateLookText => IsCheckingUpdates ? Text.Get("general.checking") : Answered switch
+    {
+        Engine.Updates.LookResult.UpToDate => Text.Get("general.upToDate"),
+        Engine.Updates.LookResult.Failed => Text.Get("general.checkFailed"),
+        Engine.Updates.LookResult.Found when Update is { } found => Text.Format("update.available", found.Version),
+        _ => Text.Get("general.checkNow"),
+    };
+
+    public bool UpdateLookOk => Answered == Engine.Updates.LookResult.UpToDate;
+    public bool UpdateLookFailed => Answered == Engine.Updates.LookResult.Failed;
+    /// <summary>Check now itself (its refresh icon shows).</summary>
+    public bool UpdateLookIdle => !IsCheckingUpdates && Answered == null;
+
+    static readonly string[] LookProperties =
+        [nameof(IsCheckingUpdates), nameof(UpdateLookText), nameof(UpdateLookOk), nameof(UpdateLookFailed), nameof(UpdateLookIdle)];
+
+    /// <summary>How long the button says how the look went.</summary>
+    static readonly TimeSpan LookShown = TimeSpan.FromSeconds(3);
+    System.Windows.Threading.DispatcherTimer? _lookTimer;
+
+    /// <summary>A look's ending just came in the status: shown in the button for a moment (<see cref="LookShown"/>).</summary>
+    void ShowLookForAMoment()
+    {
+        if (Answered == null || _lookTimer != null)
+            return;
+        _lookTimer = new System.Windows.Threading.DispatcherTimer { Interval = LookShown };
+        _lookTimer.Tick += (_, _) => EndLookShown();
+        _lookTimer.Start();
+    }
+
+    /// <summary>The moment is over: Check now again.</summary>
+    internal void EndLookShown()
+    {
+        _lookTimer?.Stop();
+        _lookTimer = null;
+        _lookAsked = null;
+        Raise(LookProperties);
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    public ICommand CheckUpdatesNowCommand => _checkNowCommand ??= new RelayCommand(_ =>
+    {
+        _lookTimer?.Stop();
+        _lookTimer = null;
+        _lookAsked = Look?.Done ?? 0;
+        Raise(LookProperties);
+        SendAsync("update-check");
+    }, _ => CanCheckUpdates && !IsCheckingUpdates);
+    ICommand? _checkNowCommand;
     public bool OnlyWhenGaming { get => _s.General.OnlyWhenGaming; set => Set(() => _s.General.OnlyWhenGaming = value); }
     public bool SoundOnSave { get => _s.General.SoundOnSave; set => Set(() => _s.General.SoundOnSave = value); }
     public bool ToastOnSave { get => _s.General.ToastOnSave; set => Set(() => _s.General.ToastOnSave = value); }
@@ -768,7 +1207,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         disk.Share = share;
         disk.Normalize();
         SettingsStore.Save(SettingsStore.DefaultPath, disk);
-        _s.Share = SettingsStore.Deserialize(SettingsStore.Serialize(disk)).Share;
+        _s.Share = SettingsStore.Copy(disk).Share;
         _savedJson = SettingsStore.Serialize(disk);
         IsDirty = SettingsStore.Serialize(_s) != _savedJson;
         RaiseAll();
@@ -829,7 +1268,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public string StateTitle => Text.Get("status." + State);
 
-    public string StateDetail => StatusLogic.ReplayDetail(State, _status?.Error);
+    public string StateDetail => StatusLogic.ReplayDetail(State);
 
     public double BufferProgress => _s.Replay.Enabled && _status?.Engine is { BufferTargetSeconds: > 0 } e ? (double)e.BufferSeconds / e.BufferTargetSeconds : 0;
     public string BufferText => !_s.Replay.Enabled ? Text.Get("status.replayOff")
@@ -854,8 +1293,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string? LastClipPath => _status?.LastClip;
     /// <summary>The newest screenshot the engine took (the Clips page refreshes when it changes).</summary>
     public string? LastShotPath => _status?.LastShot;
-    public string LastClipName => LastClipPath is { } p ? Path.GetFileNameWithoutExtension(p) : Text.Get("status.noClip");
+    public string LastClipName => HasLastClip ? Path.GetFileNameWithoutExtension(LastClipPath!) : Text.Get("status.noClip");
     public string FolderWarning => _status?.Engine is { FolderFellBack: true } e ? Text.Format("status.folderFallback", e.ClipsFolder) : "";
+    public string CaptureWarning => StatusLogic.CaptureWarning(_status?.Engine) is { Length: > 0 } engine ? engine
+        : SystemDeviceWarning is { Length: > 0 } device ? device : MicDeviceWarning;
 
     // ------------------------------------------------------------------ commands
 
@@ -864,6 +1305,62 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public ICommand RecordCommand { get; }
     public ICommand PauseRecordCommand { get; }
     public ICommand OpenFolderCommand { get; }
+    public ICommand ReportCommand { get; }
+
+    /// <summary>A short line in the bar at the bottom for a few seconds.</summary>
+    void ShowMessage(string text)
+    {
+        _message = text;
+        Raise(nameof(Message), nameof(ShowBar));
+        _messageTimer.Stop();
+        _messageTimer.Start();
+    }
+
+    /// <summary>The logs and settings in a zip on the Desktop, shown in File Explorer (to send when something goes wrong).</summary>
+    void SaveReport()
+    {
+        try
+        {
+            if (App.SideEffects.Held("save a report on the Desktop"))
+                return;
+            // The open windows' titles stay out: they are the person's, and the log names the one captured.
+            string status = System.Text.Json.JsonSerializer.Serialize(new { status = _status, caps = _caps is { } c ? c with { Windows = [] } : null },
+                new System.Text.Json.JsonSerializerOptions(App.Ipc.Json) { WriteIndented = true });
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var ui = System.Windows.Application.Current?.Dispatcher;
+            // Zipped off the window's thread (a long log would hold the window); said back on it.
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    string zip = Report.Save(SettingsStore.AppDataDir, desktop, DateTime.Now, status);
+                    ui?.BeginInvoke(() =>
+                    {
+                        ShowMessage(Text.Format("status.reportSaved", Path.GetFileName(zip)));
+                        App.ShellPaths.ShowInExplorer(zip);
+                    });
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    ui?.BeginInvoke(() => ShowMessage(e.Message));
+                }
+            });
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            ShowMessage(e.Message);
+        }
+    }
+
+    /// <summary>Automatic: Kairos picks what to record with (the manual choices show only when it is off).</summary>
+    public bool AutoQuality { get => _s.Video.Auto; set => Set(() => _s.Video.Auto = value); }
+    public bool ManualQuality => !_s.Video.Auto;
+
+    /// <summary>What Automatic records with now (from the engine), or what it does while off or before the engine says.</summary>
+    public string AutoLine => AutoQuality && _status?.Engine?.Auto is { } auto ? StatusLogic.AutoLine(auto) : Text.Get("quality.autoTip");
+
+    /// <summary>Above the screen's own refresh rate the extra frames are never seen.</summary>
+    public string FpsWarning => _caps is { RefreshHz: > 0 } caps && Fps > caps.RefreshHz ? Text.Format("quality.fpsAboveScreen", caps.RefreshHz) : "";
     public ICommand OpenLastClipCommand { get; }
     public ICommand StartEngineCommand { get; }
     public ICommand ApplyCommand { get; }
@@ -924,9 +1421,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _typingSent = _typingSent.ContinueWith(_ => PipeClient.Send(command, 800), TaskScheduler.Default);
     }
 
+    /// <summary>Asks the engine (its reply, or null); tests set their own, so they never reach a running Kairos.</summary>
+    internal static Func<string, string?> PipeSend = command => PipeClient.Send(command);
+
     void SendAsync(string command) => Task.Run(() =>
     {
-        string? reply = PipeClient.Send(command);
+        string? reply = PipeSend(command);
         if (reply != null)
             System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => { TryParseStatus(reply); RaiseStatus(); });
     });
@@ -954,6 +1454,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (!wasOnline && _status != null && _caps == null)
             LoadCapsAsync();
         RefreshKeyStates();
+        RefreshAudioRowStates();
         RaiseStatus();
         _poll.Interval = TimeSpan.FromMilliseconds(VoiceView is "enrolling" or "testing" ? 200 : 500);
     }
@@ -974,6 +1475,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     void LoadCapsAsync() => Task.Run(() =>
     {
+        // The camera's list beside the encoders' when it is on (asked of the engine only then: win-dshow loads then), on
+        // its own so the screens, windows and devices never wait for it.
+        if (_s.Camera.Enabled && CameraDevices.Count == 0)
+            LoadCameras();
         string? reply = PipeClient.Send("caps", 3000);
         if (reply == null)
             return;
@@ -985,26 +1490,27 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         catch (JsonException) { }
     });
 
-    static void StartEngine() =>
-        Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--background") { UseShellExecute = false });
+    static void StartEngine()
+    {
+        if (!App.SideEffects.Held("start the engine"))
+            Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--background") { UseShellExecute = false });
+    }
 
     void BrowseFolder()
     {
+        if (App.SideEffects.Held("folder picker"))
+            return;
         var dialog = new Microsoft.Win32.OpenFolderDialog { InitialDirectory = Directory.Exists(Folder) ? Folder : "" };
         if (dialog.ShowDialog() == true)
             Folder = dialog.FolderName;
     }
 
-    static void OpenFolder(string folder)
-    {
-        Directory.CreateDirectory(folder);
-        Process.Start(new ProcessStartInfo(App.ShellPaths.Explorer, $"\"{folder}\"") { UseShellExecute = true });
-    }
+    static void OpenFolder(string folder) => App.ShellPaths.OpenFolder(folder);
 
     static void Shell(string? path)
     {
         if (path != null && File.Exists(path))
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            App.ShellPaths.Open(path);
     }
 
     public static string FormatSize(long bytes) => bytes switch

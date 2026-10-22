@@ -10,6 +10,8 @@ public static class ThemeColors
     public const uint Background = 0x2E2726;
     /// <summary>Text and icons on the accent: the window's brown, darker (white on rose would be 2.3:1).</summary>
     public const uint OnAccent = 0x221C1B;
+    /// <summary>Theme.xaml's Warning and Success: something to look at, and saved.</summary>
+    public const uint Warning = 0xFFB020, Saved = 0x2ED47A;
 
     /// <summary>Mouse-over shade: 15% toward white.</summary>
     public static uint Hover => Mix(Accent, 0xFFFFFF, 0.15);

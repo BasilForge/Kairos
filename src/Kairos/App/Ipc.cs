@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
@@ -17,7 +18,8 @@ public sealed record StatusDto(
     string Version,
     Engine.Voice.VoiceStatus? Voice = null,
     string? LastShot = null,
-    Engine.Updates.UpdateStatus? Update = null);
+    Engine.Updates.UpdateStatus? Update = null,
+    Engine.Updates.UpdateLook? Look = null);
 
 public sealed record CapsDto(
     List<MonitorInfo> Monitors,
@@ -25,11 +27,25 @@ public sealed record CapsDto(
     List<NameValue> Mics,
     List<NameValue> Speakers,
     List<string> Encoders,
-    string LibobsVersion);
+    string LibobsVersion,
+    List<NameValue>? AudioApps = null,
+    string? DefaultSpeaker = null,
+    int RefreshHz = 0,
+    string? DefaultMic = null);
 
 public static class Ipc
 {
-    public const string PipeName = AppInfo.PipeName;
+    /// <summary>
+    /// The settings window's volumes and mutes while a slider moves: one pipe line the engine sets on its sources at once,
+    /// its saved settings left as they are (Save or Revert then settles them).
+    /// </summary>
+    public static string LiveLine(Settings.AudioSettings a) => "live " + JsonSerializer.Serialize(Settings.LiveAudio.Of(a), Json);
+
+    public static Settings.LiveAudio ParseLive(string json) =>
+        JsonSerializer.Deserialize<Settings.LiveAudio>(json, Json) ?? throw new JsonException("no live audio");
+
+    /// <summary>The engine's pipe (KAIROS_PIPE: the walk check's own made-up engine, never the running one).</summary>
+    public static string PipeName { get; } = Environment.GetEnvironmentVariable("KAIROS_PIPE") is { Length: > 0 } pipe ? pipe : AppInfo.PipeName;
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
@@ -45,14 +61,14 @@ public sealed class PipeServer : IDisposable
     static readonly TimeSpan LevelInterval = TimeSpan.FromMilliseconds(33);
 
     readonly Func<string, string> _handle;
-    readonly Func<(double System, double Mic)> _levels;
+    readonly Func<IReadOnlyList<(string Id, double Db)>> _levels;
     readonly CancellationTokenSource _cts = new();
     readonly string _name;
     /// <summary>A client that connects but sends no command is dropped after this, so it cannot hold a connection slot.</summary>
     readonly TimeSpan _idleTimeout;
 
     /// <param name="onRequest">Told each request and the id of the process that sent it (the engine logs who asked it to exit).</param>
-    public PipeServer(Func<string, string> handle, Func<(double System, double Mic)> levels, string? pipeName = null, TimeSpan? idleTimeout = null,
+    public PipeServer(Func<string, string> handle, Func<IReadOnlyList<(string Id, double Db)>> levels, string? pipeName = null, TimeSpan? idleTimeout = null,
         Action<string, int>? onRequest = null)
     {
         _onRequest = onRequest;
@@ -113,10 +129,15 @@ public sealed class PipeServer : IDisposable
                     // The meters start from now: drop the loudest peak since anyone last looked (it can be minutes old
                     // and made the Audio page's meters jump to full on opening).
                     _levels();
+                    var line = new StringBuilder();
                     while (!_cts.IsCancellationRequested && server.IsConnected)
                     {
-                        var (system, mic) = _levels();
-                        await writer.WriteLineAsync(FormattableString.Invariant($"{system:F1} {mic:F1}"));
+                        line.Clear();
+                        foreach (var (id, db) in _levels())
+                            line.Append(CultureInfo.InvariantCulture, $"{id}:{db:F1}|");
+                        if (line.Length > 0)
+                            line.Length--;
+                        await writer.WriteLineAsync(line);
                         await Task.Delay(LevelInterval, _cts.Token);
                     }
                 }
@@ -141,7 +162,7 @@ public sealed class PipeServer : IDisposable
 public sealed class LevelStream : IDisposable
 {
     readonly CancellationTokenSource _cts = new();
-    double _system = Engine.LevelMeter.Silent, _mic = Engine.LevelMeter.Silent;
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, double> _levels = new();
 
     public LevelStream() : this(connect: true)
     {
@@ -154,17 +175,34 @@ public sealed class LevelStream : IDisposable
             new Thread(Run) { IsBackground = true, Name = "Kairos levels" }.Start();
     }
 
-    public double SystemDb => Volatile.Read(ref _system);
-    public double MicDb => Volatile.Read(ref _mic);
+    /// <summary>A source's level (a row's id, or "system" and "mic" in the together layout); silent until it sends one.</summary>
+    public double Level(string id) => _levels.TryGetValue(id, out double db) ? db : Engine.LevelMeter.Silent;
+
+    /// <summary>One line of the engine's levels: "id:dB" pairs between "|" (an id may hold a colon or a space: the last colon splits).</summary>
+    public static List<(string Id, double Db)> Parse(string line)
+    {
+        var levels = new List<(string, double)>();
+        foreach (string pair in line.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int colon = pair.LastIndexOf(':');
+            if (colon > 0 && double.TryParse(pair.AsSpan(colon + 1), System.Globalization.CultureInfo.InvariantCulture, out double db))
+                levels.Add((pair[..colon], db));
+        }
+        return levels;
+    }
 
     /// <summary>A level changed (raised on the reading thread; the same level again raises nothing).</summary>
     public event Action? Changed;
 
-    internal void Push(double system, double mic)
+    internal void Push(IReadOnlyList<(string Id, double Db)> levels)
     {
-        bool changed = system != Volatile.Read(ref _system) || mic != Volatile.Read(ref _mic);
-        Volatile.Write(ref _system, system);
-        Volatile.Write(ref _mic, mic);
+        bool changed = false;
+        foreach (var (id, db) in levels)
+            if (!_levels.TryGetValue(id, out double old) || old != db)
+            {
+                _levels[id] = db;
+                changed = true;
+            }
         if (changed)
         {
             Interlocked.MemoryBarrier(); // the new level is seen before a meter's "resting" is read
@@ -184,18 +222,12 @@ public sealed class LevelStream : IDisposable
                 using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
                 writer.WriteLine("levels");
                 while (!_cts.IsCancellationRequested && reader.ReadLine() is { } line)
-                {
-                    string[] parts = line.Split(' ');
-                    if (parts.Length == 2 &&
-                        double.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out double s) &&
-                        double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out double m))
-                        Push(s, m);
-                }
+                    Push(Parse(line));
             }
             catch (Exception e) when (e is TimeoutException or IOException or UnauthorizedAccessException)
             {
             }
-            Push(Engine.LevelMeter.Silent, Engine.LevelMeter.Silent);
+            Push(_levels.Keys.Select(id => (id, Engine.LevelMeter.Silent)).ToList());
             _cts.Token.WaitHandle.WaitOne(1000);
         }
     }

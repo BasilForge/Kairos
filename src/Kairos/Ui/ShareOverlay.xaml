@@ -248,7 +248,7 @@
                             <!-- Trim, left to right like the picture whatever the language, and one short line under it -->
                             <l:TrimBar Margin="0,10,0,0" IsEnabled="{Binding CanEdit}" Visibility="{Binding HasVideo, Converter={StaticResource Vis}}"
                                        Duration="{Binding ClipSeconds}" Start="{Binding TrimStart}" End="{Binding TrimEnd}" MoveStart="{Binding TrimMoveStart}"
-                                       Playhead="{Binding Playhead}" ShowPlayhead="{Binding ShowPlayhead}"
+                                       Playhead="{Binding Playhead}" ShowPlayhead="{Binding ShowPlayhead}" IsScrubbing="{Binding Scrubbing}"
                                        Frames="{Binding Filmstrip}" AutomationProperties.Name="{l:T share.trim}"/>
                             <!-- One line under the bar: where the cut starts and ends, and about how big it comes out -->
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0" FlowDirection="LeftToRight"
@@ -289,35 +289,45 @@
                                         <TextBlock Style="{StaticResource TileName}" Text="Instagram"/>
                                     </StackPanel>
                                 </RadioButton>
-                                <!-- Copy: one press puts the cut on the clipboard; a check shows for a moment -->
-                                <Button Style="{StaticResource ActionTile}" Command="{Binding CopyCommand}" AutomationProperties.Name="{l:T share.copy}"
-                                        ToolTip="{l:T share.copyTip}">
+                                <!-- Copy: pressed, a video's sizes show under it (Original or Discord's) and the one picked goes on the
+                                     clipboard; a check shows for a moment, a ring while it converts (pressed again: stops) -->
+                                <Button x:Name="CopyTile" Style="{StaticResource ActionTile}" Command="{Binding CopyCommand}"
+                                        AutomationProperties.Name="{l:T share.copy}" ToolTip="{l:T share.copyTip}">
                                     <StackPanel>
-                                        <!-- Round like the logos beside it -->
-                                        <Border Width="38" Height="38" CornerRadius="19" HorizontalAlignment="Center">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="{StaticResource StrokeStrong}"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsCopied}" Value="True">
-                                                            <Setter Property="Background" Value="{StaticResource Success}"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                            <TextBlock FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
-                                                        <Setter Property="Text" Value="&#xE8C8;"/>
+                                        <Grid Width="38" Height="38" HorizontalAlignment="Center">
+                                            <!-- Round like the logos beside it -->
+                                            <Border CornerRadius="19">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="{StaticResource StrokeStrong}"/>
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsCopied}" Value="True">
-                                                                <Setter Property="Text" Value="&#xE73E;"/>
+                                                                <Setter Property="Background" Value="{StaticResource Success}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsCopyConverting}" Value="True">
+                                                                <Setter Property="Visibility" Value="Hidden"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Border>
+                                                </Border.Style>
+                                                <TextBlock FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                                            <Setter Property="Text" Value="&#xE8C8;"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsCopied}" Value="True">
+                                                                    <Setter Property="Text" Value="&#xE73E;"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                            <l:ProgressRing Value="{Binding CopyProgress}" Thickness="3.5" Fill="{DynamicResource Accent}" Track="{StaticResource Stroke}"
+                                                            Visibility="{Binding IsCopyConverting, Converter={StaticResource Vis}}"/>
+                                            <TextBlock Text="{Binding CopyPercent}" FontSize="10.5" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       FlowDirection="LeftToRight" Visibility="{Binding IsCopyConverting, Converter={StaticResource Vis}}"/>
+                                        </Grid>
                                         <TextBlock>
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource TileName}">
@@ -327,6 +337,9 @@
                                                             <Setter Property="Text" Value="{l:T share.copied}"/>
                                                             <Setter Property="Foreground" Value="{StaticResource Success}"/>
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsCopyConverting}" Value="True">
+                                                            <Setter Property="Text" Value="{l:T share.cancel}"/>
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
@@ -334,6 +347,13 @@
                                     </StackPanel>
                                 </Button>
                             </UniformGrid>
+                            <!-- The cut is longer than any picture fits in Copy's size: shorten it here -->
+                            <DockPanel Margin="0,8,0,0" Visibility="{Binding CopyTooLong, Converter={StaticResource Vis}}">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource Ghost}" Padding="10,5" FontSize="12.5"
+                                        Command="{Binding TrimToFitCommand}" Content="{l:T share.trimToFit}"/>
+                                <TextBlock Text="{Binding CopyTooLong}" Style="{StaticResource Caption}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Margin="0,0,10,0"/>
+                            </DockPanel>
 
                             <!-- Everywhere: X, TikTok and Instagram with one caption, one press -->
                             <RadioButton Style="{StaticResource Tile}" GroupName="platform" Margin="0,8,0,0" AutomationProperties.Name="{l:T share.all}"

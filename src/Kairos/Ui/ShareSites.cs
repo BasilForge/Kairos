@@ -62,6 +62,21 @@ public static class ShareSites
     }
 
     /// <summary>
+    /// The limits of Kairos's site browser: no developer tools and nothing a page can reach in Kairos, no downloads, no
+    /// camera, microphone, location or notifications, and no other app opened from a page (an ms-settings: or other
+    /// app link). Signing in and posting need none of them.
+    /// </summary>
+    public static void Lock(CoreWebView2 core)
+    {
+        core.Settings.AreDevToolsEnabled = false;
+        core.Settings.IsWebMessageEnabled = false;
+        core.Settings.AreHostObjectsAllowed = false;
+        core.DownloadStarting += (_, e) => e.Cancel = true;
+        core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
+        core.LaunchingExternalUriScheme += (_, e) => e.Cancel = true;
+    }
+
+    /// <summary>
     /// The pages are asked for in English: the publishing steps read a few button labels, and a site that
     /// follows the browser's language then shows the labels they expect.
     /// </summary>

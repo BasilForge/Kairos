@@ -11,7 +11,7 @@ public interface ICaptionMaker
     long DownloadBytes { get; }
     /// <summary>Only called after the user agreed to the download.</summary>
     Task Download(IProgress<double> progress, CancellationToken ct);
-    Task<IReadOnlyList<Caption>> Listen(string clip, int stream, IProgress<double> progress, CancellationToken ct);
+    Task<IReadOnlyList<Caption>> Listen(string clip, IReadOnlyList<int> streams, IProgress<double> progress, CancellationToken ct);
 }
 
 /// <summary>The real one: the downloaded engine and model, and Whisper in a hidden Kairos process of its own.</summary>
@@ -34,6 +34,6 @@ public sealed class CaptionMaker(CaptionModel model, CaptionRuntime runtime, str
             await model.Download(consent: true, new ScaledProgress(progress, done / total, (done + CaptionModel.Bytes) / total), ct);
     }
 
-    public Task<IReadOnlyList<Caption>> Listen(string clip, int stream, IProgress<double> progress, CancellationToken ct) =>
-        CaptionProcess.Run(exe, clip, stream, progress, ct, runtimeFolder: runtime.Folder);
+    public Task<IReadOnlyList<Caption>> Listen(string clip, IReadOnlyList<int> streams, IProgress<double> progress, CancellationToken ct) =>
+        CaptionProcess.Run(exe, clip, streams, progress, ct, runtimeFolder: runtime.Folder);
 }

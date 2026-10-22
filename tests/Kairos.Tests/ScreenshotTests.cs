@@ -241,7 +241,7 @@ public static class ScreenshotTests
             Assert.Equal(null, Kairos.Ui.PictureClipboard.TryLoad(Path.Combine(dir, "gone.png")), "a picture that is gone");
             var data = Kairos.Ui.PictureClipboard.Data(broken);
             Assert.True(!data.GetDataPresent(System.Windows.DataFormats.Bitmap) && data.GetFileDropList().Count == 1, "copy still offers the file");
-            Assert.Equal(null, new Kairos.Ui.WpfShareHost(_ => { }).ReadPicture(broken), "the share panel says it cannot read it");
+            Assert.Equal(null, new Kairos.Ui.WpfShareHost(_ => { }, () => dir).ReadPicture(broken), "the share panel says it cannot read it");
         }
         finally
         {

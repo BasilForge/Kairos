@@ -16,6 +16,11 @@ sealed class PreviewPlayer : IDisposable
 {
     /// <summary>Pictures decoded ahead: about a third of a second at 60 fps.</summary>
     const int PoolSize = 20;
+    /// <summary>What they may take (20 pictures at 1280×720, about 74 MB): a larger picture keeps fewer ahead.</summary>
+    const long PoolBytes = PoolSize * 1280L * 720 * 4;
+
+    /// <summary>How many pictures are decoded ahead at this size: within <see cref="PoolBytes"/>, at least six (a tenth of a second).</summary>
+    internal static int PoolFor(int width, int height) => (int)Math.Clamp(PoolBytes / ((long)width * height * 4), 6, PoolSize);
     /// <summary>Sound queued before the clock starts, and the least kept queued while pictures wait for room.</summary>
     const double SoundLead = 0.15;
 
@@ -51,16 +56,21 @@ sealed class PreviewPlayer : IDisposable
     volatile bool _stop;
     volatile bool _decoded;
     volatile bool _clockStarted;
+    /// <summary>Made to wait (<see cref="Release"/>); set and read under <see cref="_clockLock"/> with the clock's start.</summary>
+    volatile bool _held;
+    readonly object _clockLock = new();
     volatile string? _failure;
     bool _shownFirst, _finished;
 
     /// <param name="rate">Play faster or slower (the editor's speed): the sound at that speed and the same pitch.</param>
     /// <param name="filter">Changes each picture on the decoding thread before it is shown (the editor's colours and blur),
     /// with its time in the clip.</param>
+    /// <param name="mix">Several sound tracks mixed at their gains (null: the first track, the full mix).</param>
+    /// <param name="held">Reads ahead but shows, plays and reports nothing until <see cref="Release"/> (the editor's next part).</param>
     public PreviewPlayer(string clip, double from, double to, int width, int height, bool mute, Action<double> position, Action<string?> ended,
-        int audioTrack = 0, double rate = 1, Action<byte[], double>? filter = null)
+        double rate = 1, Action<byte[], double>? filter = null, TrackMix? mix = null, bool held = false)
     {
-        _audioTrack = audioTrack;
+        _mix = mix;
         _rate = rate;
         _filter = filter;
         _clip = clip;
@@ -71,9 +81,8 @@ sealed class PreviewPlayer : IDisposable
         _mute = mute;
         _position = position;
         _ended = ended;
+        _held = held;
         Picture = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
-        for (int i = 0; i < PoolSize; i++)
-            _free.Push(new byte[_width * _height * 4]);
         _thread = new Thread(Decode) { IsBackground = true, Name = "Kairos preview", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
     }
@@ -88,6 +97,19 @@ sealed class PreviewPlayer : IDisposable
 
     double _volume = 1;
 
+    /// <summary>
+    /// Plays a player made held: its first picture shows on the next <see cref="Tick"/> and its sound starts (it was
+    /// read ahead meanwhile, so the part goes on at once from the one before).
+    /// </summary>
+    public void Release()
+    {
+        lock (_clockLock)
+            _held = false;
+        if (_decoded)
+            StartClockWhenReady(force: true); // a short part read to its end while it waited: the reading thread has ended
+        Wake();
+    }
+
     /// <summary>The picture the player draws into.</summary>
     public WriteableBitmap Picture { get; }
 
@@ -99,7 +121,7 @@ sealed class PreviewPlayer : IDisposable
     public string SkipReasons => $"late {_late}, no room {_noRoom}, overtaken {_replaced}";
 
     // What was heard and how smoothly pictures came (for the self-check).
-    readonly int _audioTrack;
+    readonly TrackMix? _mix;
     long _soundBytes;
     int _soundPeak;
     bool _hasAudio;
@@ -127,9 +149,17 @@ sealed class PreviewPlayer : IDisposable
 
     void Decode()
     {
+        // Made here, not on the window's thread (the editor's next part is made while one plays), and outside the lock
+        // the window's Tick takes: tens of MB to clear.
+        var pool = new byte[PoolFor(_width, _height)][];
+        for (int i = 0; i < pool.Length; i++)
+            pool[i] = new byte[_width * _height * 4];
+        lock (_lock)
+            foreach (var buffer in pool)
+                _free.Push(buffer);
         try
         {
-            using var playback = new ClipPlayback(_clip, _width, _height, _audioTrack);
+            using var playback = new ClipPlayback(_clip, _width, _height, mix: _mix);
             Volatile.Write(ref _hasAudio, playback.HasAudio);
             if (playback.HasAudio)
             {
@@ -157,7 +187,7 @@ sealed class PreviewPlayer : IDisposable
                     soundDone = !ReadSound(playback);
                 else if (!picturesDone && FreeCount() > 0)
                     picturesDone = !ReadPicture(playback, frame);
-                else if (!_clockStarted)
+                else if (!_clockStarted && !_held)
                     StartClockWhenReady(force: true); // every picture buffer filled before enough sound: start anyway
                 else if (!soundDone && SoundQueued() < 6 * SoundLead)
                     soundDone = !ReadSound(playback); // idle: read a little further ahead
@@ -166,7 +196,7 @@ sealed class PreviewPlayer : IDisposable
                     // Every buffer is full: rest until a picture is shown (its buffer comes back) or a little of the
                     // sound has been heard (the sound ahead never runs low: it is kept 0.6 s and more ahead here).
                     Interlocked.Increment(ref _waits);
-                    _room.WaitOne(RestMs);
+                    _room.WaitOne(_held ? Timeout.Infinite : RestMs); // held: nothing changes until Release (or Dispose) wakes it
                 }
                 StartClockWhenReady();
             }
@@ -252,28 +282,33 @@ sealed class PreviewPlayer : IDisposable
         return true;
     }
 
-    /// <summary>The clock starts once a picture and a little sound are ready (or decoding has finished).</summary>
+    /// <summary>The clock starts once a picture and a little sound are ready (or decoding has finished), unless held.</summary>
     void StartClockWhenReady(bool force = false)
     {
-        if (_clockStarted)
+        if (_clockStarted || _held)
             return;
-        bool picture;
-        lock (_lock)
-            picture = _ready.Count > 0;
-        bool sound = _sound == null || _sound.WrittenSeconds >= SoundLead;
-        if (!force && !(picture && sound))
-            return;
-        _clockStarted = true;
-        if (_sound != null)
-            _sound.Start();
-        else
-            _watch.Start();
+        lock (_clockLock) // the reading thread and Release may both start it
+        {
+            if (_clockStarted || _held)
+                return;
+            bool picture;
+            lock (_lock)
+                picture = _ready.Count > 0;
+            bool sound = _sound == null || _sound.WrittenSeconds >= SoundLead;
+            if (!force && !(picture && sound))
+                return;
+            _clockStarted = true;
+            if (_sound != null)
+                _sound.Start();
+            else
+                _watch.Start();
+        }
     }
 
     /// <summary>Shows the picture due now and reports the time; reports the end once. Call on the owner thread.</summary>
     public void Tick()
     {
-        if (_finished)
+        if (_finished || _held)
             return;
         if (_failure is { } failure)
         {

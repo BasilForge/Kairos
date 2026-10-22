@@ -106,6 +106,17 @@ public static class VoiceModelTests
     }
 
     [Test]
+    public static void Samples_too_unlike_each_other_name_the_one_to_say_again()
+    {
+        var m = Models.Value;
+        var steady = Enroll("en", "v1");
+        Assert.True(steady.Spread <= VoicePhrase.MaxSpread, $"one voice saying it the same way is kept: {steady.Spread:F3}");
+        var mixed = VoicePhrase.Build(m, [Load("pos_en_v1_r1"), Load("pos_en_v1_r2"), Load("pos_ar_v2_r1")]);
+        Assert.True(mixed.Spread > VoicePhrase.MaxSpread, $"a third sample unlike the other two: {mixed.Spread:F3}");
+        Assert.Equal(2, mixed.WorstSample, "the one unlike the others is the one said again");
+    }
+
+    [Test]
     public static void Similar_words_and_chatter_do_not_trigger()
     {
         var m = Models.Value;
@@ -124,6 +135,8 @@ public static class VoiceModelTests
         Assert.Equal(EnrollProblem.None, VoicePhrase.Check(m, first, []), "first sample");
         Assert.Equal(EnrollProblem.None, VoicePhrase.Check(m, Load("pos_en_v1_r2"), [first]), "same phrase again");
         Assert.Equal(EnrollProblem.Different, VoicePhrase.Check(m, Load("near_v1_4"), [first]), "a different phrase");
+        Assert.Equal(EnrollProblem.Different, VoicePhrase.Check(m, Load("near_v1_4"), [first, Load("pos_en_v1_r2")]),
+            "like none of the earlier ones");
     }
 
     [Test]

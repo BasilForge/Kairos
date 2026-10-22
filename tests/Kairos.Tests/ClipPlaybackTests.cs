@@ -23,6 +23,43 @@ public static class ClipPlaybackTests
         return (pictures, sound);
     }
 
+    /// <summary>The loudest sample from <paramref name="from"/> until <paramref name="until"/>, 0..1, and where the sound started.</summary>
+    static (double Peak, double Start) Loudest(ClipPlayback playback, double from, double until)
+    {
+        playback.Seek(from);
+        int peak = 0;
+        double start = double.NaN;
+        while (playback.NextSound() && playback.SoundTime < until)
+        {
+            if (double.IsNaN(start))
+                start = playback.SoundTime;
+            var bytes = playback.Sound;
+            for (int i = 0; i + 1 < bytes.Length; i += 2)
+                peak = Math.Max(peak, Math.Abs((int)(short)(bytes[i] | bytes[i + 1] << 8)));
+        }
+        return (peak / 32768.0, start);
+    }
+
+    /// <summary>The editor's preview of a clip with its own tracks: the tracks mixed, each at a level changed while playing.</summary>
+    [Test]
+    public static void Several_tracks_play_mixed_at_their_gains()
+    {
+        TestFfmpeg.Load();
+        // Mix, Game (440 Hz from 1 s), Discord (660 Hz before 1 s), Microphone (880 Hz from 1 s), Other sounds (from 2 s).
+        var mix = new TrackMix([1, 2, 3, 4], [1, 0, 1, 1]);
+        using var playback = new ClipPlayback(Path.Combine(Fixtures, "clip-h264-5tracks.mp4"), 64, 36, mix: mix);
+        Assert.True(playback.HasAudio, "has sound");
+        var discordOff = Loudest(playback, 0.1, 0.9);
+        Assert.True(discordOff.Peak < 0.01, $"Discord at 0: nothing before 1 s ({discordOff.Peak:0.###})");
+        Assert.Near(0.1, discordOff.Start, 0.001, "starts exactly at the point");
+        Assert.True(Loudest(playback, 1.2, 2.5).Peak > 0.3, "game and mic together after 1 s");
+        mix.Gains = [1, 1, 1, 1];
+        Assert.True(Loudest(playback, 0.1, 0.9).Peak > 0.15, "Discord heard again as soon as its level changes");
+        mix.Gains = [0, 0, 0.5, 0];
+        double mic = Loudest(playback, 1.2, 2.5).Peak;
+        Assert.True(mic > 0.08 && mic < 0.16, $"the mic alone at half ({mic:0.###})");
+    }
+
     [Test]
     public static void Playing_from_a_point_gives_the_pictures_from_there_in_order_and_sound_that_starts_exactly_there()
     {

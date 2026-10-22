@@ -42,6 +42,10 @@ public static class ForegroundApp
         return proc == null ? ClipOrganizer.AppFolderName(exeName, null, null) : FromProcessId(proc.Id, null);
     }
 
+    /// <summary>Folder name for a process from a snapshot (its exe name when it is gone).</summary>
+    public static string ForProcess(uint pid, string exeName) =>
+        ImagePath((int)pid) == null ? ClipOrganizer.AppFolderName(exeName, null, null) : FromProcessId((int)pid, null);
+
     static string FromProcessId(int pid, string? title)
     {
         string? path = ImagePath(pid);

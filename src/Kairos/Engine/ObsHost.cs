@@ -60,11 +60,13 @@ public static partial class ObsHost
             throw new InvalidOperationException("obs_reset_audio failed");
         if (!ResetVideo(video))
             throw new InvalidOperationException("obs_reset_video failed");
+        ObsLog.Info($"gpu priority: {GpuPriority.Raise()}");
         long graphics = clock.ElapsedMilliseconds;
 
         _root = appFolder;
         FailedModules.Clear();
         _laterLoaded = false;
+        OnDemand.Clear();
         var took = new List<string>();
         foreach (string name in Modules)
             took.Add(LoadModule(name));
@@ -72,6 +74,8 @@ public static partial class ObsHost
             LoadLater(took);
         long modules = clock.ElapsedMilliseconds;
         Obs.obs_post_load_modules();
+        Audio.ProcessAudioSource.Register(); // Kairos's own source: an app's sound by process id
+        Replay.DiskReplayOutput.Register(); // Kairos's own output: the replay on the disk
         Obs.obs_log_loaded_modules();
         ObsLog.Info($"libobs up in {clock.ElapsedMilliseconds} ms: core {core}, graphics {graphics - core}, modules {modules - graphics} " +
             $"({string.Join(", ", took)}), post-load {clock.ElapsedMilliseconds - modules}");
@@ -110,11 +114,78 @@ public static partial class ObsHost
             took.Add(LoadModule(name));
     }
 
+    /// <summary>The plugins loaded on first use (the camera's), since libobs started.</summary>
+    static readonly HashSet<string> OnDemand = [];
+
+    /// <summary>win-dshow (cameras) and, for a round camera, obs-filters (its mask): loaded on first use, never with the camera off.</summary>
+    public static void LoadCamera(bool filters)
+    {
+        if (!Started)
+            return;
+        foreach (string name in filters ? new[] { "win-dshow", "obs-filters" } : ["win-dshow"])
+            if (OnDemand.Add(name))
+                ObsLog.Info($"camera module in: {LoadModule(name)} ms");
+    }
+
+    /// <summary>The cameras Windows has (webcams, phones acting as one): their names and libobs ids.</summary>
+    public static List<(string Name, string Value)> Cameras()
+    {
+        LoadCamera(filters: false);
+        lock (CameraSizesSeen)
+            CameraSizesSeen.Clear(); // listed again (the camera page): their sizes are read afresh
+        return [.. ListProperty("dshow_input", "video_device_id").Where(c => c.Value.Length > 0)];
+    }
+
+    /// <summary>Each camera's sizes as read: a scan of the devices takes tens of ms, seconds with some virtual cameras.</summary>
+    static readonly Dictionary<string, List<string>> CameraSizesSeen = [];
+
+    /// <summary>
+    /// The camera to open (<paramref name="wanted"/>, else the first) and the sizes it gives ("1920x1080"), read without
+    /// opening it in one scan of the devices, and kept until the cameras are listed again. An empty device: none.
+    /// </summary>
+    public static (string Device, List<string> Sizes) Camera(string wanted)
+    {
+        lock (CameraSizesSeen)
+            if (wanted.Length > 0 && CameraSizesSeen.TryGetValue(wanted, out var seen))
+                return (wanted, seen);
+        LoadCamera(filters: false);
+        IntPtr props = Obs.obs_get_source_properties("dshow_input");
+        if (props == IntPtr.Zero)
+            return (wanted, []);
+        try
+        {
+            string device = wanted.Length > 0 ? wanted
+                : Items(props, "video_device_id").Select(c => c.Value).FirstOrDefault(v => v.Length > 0) ?? "";
+            if (device.Length == 0)
+                return ("", []);
+            using var settings = new ObsData().Set("video_device_id", device);
+            Obs.obs_properties_apply_settings(props, settings.Handle); // win-dshow fills in the device's sizes
+            List<string> sizes = [.. Items(props, "resolution").Select(r => r.Value).Where(v => v.Length > 0)];
+            lock (CameraSizesSeen)
+                CameraSizesSeen[device] = sizes;
+            return (device, sizes);
+        }
+        finally
+        {
+            Obs.obs_properties_destroy(props);
+        }
+    }
+
     /// <summary>Resets the video pipeline. Every output must be stopped first.</summary>
     public static bool ResetVideo(VideoConfig v)
     {
+        var ovi = VideoInfo(v);
+        int rc = Obs.obs_reset_video(ref ovi);
+        if (rc != ObsConst.VideoSuccess)
+            ObsLog.Error($"obs_reset_video returned {rc} for {v}");
+        return rc == ObsConst.VideoSuccess;
+    }
+
+    /// <summary>libobs's video settings for a canvas and output size (the main picture's, or a view's).</summary>
+    public static ObsVideoInfo VideoInfo(VideoConfig v)
+    {
         bool downscale = v.OutW < v.BaseW || v.OutH < v.BaseH;
-        var ovi = new ObsVideoInfo
+        return new ObsVideoInfo
         {
             GraphicsModule = GraphicsModule,
             FpsNum = (uint)v.Fps,
@@ -130,10 +201,6 @@ public static partial class ObsHost
             Range = ObsConst.VideoRangePartial,
             ScaleType = downscale ? ObsConst.ScaleArea : ObsConst.ScaleBicubic,
         };
-        int rc = Obs.obs_reset_video(ref ovi);
-        if (rc != ObsConst.VideoSuccess)
-            ObsLog.Error($"obs_reset_video returned {rc} for {v}");
-        return rc == ObsConst.VideoSuccess;
     }
 
     /// <summary>
@@ -187,24 +254,29 @@ public static partial class ObsHost
     /// <summary>Items of a list property of a source type, e.g. ("monitor_capture", "monitor_id").</summary>
     public static List<(string Name, string Value)> ListProperty(string sourceId, string property)
     {
-        var items = new List<(string, string)>();
         IntPtr props = Obs.obs_get_source_properties(sourceId);
         if (props == IntPtr.Zero)
-            return items;
+            return [];
         try
         {
-            IntPtr p = Obs.obs_properties_get(props, property);
-            if (p == IntPtr.Zero)
-                return items;
-            nuint count = Obs.obs_property_list_item_count(p);
-            for (nuint i = 0; i < count; i++)
-                items.Add((Obs.Utf8(Obs.obs_property_list_item_name(p, i)) ?? "",
-                           Obs.Utf8(Obs.obs_property_list_item_string(p, i)) ?? ""));
+            return Items(props, property);
         }
         finally
         {
             Obs.obs_properties_destroy(props);
         }
+    }
+
+    static List<(string Name, string Value)> Items(IntPtr props, string property)
+    {
+        var items = new List<(string, string)>();
+        IntPtr p = Obs.obs_properties_get(props, property);
+        if (p == IntPtr.Zero)
+            return items;
+        nuint count = Obs.obs_property_list_item_count(p);
+        for (nuint i = 0; i < count; i++)
+            items.Add((Obs.Utf8(Obs.obs_property_list_item_name(p, i)) ?? "",
+                       Obs.Utf8(Obs.obs_property_list_item_string(p, i)) ?? ""));
         return items;
     }
 

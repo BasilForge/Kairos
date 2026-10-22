@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using Kairos.App;
 using Kairos.Engine;
+using Kairos.Engine.Share;
 
 namespace Kairos.Ui;
 
@@ -19,6 +20,8 @@ public sealed class ClipItem : INotifyPropertyChanged
     public required DateTime Time { get; init; }
     public required long Size { get; init; }
     public ClipKind Kind { get; init; }
+    /// <summary>The clip's own camera file (opened from its card), or null.</summary>
+    public string? Camera { get; init; }
 
     /// <summary>The day heading the card is listed under ("Today", "Yesterday"…).</summary>
     public string GroupLabel
@@ -70,6 +73,34 @@ public sealed class ClipItem : INotifyPropertyChanged
     }
 
     bool _new;
+
+    /// <summary>Its H.264 copy is being made for a drag (<see cref="PlayableCopies"/>): the card shows a ring.</summary>
+    public bool Preparing
+    {
+        get => _preparing;
+        set
+        {
+            if (_preparing == value)
+                return;
+            _preparing = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Preparing)));
+        }
+    }
+
+    public double PrepareProgress
+    {
+        get => _prepareProgress;
+        set
+        {
+            _prepareProgress = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PrepareProgress)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreparePercent)));
+        }
+    }
+
+    public string PreparePercent => $"{(int)(_prepareProgress * 100)}%";
+    bool _preparing;
+    double _prepareProgress;
     public Action? SelectionChanged { get; set; }
     public event PropertyChangedEventHandler? PropertyChanged;
 }
@@ -132,6 +163,7 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
                 Open((p as ClipItem)?.Path);
         });
         ShowCommand = new RelayCommand(p => ShowInFolder((p as ClipItem)?.Path));
+        OpenCameraCommand = new RelayCommand(p => Open((p as ClipItem)?.Camera));
         DeleteCommand = new RelayCommand(p => { if (p is ClipItem c) Remove([c], permanent: false); });
         ShareCommand = new RelayCommand(p => { if (p is ClipItem c) ShareRequested?.Invoke(c); });
         SelectAllCommand = new RelayCommand(_ => SetAll(!AllSelected));
@@ -145,6 +177,49 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     /// <summary>The share button on a clip card: the window opens the share panel for it.</summary>
     public event Action<ClipItem>? ShareRequested;
+
+    /// <summary>What a card's drag hands on (set by the window: its share host's copies); null: the clip itself.</summary>
+    public PlayableCopies? Copies { get; set; }
+
+    /// <summary>The file a card's drag hands on: the clip, or an HEVC clip's H.264 copy (null while it is still to make).</summary>
+    public string? DragFile(ClipItem clip)
+    {
+        if (clip.IsPicture || Copies == null)
+            return clip.Path;
+        try
+        {
+            return Copies.FileFor(clip.Path);
+        }
+        catch (Exception e) when (e is ShareException or IOException)
+        {
+            return clip.Path; // cannot be read: dragged as it is
+        }
+    }
+
+    /// <summary>A drag with nothing to hand on yet: the H.264 copy is made, its ring on the card, for the next drag.</summary>
+    public void PrepareDrag(ClipItem clip)
+    {
+        if (Copies is not { } copies || clip.Preparing)
+            return;
+        clip.Preparing = true;
+        clip.PrepareProgress = 0;
+        var ui = System.Windows.Application.Current?.Dispatcher;
+        Task.Run(() =>
+        {
+            try
+            {
+                copies.Make(clip.Path, new InlineProgress(p => ui?.BeginInvoke(() => clip.PrepareProgress = p)), CancellationToken.None);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                ObsLog.Warn($"library drag: the H.264 copy of {Path.GetFileName(clip.Path)} was not made: {e.Message}");
+            }
+            finally
+            {
+                ui?.BeginInvoke(() => clip.Preparing = false);
+            }
+        });
+    }
     /// <summary>A picture card was opened: the window shows it in its own viewer.</summary>
     public event Action<ClipItem>? PictureRequested;
     /// <summary>A video to play in Kairos's own player.</summary>
@@ -251,6 +326,8 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     public ICommand SelectAllCommand { get; }
     public ICommand ClearSelectionCommand { get; }
     public ICommand RecycleSelectedCommand { get; }
+    /// <summary>Opens a clip's camera file in the usual player.</summary>
+    public ICommand OpenCameraCommand { get; }
     public ICommand AskPermanentCommand { get; }
     public ICommand ConfirmPermanentCommand { get; }
     public ICommand CancelPermanentCommand { get; }
@@ -262,7 +339,7 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
         // Clips that did not change keep their card (and its picture): coming back to the page rebuilds nothing.
         var known = _all.ToDictionary(c => c.Path, StringComparer.OrdinalIgnoreCase);
         var next = library
-            .Select(c => known.TryGetValue(c.Path, out var old) && old.Time == c.Time && old.Size == c.Size && old.App == c.Group
+            .Select(c => known.TryGetValue(c.Path, out var old) && old.Time == c.Time && old.Size == c.Size && old.App == c.Group && old.Camera == c.Camera
                 ? old
                 : new ClipItem
                 {
@@ -272,6 +349,7 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
                     Time = c.Time,
                     Size = c.Size,
                     Kind = c.Kind,
+                    Camera = c.Camera,
                     IsNew = live,
                 })
             .ToList();
@@ -387,12 +465,8 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     static void Open(string? path)
     {
         if (path != null && File.Exists(path))
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            App.ShellPaths.Open(path);
     }
 
-    static void ShowInFolder(string? path)
-    {
-        if (path != null && File.Exists(path))
-            Process.Start(new ProcessStartInfo(App.ShellPaths.Explorer, $"/select,\"{path}\"") { UseShellExecute = true });
-    }
+    static void ShowInFolder(string? path) => App.ShellPaths.ShowInExplorer(path);
 }

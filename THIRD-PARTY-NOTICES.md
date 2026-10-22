@@ -7,7 +7,7 @@ Release builds include the following components, copied unmodified from OBS Stud
 | Component | Files | License | Source |
 |---|---|---|---|
 | libobs and its graphics backends | `obs.dll`, `libobs-d3d11.dll`, `libobs-winrt.dll`, `w32-pthreads.dll`, `data/libobs` | GPL-2.0-or-later | obs-studio repository, tag 32.2.2 |
-| OBS plugins | `win-capture`, `win-wasapi`, `obs-nvenc`, `obs-ffmpeg`, `obs-qsv11`, `obs-x264` | GPL-2.0-or-later | obs-studio repository, tag 32.2.2 |
+| OBS plugins | `win-capture`, `win-wasapi`, `obs-nvenc`, `obs-ffmpeg`, `obs-qsv11`, `obs-x264`, `win-dshow` (cameras; OBS's virtual camera files are left out), `obs-filters` (the round camera's mask) | GPL-2.0-or-later | obs-studio repository, tag 32.2.2 |
 | OBS helper programs | `obs-ffmpeg-mux.exe`, `obs-nvenc-test.exe`, `obs-amf-test.exe`, `obs-qsv-test.exe` | GPL-2.0-or-later | obs-studio repository, tag 32.2.2 |
 | FFmpeg libraries | `avcodec`, `avformat`, `avutil`, `avfilter`, `avdevice`, `swscale`, `swresample` | LGPL-2.1-or-later, GPL in this build | <https://ffmpeg.org> (OBS dependency build) |
 | x264 | `libx264-*.dll` | GPL-2.0-or-later | <https://www.videolan.org/developers/x264.html> |

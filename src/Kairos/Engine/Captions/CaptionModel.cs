@@ -45,7 +45,7 @@ public sealed class CaptionModel(string folder)
         try
         {
             await VerifiedDownload.To(part, Source.ToString(), Bytes, Sha256, "captions model", progress, ct).ConfigureAwait(false);
-            File.Move(part, Path, overwrite: true);
+            HeldFile.Retry(() => File.Move(part, Path, overwrite: true)); // just downloaded: an antivirus reads it
         }
         finally
         {

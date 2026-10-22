@@ -17,7 +17,6 @@ public partial class ShareSiteWindow : Window
     readonly SharePlatform _platform;
     readonly CancellationTokenSource _closed = new();
     string _file = "";
-    Point? _dragStart;
     bool _onScreen;
 
     public ShareSiteWindow(SharePlatform platform)
@@ -30,11 +29,18 @@ public partial class ShareSiteWindow : Window
         FlowDirection = Text.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
         Web.FlowDirection = FlowDirection.LeftToRight; // the site lays itself out
         DragText.Text = Text.Get("share.site.drag");
+        // The file by hand, for finishing a post here when a site changed.
+        FileDrag.Attach(FileTile, () => _file);
         ShowButton.ToolTip = Text.Get("share.showFile");
         WindowStartupLocation = WindowStartupLocation.Manual;
         MoveOffScreen();
         ShowActivated = false;
         Closed += (_, _) => _closed.Cancel();
+        Web.CoreWebView2InitializationCompleted += (_, e) =>
+        {
+            if (e.IsSuccess)
+                ShareSites.Lock(Web.CoreWebView2);
+        };
     }
 
     /// <summary>Clears the sites' caches in the shared profile (sign-ins stay).</summary>
@@ -168,25 +174,7 @@ public partial class ShareSiteWindow : Window
         };
     }
 
-    void OnShowFile(object sender, RoutedEventArgs e)
-    {
-        if (File.Exists(_file))
-            Process.Start(new ProcessStartInfo(App.ShellPaths.Explorer, $"/select,\"{_file}\"") { UseShellExecute = true });
-    }
-
-    void OnTileDown(object sender, MouseButtonEventArgs e) => _dragStart = e.GetPosition(FileTile);
-
-    /// <summary>The file by hand, for finishing a post here when a site changed.</summary>
-    void OnTileMove(object sender, MouseEventArgs e)
-    {
-        if (_dragStart is not { } start || e.LeftButton != MouseButtonState.Pressed || !File.Exists(_file))
-            return;
-        Vector moved = e.GetPosition(FileTile) - start;
-        if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance)
-            return;
-        _dragStart = null;
-        DragDrop.DoDragDrop(FileTile, new DataObject(DataFormats.FileDrop, new[] { _file }), DragDropEffects.Copy);
-    }
+    void OnShowFile(object sender, RoutedEventArgs e) => App.ShellPaths.ShowInExplorer(_file);
 
     protected override void OnSourceInitialized(EventArgs e)
     {

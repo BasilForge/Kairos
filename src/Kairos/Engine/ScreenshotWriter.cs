@@ -41,7 +41,7 @@ public static class ScreenshotWriter
         }
         catch
         {
-            File.Delete(temp);
+            Share.ClipTranscoder.TryDelete(temp);
             throw;
         }
     }

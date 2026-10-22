@@ -47,6 +47,8 @@ public static class ShareViewModelTests
         public ShareResult Transcode(string source, string target, SharePlan plan, long maxBytes, IProgress<double> progress, CancellationToken ct)
         {
             Transcodes.Add((source, target, plan, maxBytes));
+            if (WriteTargets)
+                File.WriteAllText(target, "copy");
             progress.Report(0.5);
             return OnTranscode?.Invoke(plan) ?? new ShareResult(target, 18_200_000, "h264_nvenc");
         }
@@ -72,7 +74,13 @@ public static class ShareViewModelTests
             return Task.FromResult(ct.IsCancellationRequested ? new PublishOutcome(PublishResult.Cancelled) : OutcomeFor?.Invoke(platform) ?? Outcome);
         }
         public void RevealSite(SharePlatform platform) => Revealed.Add(platform);
-        public void GrabFrames(string clip, double[] times, int width, bool exact, Action<int, System.Windows.Media.Imaging.BitmapSource?> done) { }
+        /// <summary>Each preview picture asked for: exact, or the nearest key frame.</summary>
+        public readonly List<bool> PreviewExact = [];
+        public void GrabFrames(string clip, double[] times, int width, bool exact, Action<int, System.Windows.Media.Imaging.BitmapSource?> done)
+        {
+            if (times.Length == 1)
+                PreviewExact.Add(exact);
+        }
         public void ReleaseFrames() { }
         public readonly List<(double From, double To)> Plays = [];
         public int Stops;
@@ -103,6 +111,22 @@ public static class ShareViewModelTests
         public void Post(Action action) => action();
         public void Run(Action work) => work();
         public string Folder => @"C:\Share";
+        public string Shared = @"D:\Clips\Shared";
+        public string SharedFolder => Shared;
+        /// <summary>Transcodes write their target (a copy's file on disk, for what reads it back).</summary>
+        public bool WriteTargets;
+    }
+
+    /// <summary>Presses Copy on a video and picks <paramref name="mb"/> (the size kept from last time if none).</summary>
+    static void Copy(ShareViewModel vm, int? mb = null)
+    {
+        int asked = 0;
+        void Ask() => asked++;
+        vm.CopySizeAsked += Ask;
+        vm.CopyCommand.Execute(null);
+        vm.CopySizeAsked -= Ask;
+        Assert.Equal(1, asked, "Copy asks the size");
+        vm.CopyAtCommand.Execute(mb ?? vm.CopyMb);
     }
 
     static (ShareViewModel Vm, FakeHost Host) Open(Action<ShareSettings>? prefs = null, MediaInfo? info = null, SharePlatform? platform = null)
@@ -249,7 +273,7 @@ public static class ShareViewModelTests
         vm.TrimStart = 0;
         vm.Platform = SharePlatform.TikTok;
         vm.TrimStart = 0;
-        vm.CopyCommand.Execute(null);
+        Copy(vm);
         Assert.Equal((0, 0), (host.Transcodes.Count, host.Cuts.Count), "nothing converted or cut");
         Assert.Equal((Clip, (string?)null), host.Clipboard!.Value, "the clip itself on the clipboard");
         Assert.True(vm.IsCopied && vm.IsChoosing, "copied, and still choosing");
@@ -262,11 +286,11 @@ public static class ShareViewModelTests
     public static void Copy_of_a_cut_is_cut_without_converting()
     {
         var (vm, host) = OpenCut();
-        vm.CopyCommand.Execute(null);
+        Copy(vm);
         Assert.Equal(0, host.Transcodes.Count, "not converted");
         var cut = host.Cuts.Single();
         Assert.Equal((Clip, 270.0, 300.0), (cut.Source, cut.Start, cut.End), "the part");
-        Assert.Equal(Path.Combine(@"C:\Share", "Copy", "ELDEN RING 2026-10-12 21-04-55.mp4"), cut.Target, "target");
+        Assert.Equal(@"D:\Clips\Shared\ELDEN RING 2026-10-12 21-04-55 (4.30-5.00).mp4", cut.Target, "kept in the clips folder's Shared, named by its part");
         Assert.Equal((cut.Target, (string?)null), host.Clipboard!.Value, "on the clipboard");
         Assert.True(vm.IsCopied, "copied");
     }
@@ -276,7 +300,7 @@ public static class ShareViewModelTests
     {
         var (vm, host) = Open();
         Assert.True(vm.CopyCommand.CanExecute(null), "available at once");
-        vm.CopyCommand.Execute(null);
+        Copy(vm);
         Assert.Equal(Clip, host.Clipboard!.Value.File, "copied");
         Assert.Equal(null, vm.Platform, "still nothing picked");
     }
@@ -412,7 +436,10 @@ public static class ShareViewModelTests
     public static void Copying_a_screenshot_puts_the_picture_itself_on_the_clipboard()
     {
         var (vm, host) = OpenShot();
+        int asked = 0;
+        vm.CopySizeAsked += () => asked++;
         vm.CopyCommand.Execute(null);
+        Assert.Equal(0, asked, "a screenshot is copied as it is: no size asked");
         Assert.Equal(Shot, host.CopiedPictures.Single(), "image and file, at once");
         Assert.Equal(0, host.Cuts.Count + host.Transcodes.Count, "nothing to cut or convert");
         Assert.True(vm.IsCopied, "the check shows");
@@ -420,6 +447,7 @@ public static class ShareViewModelTests
 
     sealed class ThrowingProbe(FakeHost inner) : IShareHost
     {
+        public string SharedFolder => inner.SharedFolder;
         public MediaInfo Probe(string clip) => throw new ShareException("The clip was not found: " + clip);
         public SharePicture? ReadPicture(string path) => inner.ReadPicture(path);
         public ShareResult MakeJpeg(string source, string target, long maxBytes) => inner.MakeJpeg(source, target, maxBytes);
@@ -782,5 +810,218 @@ public static class ShareViewModelTests
         {
             File.Delete(saved);
         }
+    }
+
+    /// <summary>Dragging the playhead or a handle shows the nearest key frame (fast); the exact one when the drag stops.</summary>
+    [Test]
+    public static void Scrubbing_shows_key_frames_then_the_exact_one()
+    {
+        var (vm, host) = Open();
+        host.PreviewExact.Clear();
+        vm.Scrubbing = true;
+        vm.TrimStart = 2;
+        vm.TrimStart = 2.5;
+        Assert.Equal("False,False", string.Join(",", host.PreviewExact), "while dragging: key frames");
+        host.RunLater();
+        Assert.Equal("False,False,True", string.Join(",", host.PreviewExact), "a pause of 150 ms: the exact frame");
+        vm.TrimStart = 3;
+        vm.Scrubbing = false;
+        Assert.Equal(true, host.PreviewExact[^1], "let go: the exact frame");
+        host.RunLater();
+        Assert.Equal(5, host.PreviewExact.Count, "a pause asked for after the drag ended asks for nothing more");
+    }
+
+    [Test]
+    public static void Preparing_keeps_the_other_share_settings()
+    {
+        var (vm, host) = Open(p => p.CopyMb = 10, platform: SharePlatform.X);
+        vm.PrepareCommand.Execute(null);
+        Assert.Equal(10, host.Remembered!.CopyMb, "the copy size is kept");
+        Assert.True(host.Remembered.Tags.Length > 0, "the hashtags are remembered as before");
+    }
+
+    /// <summary>A 5:00 HEVC clip: Discord, many phones and a Windows without its extension play no HEVC.</summary>
+    static MediaInfo Hevc() => new(300, 2560, 1440, 60, "hevc", "aac", 192_000, 3, Bytes: 333_000_000);
+
+    [Test]
+    public static void An_hevc_clip_is_copied_and_dragged_as_h264_at_its_own_size()
+    {
+        // HEVC goes out as H.264, so it plays wherever it lands.
+        var (vm, host) = Open(info: Hevc());
+        Assert.Equal(null, vm.DragFile, "nothing to drag before its H.264 copy is made");
+        Copy(vm);
+        Assert.Equal(0, host.Cuts.Count, "never handed on as it is");
+        var made = host.Transcodes.Single();
+        Assert.True(made.Plan.Width == 2560 && made.Plan.Height == 1440 && made.Plan.Fps == 60, "at its own size and rate");
+        Assert.Equal(@"D:\Clips\Shared\ELDEN RING 2026-10-12 21-04-55 (0.00-5.00).mp4", made.Target, "kept with the other copies");
+        Assert.Equal(made.Target, host.Clipboard?.File, "the H.264 copy on the clipboard");
+        Assert.Equal(made.Target, vm.DragFile, "and dragged");
+    }
+
+    [Test]
+    public static void A_cut_of_an_hevc_clip_is_converted_not_cut()
+    {
+        var (vm, host) = Open(info: Hevc());
+        vm.TrimStart = 270;
+        Copy(vm);
+        Assert.Equal((0, 1), (host.Cuts.Count, host.Transcodes.Count), "converted, not cut");
+    }
+
+    [Test]
+    public static void Dragging_an_hevc_copy_tile_makes_its_copy_for_the_next_drag()
+    {
+        var (vm, host) = Open(info: Hevc());
+        vm.PrepareDrag();
+        Assert.Equal(1, host.Transcodes.Count, "the drag started its copy");
+        Assert.Equal(host.Transcodes[0].Target, vm.DragFile, "the next drag takes it");
+        vm.PrepareDrag();
+        Assert.Equal(1, host.Transcodes.Count, "made once");
+        var (av1, av1Host) = Open();
+        Assert.Equal(Clip, av1.DragFile, "AV1 plays where it lands: the clip itself");
+        av1.PrepareDrag();
+        Assert.Equal(0, av1Host.Transcodes.Count, "nothing to make");
+    }
+
+    [Test]
+    public static void The_library_drags_an_hevc_clip_as_its_h264_copy_made_on_the_first_drag()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "kairos-tests", "copies-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(folder, "Shared"));
+        string clip = Path.Combine(folder, "ELDEN RING 2026-10-12 21-04-55.mp4");
+        File.WriteAllText(clip, "hevc");
+        File.SetLastWriteTimeUtc(clip, DateTime.UtcNow.AddMinutes(-5));
+        var host = new FakeHost { Info = Hevc(), Shared = Path.Combine(folder, "Shared"), WriteTargets = true };
+        var copies = new PlayableCopies(host);
+        Assert.Equal(null, copies.FileFor(clip), "not made yet: nothing to drag");
+        var progress = new List<double>();
+        copies.Make(clip, new InlineProgress(progress.Add), CancellationToken.None);
+        var t = host.Transcodes.Single();
+        Assert.True(t.Plan.Width == 2560 && t.Plan.Height == 1440, "at its own size");
+        Assert.Equal(Path.Combine(folder, "Shared", "ELDEN RING 2026-10-12 21-04-55 (0.00-5.00).mp4"), t.Target, "the name the share panel's copy has too");
+        Assert.Equal(t.Target, copies.FileFor(clip), "the next drag takes it");
+        Assert.True(progress.Count > 0, "its progress for the card's ring");
+        File.SetLastWriteTimeUtc(clip, DateTime.UtcNow.AddMinutes(1)); // an edit saved over the clip
+        Assert.Equal(null, copies.FileFor(clip), "an older copy is never dragged: it is made again");
+        File.SetLastWriteTimeUtc(clip, DateTime.UtcNow.AddMinutes(-5));
+        File.Delete(t.Target);
+        Assert.Equal(null, copies.FileFor(clip), "a copy deleted since: made again, not a drag of nothing");
+        host.Info = new MediaInfo(300, 2560, 1440, 60, "h264", "aac", 192_000, 3);
+        Assert.Equal(@"D:\Other.mp4", new PlayableCopies(host).FileFor(@"D:\Other.mp4"), "H.264 (or AV1): the clip itself");
+        Assert.True(SharePlanner.PlaysEverywhere("av1") && SharePlanner.PlaysEverywhere("h264") && !SharePlanner.PlaysEverywhere("hevc"), "which go as they are");
+    }
+
+    static MediaInfo Minute(long bytes, double seconds = 60) => new(seconds, 2560, 1440, 60, "av1", "aac", 192_000, 3, Bytes: bytes);
+
+    [Test]
+    public static void Copy_at_a_size_converts_the_cut_and_copies_the_file()
+    {
+        var (vm, host) = Open(p => p.CopyMb = 10, info: Minute(120_000_000));
+        Copy(vm, 10);
+        Assert.Equal(1, host.Transcodes.Count, "converted (the whole clip no longer skips the size)");
+        Assert.Equal(10_000_000L, host.Transcodes[0].MaxBytes, "made to fit 10 MB");
+        Assert.Near(60, host.Transcodes[0].Plan.Duration, 0.01, "the cut");
+        Assert.Equal(host.Transcodes[0].Target, host.Clipboard?.File, "the converted file on the clipboard");
+        Assert.True(vm.IsCopied, "the check shows");
+    }
+
+    [Test]
+    public static void A_cut_that_fits_is_copied_as_it_is()
+    {
+        var (vm, host) = Open(p => p.CopyMb = 10, info: Minute(6_000_000, 30));
+        Copy(vm, 10);
+        Assert.Equal(0, host.Transcodes.Count, "no conversion");
+        Assert.Equal(Clip, host.Clipboard?.File, "the clip itself");
+    }
+
+    [Test]
+    public static void Cancelling_a_sized_copy_copies_nothing()
+    {
+        var (vm, host) = Open(p => p.CopyMb = 10, info: Minute(120_000_000));
+        host.OnTranscode = _ =>
+        {
+            Assert.True(vm.IsCopyConverting, "the ring shows while it converts");
+            vm.CopyCommand.Execute(null); // pressed again: stops it
+            return null;
+        };
+        Copy(vm, 10);
+        Assert.Equal(null, host.Clipboard, "nothing copied after Copy was pressed again");
+        Assert.True(!vm.IsCopyConverting, "the ring is gone");
+
+        host.OnTranscode = _ =>
+        {
+            vm.CloseCommand.Execute(null);
+            return null;
+        };
+        vm.Open(Clip);
+        Copy(vm, 10);
+        Assert.Equal(null, host.Clipboard, "nothing copied after the panel closed");
+    }
+
+    /// <summary>
+    /// Copy is a tile like the ones beside it, with no size under it (that made the row taller, a gap under X, TikTok
+    /// and Instagram, 2026-10-22): pressed, it asks the size, and the one picked is copied and kept for next time.
+    /// </summary>
+    [Test]
+    public static void Pressing_copy_asks_the_size_then_copies_at_the_one_picked()
+    {
+        var (vm, host) = Open(info: Minute(120_000_000));
+        int asked = 0;
+        vm.CopySizeAsked += () => asked++;
+        vm.CopyCommand.Execute(null);
+        Assert.True(asked == 1 && host.Clipboard == null && host.Transcodes.Count == 0, "asks the size; nothing copied yet");
+        Assert.Equal("Original,10 MB,50 MB,500 MB", string.Join(",", vm.CopySizeChoices.Select(o => o.Label)), "the choices");
+        Assert.Equal(",Discord,Nitro Basic,Nitro", string.Join(",", vm.CopySizeChoices.Select(o => o.For)), "what each is for");
+        vm.CopyAtCommand.Execute(10);
+        Assert.Equal(10_000_000L, host.Transcodes.Single().MaxBytes, "made to fit 10 MB");
+        Assert.Equal(host.Transcodes[0].Target, host.Clipboard?.File, "and copied");
+        Assert.Equal(10, host.Remembered?.CopyMb, "kept for next time (a cut too long for it says so)");
+    }
+
+    [Test]
+    public static void Too_long_for_the_size_picked_offers_a_trim()
+    {
+        var (vm, host) = Open(p => p.CopyMb = 10, info: Minute(333_000_000, 600));
+        Assert.Equal(null, vm.CopyTooLong, "no note before a size is picked (the size is no longer on show)");
+        Copy(vm, 10);
+        double fit = SharePlanner.SecondsThatFit(SharePlanner.CopySpec(10), 2560, 1440, false);
+        Assert.Equal($"Only the last {(int)fit} s fit in 10 MB.", vm.CopyTooLong, "the note");
+        Assert.Equal(0, host.Transcodes.Count, "nothing made: it would not fit");
+        vm.TrimToFitCommand.Execute(null);
+        Assert.Near(Math.Floor(fit), vm.TrimEnd - vm.TrimStart, 0.01, "trimmed to what fits");
+        Assert.Near(600, vm.TrimEnd, 0.01, "ending where it ended");
+        Assert.Equal(null, vm.CopyTooLong, "the note is gone");
+        Copy(vm, 10);
+        Assert.Equal(1, host.Transcodes.Count, "and it copies");
+        Copy(vm, 0);
+        Assert.Equal(null, vm.CopyTooLong, "Original always fits");
+    }
+
+    [Test]
+    public static void The_original_size_copies_as_before()
+    {
+        var (vm, host) = Open(info: Minute(120_000_000));
+        Copy(vm, 0);
+        Assert.Equal(Clip, host.Clipboard?.File, "the clip itself");
+        vm.CopyAtCommand.Execute(50);
+        Assert.Equal(50, host.Remembered?.CopyMb, "a picked size is remembered");
+    }
+
+    [Test]
+    public static void The_drag_gives_the_prepared_file_only_while_it_matches()
+    {
+        var (vm, host) = Open(p => p.CopyMb = 10, info: Minute(120_000_000));
+        Assert.Equal(Clip, vm.DragFile, "before a copy: the clip");
+        Copy(vm, 10);
+        string made = host.Transcodes[0].Target;
+        Assert.Equal(made, vm.DragFile, "the copy made to fit");
+        vm.TrimStart = 10;
+        Assert.Equal(Clip, vm.DragFile, "the cut changed: the clip");
+        vm.TrimStart = 0;
+        Copy(vm, 10);
+        Assert.Equal(made, vm.DragFile, "made again");
+        Copy(vm, 50);
+        Assert.True(host.Transcodes[^1].MaxBytes == 50_000_000 && vm.DragFile == host.Transcodes[^1].Target, "another size: its own copy");
+        vm.Open(Shot);
+        Assert.Equal(Shot, vm.DragFile, "a screenshot: itself");
     }
 }

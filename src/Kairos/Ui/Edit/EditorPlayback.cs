@@ -7,6 +7,17 @@ using Kairos.Engine.Share;
 
 namespace Kairos.Ui.Edit;
 
+/// <summary>What the preview plays: one sound track at a volume, or several mixed, each at its gain (0-based tracks).</summary>
+public sealed record SoundPlan(IReadOnlyList<int> Tracks, IReadOnlyList<double> Gains)
+{
+    public bool Mixed => Tracks.Count > 1;
+
+    /// <summary>The player's volume: one track's level, or 1 for tracks mixed at their own gains.</summary>
+    public double Volume => Mixed ? 1 : Gains[0];
+
+    public static SoundPlan One(int track, double volume) => new([track], [volume]);
+}
+
 /// <param name="OutputStart">Where the range starts in the edited clip.</param>
 /// <param name="Part">The kept part it plays (its speed and sound).</param>
 public sealed record PlayRange(double SourceStart, double SourceEnd, double Factor, double OutputStart, ClipSpan Part);
@@ -14,8 +25,8 @@ public sealed record PlayRange(double SourceStart, double SourceEnd, double Fact
 /// <summary>
 /// The editor's preview. Playing goes through the kept parts one after another (a cut is skipped), each at its speed and
 /// its sound level (the sound at the part's speed, same pitch, as saved), with the colour look and the blurred boxes on
-/// every picture. Paused, it shows the picture at the playhead the same way. A screenshot is its own picture.
-/// Runs only while the editor is open.
+/// every picture; the next part is read ahead, so it goes on straight from the one before. Paused, it shows the picture
+/// at the playhead the same way. A screenshot is its own picture. Runs only while the editor is open.
 /// </summary>
 public sealed class EditorPlayback : IDisposable
 {
@@ -27,7 +38,7 @@ public sealed class EditorPlayback : IDisposable
     readonly DispatcherTimer _stillTimer = new() { Interval = TimeSpan.FromMilliseconds(60) };
     readonly int _height;
     FrameGrabber? _grabber;
-    FrameFilter? _stillColour, _playColour;
+    FrameFilter? _stillColour;
     /// <summary>
     /// Reads still pictures: decoding a moment takes tens of milliseconds, too long for the window's thread. One request
     /// at a time, a newer one replacing one not read yet. Once started it owns the frame reader and the still's colour filter.
@@ -147,21 +158,15 @@ public sealed class EditorPlayback : IDisposable
     }
 
     /// <summary>
-    /// The sound track the preview plays for a part and how loud (the clip's level times the part's): the mix, or the game
-    /// or mic alone when the other is silent (the saved clip mixes both at their own levels).
+    /// What the preview plays for a part: the clip's own tracks mixed as the saved clip mixes them, each at the clip's level
+    /// times the part's (a muted one at 0), so any level is heard at once without starting again; a one-track clip: its
+    /// sound at its level.
     /// </summary>
-    public static (int Track, double Volume) PreviewSound(SoundLevels s, ClipSpan part, bool separate)
+    public static SoundPlan PreviewSound(SoundLevels s, ClipSpan part, Engine.Audio.TrackLayout layout)
     {
-        if (!separate)
-            return (0, s.All * part.Game);
-        double game = s.GameMuted ? 0 : s.Game * part.Game, mic = s.MicMuted ? 0 : s.Mic * part.Mic;
-        if (game <= 0 && mic <= 0)
-            return (0, 0);
-        if (mic <= 0)
-            return (1, game);
-        if (game <= 0)
-            return (2, mic);
-        return (0, Math.Max(game, mic));
+        var tracks = layout.PartitionTracks;
+        return tracks.Count == 0 ? SoundPlan.One(0, s.All * part.Levels[0])
+            : new SoundPlan(tracks, [.. Enumerable.Range(0, tracks.Count).Select(j => s.Tracks.Heard(j) * part.Levels[j])]);
     }
 
     /// <summary>The playing range's part as it is in <paramref name="p"/> (its sound may have changed).</summary>
@@ -204,16 +209,15 @@ public sealed class EditorPlayback : IDisposable
     {
         var playing = _live;
         Volatile.Write(ref _live, next);
-        bool replan = playing == null || _index >= _queue.Count
+        bool replan = playing == null || _part == null
             || !playing.Kept.Select(k => (k.Start, k.End, k.Speed)).SequenceEqual(next.Kept.Select(k => (k.Start, k.End, k.Speed)));
         if (!replan)
         {
-            var range = _queue[_index];
-            var before = PreviewSound(playing!.Sound, PartIn(playing, range), _vm.HasSeparateTracks);
-            var now = PreviewSound(next.Sound, PartIn(next, range), _vm.HasSeparateTracks);
-            if (before.Track == now.Track)
+            var before = SoundOf(playing!, _part!.Index);
+            var now = SoundOf(next, _part.Index);
+            if (before.Tracks.SequenceEqual(now.Tracks))
             {
-                _session.Volume = now.Volume;
+                Hear(now); // the part read ahead takes its levels as they are when it goes on (GoneOn)
                 return;
             }
         }
@@ -221,61 +225,130 @@ public sealed class EditorPlayback : IDisposable
         Play();
     }
 
-    /// <summary>The range playing now (its place in the queue).</summary>
-    int _index;
+    /// <summary>
+    /// A part given to the player: its tracks mixed, and the colour look its pictures are made with on that player's
+    /// decoding thread (the part playing and the one read ahead never share one: a look takes one caller at a time).
+    /// </summary>
+    sealed class Part(int index, SoundPlan sound) : IDisposable
+    {
+        public int Index { get; } = index;
+        /// <summary>The tracks mixed (their gains change while they play), or null for one track.</summary>
+        public TrackMix? Mix { get; } = sound.Mixed ? new TrackMix(sound.Tracks, sound.Gains) : null;
+        public FrameFilter? Colour;
 
-    /// <summary>The playing picture with the edit as it is now (on the player's decoding thread).</summary>
-    void FilterLive(byte[] pixels, double time)
+        public void Dispose()
+        {
+            Colour?.Dispose(); // its player has stopped (Stop waits for its decoding thread)
+            Colour = null;
+        }
+    }
+
+    /// <summary>The part playing, and the one read ahead to go on from it.</summary>
+    Part? _part, _nextPart;
+
+    /// <summary>Seconds before a part ends that the next one is read ahead (opening the clip and reading up to the cut
+    /// take up to half a second).</summary>
+    const double ReadAhead = 2;
+
+    /// <summary>The levels of what plays now: one track's volume, or each mixed track's gain.</summary>
+    void Hear(SoundPlan sound)
+    {
+        if (_part?.Mix is { } mix && sound.Mixed)
+            mix.Gains = sound.Gains;
+        _session.Volume = sound.Volume;
+    }
+
+    SoundPlan SoundOf(EditProject p, int index) => PreviewSound(p.Sound, PartIn(p, _queue[index]), _vm.Layout);
+
+    /// <summary>A playing picture of <paramref name="part"/> with the edit as it is now (on its player's decoding thread).</summary>
+    void FilterLive(Part part, byte[] pixels, double time)
     {
         var project = Volatile.Read(ref _live);
         if (project == null)
             return;
-        var (partLook, strength) = project.LookAt(time); // a part may have its own look
-        string? look = ColourLooks.Filter(partLook, strength);
-        var colour = Volatile.Read(ref _playColour);
+        string? look = LookFor(project, time);
         if (look != null)
         {
-            if (colour == null)
-                Volatile.Write(ref _playColour, colour = new FrameFilter(Width, _height, look)); // freed after the player stops
-            colour.SetFilter(look);
+            part.Colour ??= new FrameFilter(Width, _height, look);
+            part.Colour.SetFilter(look);
         }
-        Filter(project, look == null ? null : colour, pixels, Width, _height, time);
+        Filter(project, look == null ? null : part.Colour, pixels, Width, _height, time);
     }
 
     void PlayRange(int run, int index)
     {
-        _index = index;
-        var range = _queue[index];
+        _session.Stop(); // the old players' decoding threads may be using their colour looks: stop them before freeing those
+        DisposeParts();
+        Volatile.Write(ref _live, _vm.Project);
+        _part = Give(run, index, next: false);
+        if (_part == null)
+            Pause();
+    }
+
+    /// <summary>
+    /// Gives part <paramref name="index"/> to the player: to play now, or (<paramref name="next"/>) read ahead to go on when
+    /// the playing one ends. Null when the player cannot take it.
+    /// </summary>
+    Part? Give(int run, int index, bool next)
+    {
         var project = _vm.Project;
-        _session.Stop(); // the old player's decoding thread may be using its colour filter: stop it before freeing that
-        DisposePlayColour();
-        Volatile.Write(ref _live, project);
-        var (track, volume) = PreviewSound(project.Sound, PartIn(project, range), _vm.HasSeparateTracks);
-        _session.Volume = volume;
-        var picture = _session.Start(project.Source, range.SourceStart, range.SourceEnd, Width, _height, t =>
+        var range = _queue[index];
+        var sound = SoundOf(project, index);
+        var part = new Part(index, sound);
+        Action<WriteableBitmap> show = picture =>
         {
             if (run == _run)
-                _vm.PlayheadOutput = range.OutputStart + (t - range.SourceStart) / range.Factor;
-        }, failure =>
+                _show(picture);
+        };
+        Action<double> position = t =>
         {
             if (run != _run)
                 return;
-            if (failure == null && index + 1 < _queue.Count)
+            _vm.PlayheadOutput = range.OutputStart + (t - range.SourceStart) / range.Factor;
+            if (_nextPart == null && index + 1 < _queue.Count && (range.SourceEnd - t) / range.Factor <= ReadAhead)
+                _nextPart = Give(run, index + 1, next: true);
+        };
+        Action<string?> ended = failure =>
+        {
+            if (run != _run)
+                return;
+            if (failure != null)
+                Pause();
+            else if (_nextPart != null)
+                GoneOn();
+            else if (index + 1 < _queue.Count)
                 PlayRange(run, index + 1);
             else
                 Pause();
-        }, track, range.Factor, FilterLive);
-        if (picture != null)
-            _show(picture);
+        };
+        Action<byte[], double> filter = (pixels, time) => FilterLive(part, pixels, time);
+        bool given;
+        if (next)
+            given = _session.Queue(project.Source, range.SourceStart, range.SourceEnd, Width, _height, show, position, ended, range.Factor, filter, part.Mix, sound.Volume);
         else
-            Pause();
+        {
+            _session.Volume = sound.Volume; // before it starts: its first sound is read at once
+            given = _session.Start(project.Source, range.SourceStart, range.SourceEnd, Width, _height, show, position, ended, range.Factor, filter, part.Mix);
+        }
+        if (given)
+            return part;
+        part.Dispose();
+        return null;
+    }
+
+    /// <summary>The playing part ended and the one read ahead went on (the player switched to it), at its levels as they are now.</summary>
+    void GoneOn()
+    {
+        _part?.Dispose();
+        (_part, _nextPart) = (_nextPart, null);
+        Hear(SoundOf(_vm.Project, _part!.Index));
     }
 
     void Pause()
     {
         _run++;
         _session.Stop();
-        DisposePlayColour();
+        DisposeParts();
         if (_playing)
         {
             _playing = false;
@@ -284,10 +357,12 @@ public sealed class EditorPlayback : IDisposable
         ScheduleStill();
     }
 
-    void DisposePlayColour()
+    /// <summary>Frees the parts' colour looks once their players have stopped.</summary>
+    void DisposeParts()
     {
-        _playColour?.Dispose(); // the player that used it has stopped (Stop waits for its decoding thread)
-        _playColour = null;
+        _part?.Dispose();
+        _nextPart?.Dispose();
+        _part = _nextPart = null;
     }
 
     // ---------------------------------------------------------------- the still picture
@@ -439,7 +514,7 @@ public sealed class EditorPlayback : IDisposable
         _vm.SeekStarted -= OnSeekStarted;
         _vm.SeekEnded -= OnSeekEnded;
         _session.Stop();
-        DisposePlayColour();
+        DisposeParts();
         _stillStop = true;
         _stillRun++; // a still read after this is not shown
         if (_stillThread != null)

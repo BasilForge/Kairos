@@ -17,12 +17,15 @@ public static class SiteSessions
         return SiteAccounts.Sites.ToDictionary(p => p, p => SiteAccounts.IsSignedIn(p, cookies));
     }
 
-    /// <summary>Signs out of one site: its cookies and the data its pages stored go; the other sites stay signed in.</summary>
+    /// <summary>
+    /// Signs out of one site: its cookies, the data its pages stored and any sign-in service's cookies go; the other sites
+    /// stay signed in.
+    /// </summary>
     public static async Task SignOut(CoreWebView2 core, SharePlatform platform)
     {
         foreach (var cookie in await AllCookies(core))
         {
-            if (SiteAccounts.Owns(platform, cookie.Domain))
+            if (SiteAccounts.SignOutRemoves(platform, cookie.Domain))
                 core.CookieManager.DeleteCookie(cookie);
         }
         foreach (string origin in SiteAccounts.Origins(platform))

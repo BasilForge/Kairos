@@ -11,6 +11,9 @@ namespace Kairos.App;
 /// The "clip saved" card in the top-right corner. A click-through layered window that never takes focus;
 /// it fades in, holds, and fades out. Not shown over exclusive-fullscreen games or presentations.
 /// </summary>
+/// <summary>The toast's mark: saved (a green check), something that did not work (an amber "!"), an update (a rose arrow).</summary>
+public enum ToastIcon { Saved, Warning, Update }
+
 public sealed class SaveToast : NativeWindow, IDisposable
 {
     public const double FadeIn = 0.18, Hold = 2.2, FadeOut = 0.35;
@@ -61,11 +64,18 @@ public sealed class SaveToast : NativeWindow, IDisposable
     }
 
     /// <summary>Shows (or restarts) the card on the monitor of the foreground window.</summary>
-    /// <param name="warning">Something did not work: an amber "!" instead of the green check.</param>
-    public void Show(string title, string subtitle, bool rtl, bool warning = false)
+    /// <param name="icon">The green check (saved), an amber "!" (something did not work) or a rose arrow (an update).</param>
+    /// <returns>False when nothing showed (an exclusive-fullscreen game or presentation mode).</returns>
+    public bool Show(string title, string subtitle, bool rtl, ToastIcon icon = ToastIcon.Saved)
     {
+        // What the user was told, in the log (someone saying "nothing happened" may have been told why).
+        string said = subtitle.Length > 0 ? $"{title} | {subtitle}" : title;
         if (SHQueryUserNotificationState(out int state) == 0 && state is 3 or 4)
-            return; // exclusive-fullscreen game or presentation mode
+        {
+            Engine.ObsLog.Info($"toast (not shown: a full-screen game or presentation): {said}");
+            return false; // exclusive-fullscreen game or presentation mode
+        }
+        Engine.ObsLog.Info("toast: " + said);
 
         IntPtr monitor = MonitorFromWindow(GetForegroundWindow(), 1 /* MONITOR_DEFAULTTOPRIMARY */);
         var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
@@ -73,7 +83,7 @@ public sealed class SaveToast : NativeWindow, IDisposable
         _scale = GetDpiForMonitor(monitor, 0, out uint dpi, out _) == 0 ? dpi / 96f : 1f;
 
         _image?.Dispose();
-        _image = Paint(title, subtitle, rtl, _scale, warning);
+        _image = Paint(title, subtitle, rtl, _scale, icon);
         var work = Rectangle.FromLTRB(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom);
         _pos = TestPosition ?? Place(work, _image.Size, (int)(BaseMargin * _scale));
         _shownAt = DateTime.UtcNow;
@@ -82,6 +92,7 @@ public sealed class SaveToast : NativeWindow, IDisposable
         ShowWindow(Handle, 4 /* SW_SHOWNOACTIVATE */);
         SetWindowPos(Handle, new IntPtr(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /* NOSIZE NOMOVE NOACTIVATE */);
         _timer.Start();
+        return true;
     }
 
     void Animate()
@@ -98,10 +109,50 @@ public sealed class SaveToast : NativeWindow, IDisposable
         Present(_image, new Point(_pos.X + slide, _pos.Y), (byte)Math.Round(opacity * 255));
     }
 
-    /// <summary>Draws the card. Shared with --render-toast so it can be checked without showing a window.</summary>
-    public static Bitmap Paint(string title, string subtitle, bool rtl, float scale, bool warning = false)
+    /// <summary>The card's edge padding, its icon's size and the gap between icon and text, at 100 %.</summary>
+    const float Pad = 16, IconSize = 30, IconGap = 12;
+
+    static float TextWidth(int cardWidth, float scale) => cardWidth - (Pad * 2 + IconSize + IconGap) * scale;
+    static Font TitleFont(float scale) => new("Segoe UI Semibold", 10.5f * scale, FontStyle.Regular, GraphicsUnit.Point);
+    static Font SubtitleFont(float scale) => new("Segoe UI", 9f * scale, FontStyle.Regular, GraphicsUnit.Point);
+
+    /// <summary>The line under the title may take a second line: the card grows by this much (at 100 %).</summary>
+    const float SecondLine = 16;
+
+    /// <summary>
+    /// Whether a title and the line under it show whole on the card: the title on one line, the line under it on up to
+    /// two (more ends in "…").
+    /// </summary>
+    public static bool Fits(string title, string subtitle, float scale = 1) => Measure(g =>
     {
-        int w = (int)(BaseWidth * scale), h = (int)(BaseHeight * scale);
+        using var titleFont = TitleFont(scale);
+        using var subFont = SubtitleFont(scale);
+        float width = TextWidth((int)(BaseWidth * scale), scale);
+        return g.MeasureString(title, titleFont).Width <= width
+            && g.MeasureString(subtitle, subFont, (int)width).Height < subFont.GetHeight(g) * 2.5; // two lines, with GDI+'s padding
+    });
+
+    /// <summary>The line under the title needs a second line on a card at <paramref name="scale"/>.</summary>
+    static bool Wraps(string subtitle, float scale) => Measure(g =>
+    {
+        using var subFont = SubtitleFont(scale);
+        return g.MeasureString(subtitle, subFont).Width > TextWidth((int)(BaseWidth * scale), scale);
+    });
+
+    /// <summary>Text measured as the card draws it: on a 96-dpi bitmap (the screen's own scale would be counted twice).</summary>
+    static T Measure<T>(Func<Graphics, T> measure)
+    {
+        using var bmp = new Bitmap(1, 1);
+        using var g = Graphics.FromImage(bmp);
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+        return measure(g);
+    }
+
+    /// <summary>Draws the card. Shared with --render-toast so it can be checked without showing a window.</summary>
+    public static Bitmap Paint(string title, string subtitle, bool rtl, float scale, ToastIcon icon = ToastIcon.Saved)
+    {
+        bool twoLines = Wraps(subtitle, scale);
+        int w = (int)(BaseWidth * scale), h = (int)((BaseHeight + (twoLines ? SecondLine : 0)) * scale);
         var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -117,43 +168,64 @@ public sealed class SaveToast : NativeWindow, IDisposable
             g.DrawPath(border, path);
         }
 
-        float pad = 16 * scale, icon = 30 * scale;
-        float iconX = rtl ? w - pad - icon : pad;
-        float iconY = (h - icon) / 2;
-        using (var disc = new SolidBrush(warning ? Color.FromArgb(255, 255, 176, 32) : Color.FromArgb(255, 46, 212, 122)))
-            g.FillEllipse(disc, iconX, iconY, icon, icon);
-        using (var mark = new Pen(Color.FromArgb(255, 46, 39, 38), 2.6f * scale) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+        float pad = Pad * scale, size = IconSize * scale;
+        float iconX = rtl ? w - pad - size : pad;
+        float iconY = (h - size) / 2;
+        using (var disc = new SolidBrush(TrayMenu.Rgb(icon switch
+               {
+                   ToastIcon.Warning => Settings.ThemeColors.Warning,
+                   ToastIcon.Update => Settings.ThemeColors.Accent,
+                   _ => Settings.ThemeColors.Saved,
+               })))
+            g.FillEllipse(disc, iconX, iconY, size, size);
+        using (var mark = new Pen(TrayMenu.Rgb(Settings.ThemeColors.Background), 2.6f * scale) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
         {
-            if (warning)
+            if (icon == ToastIcon.Update)
+            {
+                // An arrow down: a stroke and its head
+                g.DrawLine(mark, iconX + size * 0.5f, iconY + size * 0.27f, iconX + size * 0.5f, iconY + size * 0.68f);
+                g.DrawLines(mark,
+                [
+                    new PointF(iconX + size * 0.33f, iconY + size * 0.52f),
+                    new PointF(iconX + size * 0.5f, iconY + size * 0.69f),
+                    new PointF(iconX + size * 0.67f, iconY + size * 0.52f),
+                ]);
+            }
+            else if (icon == ToastIcon.Warning)
             {
                 // "!": a stroke and a dot
-                g.DrawLine(mark, iconX + icon * 0.5f, iconY + icon * 0.26f, iconX + icon * 0.5f, iconY + icon * 0.56f);
-                g.DrawLine(mark, iconX + icon * 0.5f, iconY + icon * 0.74f, iconX + icon * 0.5f, iconY + icon * 0.745f);
+                g.DrawLine(mark, iconX + size * 0.5f, iconY + size * 0.26f, iconX + size * 0.5f, iconY + size * 0.56f);
+                g.DrawLine(mark, iconX + size * 0.5f, iconY + size * 0.74f, iconX + size * 0.5f, iconY + size * 0.745f);
             }
             else
             {
                 g.DrawLines(mark,
                 [
-                    new PointF(iconX + icon * 0.28f, iconY + icon * 0.52f),
-                    new PointF(iconX + icon * 0.44f, iconY + icon * 0.67f),
-                    new PointF(iconX + icon * 0.73f, iconY + icon * 0.36f),
+                    new PointF(iconX + size * 0.28f, iconY + size * 0.52f),
+                    new PointF(iconX + size * 0.44f, iconY + size * 0.67f),
+                    new PointF(iconX + size * 0.73f, iconY + size * 0.36f),
                 ]);
             }
         }
 
-        float textLeft = rtl ? pad : pad + icon + 12 * scale;
-        float textWidth = w - pad * 2 - icon - 12 * scale;
+        float textLeft = rtl ? pad : pad + size + IconGap * scale;
+        float textWidth = TextWidth(w, scale);
         var format = new StringFormat(rtl ? StringFormatFlags.DirectionRightToLeft : 0)
         {
             Trimming = StringTrimming.EllipsisCharacter,
             FormatFlags = (rtl ? StringFormatFlags.DirectionRightToLeft : 0) | StringFormatFlags.NoWrap,
         };
-        using var titleFont = new Font("Segoe UI Semibold", 10.5f * scale, FontStyle.Regular, GraphicsUnit.Point);
-        using var subFont = new Font("Segoe UI", 9f * scale, FontStyle.Regular, GraphicsUnit.Point);
+        using var titleFont = TitleFont(scale);
+        using var subFont = SubtitleFont(scale);
         using var white = new SolidBrush(Color.FromArgb(255, 245, 236, 234));
         using var grey = new SolidBrush(Color.FromArgb(255, 187, 170, 167));
         g.DrawString(title, titleFont, white, new RectangleF(textLeft, 12 * scale, textWidth, 22 * scale), format);
-        g.DrawString(subtitle, subFont, grey, new RectangleF(textLeft, 34 * scale, textWidth, 20 * scale), format);
+        if (twoLines)
+        {
+            format.FormatFlags = (format.FormatFlags & ~StringFormatFlags.NoWrap) | StringFormatFlags.LineLimit;
+            format.Trimming = StringTrimming.EllipsisWord;
+        }
+        g.DrawString(subtitle, subFont, grey, new RectangleF(textLeft, 34 * scale, textWidth, (20 + (twoLines ? SecondLine : 0)) * scale), format);
         return bmp;
     }
 

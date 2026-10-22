@@ -118,4 +118,23 @@ public static class LanguageTests
             "every language has its own name");
         Assert.True(Text.Languages.Count(l => l.RightToLeft) == 1 && Text.Languages.Single(l => l.RightToLeft).Code == "ar", "Arabic is written right to left");
     }
+
+    [Test]
+    public static void No_text_key_is_written_twice()
+    {
+        // A key written twice loads as its last value: the first meaning is lost without a word.
+        foreach (var language in Text.Languages)
+        {
+            using var stream = typeof(Text).Assembly.GetManifestResourceStream($"Lang.{language.Code}.json")!;
+            using var copy = new MemoryStream();
+            stream.CopyTo(copy);
+            var reader = new System.Text.Json.Utf8JsonReader(copy.ToArray(), new System.Text.Json.JsonReaderOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip });
+            var seen = new HashSet<string>();
+            var twice = new List<string>();
+            while (reader.Read())
+                if (reader.TokenType == System.Text.Json.JsonTokenType.PropertyName && reader.CurrentDepth == 1 && !seen.Add(reader.GetString()!))
+                    twice.Add(reader.GetString()!);
+            Assert.Equal("", string.Join(", ", twice), $"{language.Code}: keys written twice");
+        }
+    }
 }

@@ -146,8 +146,17 @@
                                 <Grid>
                                     <TextBlock Style="{StaticResource Icon}" Text="&#xE714;" FontSize="28" Foreground="{StaticResource StrokeStrong}" HorizontalAlignment="Center"/>
                                     <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" FlowDirection="LeftToRight"/>
-                                    <Button Style="{StaticResource OpenCard}" CommandParameter="{Binding}"
+                                    <!-- Opens the clip; dragged, it goes out as a file (into Discord, a chat, a folder) -->
+                                    <Button Style="{StaticResource OpenCard}" CommandParameter="{Binding}" Initialized="OnCardInitialized"
                                             Command="{Binding DataContext.PlayCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                                    <!-- An HEVC clip's H.264 copy being made for a drag: drag again once it is done -->
+                                    <Grid Width="46" Height="46" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
+                                          Visibility="{Binding Preparing, Converter={StaticResource Vis}}">
+                                        <Ellipse Fill="#EE231D1C"/>
+                                        <l:ProgressRing Value="{Binding PrepareProgress}" Thickness="3.5" Fill="{DynamicResource Accent}" Track="{StaticResource Stroke}"/>
+                                        <TextBlock Text="{Binding PreparePercent}" FontSize="10.5" FontWeight="SemiBold" Foreground="White"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" FlowDirection="LeftToRight"/>
+                                    </Grid>
                                     <CheckBox Style="{StaticResource SelectCheck}" IsChecked="{Binding IsSelected}" HorizontalAlignment="Left" VerticalAlignment="Top"
                                               Margin="10" AutomationProperties.Name="{Binding Name}"/>
                                     <!-- Share straight from the card (a quick post), over the picture's own button -->
@@ -161,6 +170,7 @@
                             <Grid Margin="14,10,10,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
@@ -188,12 +198,19 @@
                                     <TextBlock Text="{Binding Meta}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                                FlowDirection="LeftToRight" HorizontalAlignment="Left"/>
                                 </StackPanel>
-                                <Button Grid.Column="1" Style="{StaticResource Ghost}" Padding="8,6" Margin="4,0" VerticalAlignment="Center"
+                                <!-- The clip's own camera file: a camera mark that opens it -->
+                                <Button Grid.Column="1" Style="{StaticResource Ghost}" Padding="8,6" Margin="4,0,0,0" VerticalAlignment="Center"
+                                        Command="{Binding DataContext.OpenCameraCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                                        Visibility="{Binding Camera, Converter={StaticResource Vis}}"
+                                        ToolTip="{l:T clips.openCamera}" AutomationProperties.Name="{l:T clips.openCamera}">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE714;" FontSize="12"/>
+                                </Button>
+                                <Button Grid.Column="2" Style="{StaticResource Ghost}" Padding="8,6" Margin="4,0" VerticalAlignment="Center"
                                         Command="{Binding DataContext.ShowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
                                         ToolTip="{l:T clips.show}" AutomationProperties.Name="{l:T clips.show}">
                                     <TextBlock Style="{StaticResource Icon}" Text="&#xE838;" FontSize="12"/>
                                 </Button>
-                                <Button Grid.Column="2" Style="{StaticResource Ghost}" Padding="8,6" VerticalAlignment="Center"
+                                <Button Grid.Column="3" Style="{StaticResource Ghost}" Padding="8,6" VerticalAlignment="Center"
                                         Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
                                         ToolTip="{l:T clips.recycle}" AutomationProperties.Name="{l:T clips.recycle}">
                                     <TextBlock Style="{StaticResource Icon}" Text="&#xE74D;" FontSize="12" Foreground="{DynamicResource Accent}"/>

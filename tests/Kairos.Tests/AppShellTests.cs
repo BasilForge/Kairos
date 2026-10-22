@@ -26,6 +26,21 @@ public static class AppShellTests
             Assert.Equal(false, GameWatcher.IsFullscreen(new ScreenRect(0, 0, 2560, 1440), Monitor, cls), cls);
     }
 
+    /// <summary>
+    /// "Only record while gaming" (Red's report): a maximized window with its title bar covers the screen when the taskbar
+    /// hides itself, and a video in a browser or player fills it too; neither is a game. Kairos itself never is.
+    /// </summary>
+    [Test]
+    public static void Only_a_real_full_screen_app_counts_as_a_game()
+    {
+        Assert.Equal(false, GameWatcher.IsFullscreen(new ScreenRect(-8, -8, 2568, 1448), Monitor, "CabinetWClass", framedMaximized: true),
+            "a maximized window with a title bar (taskbar set to hide)");
+        Assert.Equal(true, GameWatcher.IsFullscreen(new ScreenRect(0, 0, 2560, 1440), Monitor, "UnrealWindow", framedMaximized: false), "a borderless game");
+        Assert.True(GameWatcher.IsGame("r5apex"), "a game");
+        foreach (string notGame in new[] { "chrome", "msedge", "firefox", "brave", "vlc", "mpv", "wwahost", "msedgewebview2", "netflix", "Kairos", "explorer" })
+            Assert.True(!GameWatcher.IsGame(notGame), notGame);
+    }
+
     [Test]
     public static void Window_string_yields_decoded_exe_name()
     {

@@ -254,4 +254,35 @@ public static class ShareTranscodeTests
     {
         public void Report(double value) => report(value);
     }
+
+    [Test]
+    public static void A_copy_made_to_fit_stays_under_its_size()
+    {
+        TestFfmpeg.Load();
+        string output = Temp("fit.mp4");
+        var spec = SharePlanner.Spec(SharePlatform.Copy) with { MaxBytes = 300_000 };
+        var source = ClipTranscoder.Probe(H264);
+        var plan = SharePlanner.Plan(spec, 0, source.Duration, source.Width, source.Height, source.Fps, source.AudioBitrate, false, 0.5, 0)
+            with { AudioBitrate = 64_000 };
+        var result = ClipTranscoder.Transcode(H264, output, plan, spec.MaxBytes, null, CancellationToken.None);
+        var o = ClipTranscoder.Probe(output);
+        Assert.True(result.Bytes <= 300_000, $"{result.Bytes} bytes");
+        Assert.Equal("aac", o.AudioCodec, "AAC");
+        Assert.True(o.AudioBitrate is >= 48_000 and <= 80_000, $"the sound at {o.AudioBitrate} b/s");
+        Assert.Near(source.Duration, o.Duration, 0.2, "the whole clip");
+    }
+
+    [Test]
+    public static void A_vertical_clip_is_shared_vertical()
+    {
+        TestFfmpeg.Load();
+        string vertical = Path.Combine(Fixtures, "clip-vertical.mp4");
+        var info = ClipTranscoder.Probe(vertical);
+        var spec = SharePlanner.CopySpec(10);
+        var plan = SharePlanner.Plan(spec, 0, info.Duration, info.Width, info.Height, info.Fps, info.AudioBitrate, vertical: true, 0.5, 0);
+        Assert.Equal((360, 640, (CropRect?)new CropRect(0, 0, 360, 640)), (plan.Width, plan.Height, plan.Crop), "9:16 kept, nothing cut away");
+        var result = ClipTranscoder.Transcode(vertical, Temp("vertical.mp4"), plan, spec.MaxBytes, null, CancellationToken.None);
+        var o = ClipTranscoder.Probe(result.Path);
+        Assert.Equal((360, 640), (o.Width, o.Height), "the copy is vertical");
+    }
 }

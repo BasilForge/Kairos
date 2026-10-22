@@ -10,6 +10,8 @@ public partial class ShareOverlay : UserControl
     public ShareOverlay()
     {
         InitializeComponent();
+        // Copy dragged out: the copy made to fit the size, or the clip (into Discord, a chat, a folder).
+        FileDrag.Attach(CopyTile, () => Vm?.DragFile, () => Vm?.PrepareDrag());
         IsVisibleChanged += (_, e) =>
         {
             if (e.NewValue is true)
@@ -49,6 +51,24 @@ public partial class ShareOverlay : UserControl
         var picker = (FrameworkElement)EmojiPopup.Child;
         EmojiPopup.Child = null;
         return picker;
+    }
+
+    /// <summary>Copy pressed on a video: its sizes under the tile, Original or one of Discord's (no tick: a small, plain list).</summary>
+    internal void ShowCopySizes() => CopySizes().IsOpen = true;
+
+    internal ContextMenu CopySizes()
+    {
+        var vm = Vm!;
+        var menu = new ContextMenu { PlacementTarget = CopyTile, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom, MinWidth = CopyTile.ActualWidth };
+        foreach (var size in vm.CopySizeChoices)
+            menu.Items.Add(new MenuItem
+            {
+                Header = size.Label,
+                InputGestureText = size.For,
+                Command = vm.CopyAtCommand,
+                CommandParameter = size.Mb,
+            });
+        return menu;
     }
 
     void OnEmojiOpen(object sender, RoutedEventArgs e)

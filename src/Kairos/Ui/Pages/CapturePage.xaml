@@ -41,20 +41,42 @@
                     <ComboBox Grid.Column="1" ItemsSource="{Binding Monitors}" DisplayMemberPath="Label" SelectedValuePath="Value"
                               SelectedValue="{Binding MonitorId}" AutomationProperties.Name="{l:T capture.monitor}"/>
                 </Grid>
-                <Grid Visibility="{Binding Mode, Converter={StaticResource EqVis}, ConverterParameter=Window}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="300"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Style="{StaticResource Label}" Text="{l:T capture.window}"/>
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding Windows}" DisplayMemberPath="Label" SelectedValuePath="Value"
-                              SelectedValue="{Binding WindowTarget}" AutomationProperties.Name="{l:T capture.window}"/>
-                    <Button Grid.Column="2" Style="{StaticResource Ghost}" Command="{Binding RefreshCapsCommand}" Padding="10,8" Margin="8,0,0,0"
-                            ToolTip="{l:T capture.refresh}" AutomationProperties.Name="{l:T capture.refresh}">
-                        <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;" FontSize="13"/>
-                    </Button>
-                </Grid>
+                <!-- Apps: the chosen apps (the one in front is recorded), and an open app to add -->
+                <StackPanel Visibility="{Binding Mode, Converter={StaticResource EqVis}, ConverterParameter=Window}">
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T capture.apps}"/>
+                    <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.appsTip}"/>
+                    <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.appsFrame}" Visibility="{Binding AppsYellowFrame, Converter={StaticResource Vis}}"/>
+                    <ItemsControl ItemsSource="{Binding ChosenApps}" Focusable="False" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource Bg}" CornerRadius="8" Padding="14,4,4,4" Margin="0,0,0,6">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource Ghost}" Padding="10,8"
+                                                Command="{Binding DataContext.RemoveAppCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding Value}" ToolTip="{l:T capture.removeApp}" AutomationProperties.Name="{l:T capture.removeApp}">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE711;" FontSize="11"/>
+                                        </Button>
+                                        <TextBlock Text="{Binding Label}" FontSize="14" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid Margin="0,4,0,0" Visibility="{Binding CanAddApp, Converter={StaticResource Vis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Label}" Text="{l:T capture.addApp}"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding AddableApps}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding AppToAdd}" AutomationProperties.Name="{l:T capture.addApp}"/>
+                        <Button Grid.Column="2" Style="{StaticResource Ghost}" Command="{Binding RefreshCapsCommand}" Padding="10,8" Margin="8,0,0,0"
+                                ToolTip="{l:T capture.refresh}" AutomationProperties.Name="{l:T capture.refresh}">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;" FontSize="13"/>
+                        </Button>
+                    </Grid>
+                </StackPanel>
                 <Grid Visibility="{Binding Mode, Converter={StaticResource EqVis}, ConverterParameter=Game}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -72,17 +94,118 @@
                     <TextBlock Style="{StaticResource Label}" Text="{l:T capture.cursor}"/>
                     <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding CaptureCursor}" AutomationProperties.Name="{l:T capture.cursor}"/>
                 </Grid>
-                <Border Style="{StaticResource Divider}"/>
-                <!-- From General: it decides when capture runs, so it sits with what is captured -->
+                <!-- Full screen only: Games has its own choice for when no game runs (above), and Apps records its apps -->
+                <StackPanel Visibility="{Binding Mode, Converter={StaticResource EqVis}, ConverterParameter=Screen}">
+                    <Border Style="{StaticResource Divider}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Label}" Text="{l:T general.onlyGames}" Margin="0,0,16,0"/>
+                        <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding OnlyWhenGaming}" VerticalAlignment="Center"
+                                  AutomationProperties.Name="{l:T general.onlyGames}"/>
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- The camera over the recording: off until turned on; its settings show only then -->
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Style="{StaticResource Label}" Text="{l:T general.onlyGames}" Margin="0,0,16,0"/>
-                    <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding OnlyWhenGaming}" VerticalAlignment="Center"
-                              AutomationProperties.Name="{l:T general.onlyGames}"/>
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE714;" FontSize="18" Foreground="{DynamicResource Accent}" Margin="0,2,12,0" VerticalAlignment="Top"/>
+                    <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource Section}" Text="{l:T capture.camera}"/>
+                        <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.cameraTip}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="2" Style="{StaticResource Switch}" IsChecked="{Binding CameraEnabled}" VerticalAlignment="Center"
+                              AutomationProperties.Name="{l:T capture.camera}"/>
                 </Grid>
+                <StackPanel Visibility="{Binding CameraEnabled, Converter={StaticResource Vis}}">
+                    <Border Style="{StaticResource Divider}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="250"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Label}" Text="{l:T capture.cameraDevice}" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding CameraDevices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding CameraDevice}" AutomationProperties.Name="{l:T capture.cameraDevice}"/>
+                    </Grid>
+                    <Border Style="{StaticResource Divider}"/>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T capture.layout}"/>
+                    <!-- Two small pictures: the game with the camera in a corner, or a 9:16 picture with the camera on top -->
+                    <UniformGrid Columns="2" Margin="0,8,-12,0">
+                        <RadioButton Style="{StaticResource ChoiceCard}" GroupName="cameraLayout"
+                                     IsChecked="{Binding CameraLayout, Converter={StaticResource Eq}, ConverterParameter=Corner}"
+                                     AutomationProperties.Name="{l:T capture.layoutCorner}">
+                            <StackPanel Orientation="Horizontal">
+                                <Grid Width="48" Height="27" FlowDirection="LeftToRight">
+                                    <Border BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1.5" CornerRadius="3"/>
+                                    <Border Width="15" Height="9" Background="{DynamicResource Accent}" CornerRadius="2" HorizontalAlignment="Right"
+                                            VerticalAlignment="Bottom" Margin="0,0,4,4"/>
+                                </Grid>
+                                <TextBlock Text="{l:T capture.layoutCorner}" FontSize="14" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource ChoiceCard}" GroupName="cameraLayout"
+                                     IsChecked="{Binding CameraLayout, Converter={StaticResource Eq}, ConverterParameter=Vertical}"
+                                     AutomationProperties.Name="{l:T capture.layoutVertical}">
+                            <StackPanel Orientation="Horizontal">
+                                <Grid Width="20" Height="34" FlowDirection="LeftToRight">
+                                    <Border BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1.5" CornerRadius="3"/>
+                                    <Border Height="11" Background="{DynamicResource Accent}" CornerRadius="3,3,0,0" VerticalAlignment="Top" Margin="1.5,1.5,1.5,0"/>
+                                </Grid>
+                                <TextBlock Text="{l:T capture.layoutVertical}" FontSize="14" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </RadioButton>
+                    </UniformGrid>
+                    <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.layoutRestart}" Margin="0,8,0,0"/>
+                    <!-- Corner: where the camera goes, how big, and round or not -->
+                    <StackPanel Visibility="{Binding CameraLayout, Converter={StaticResource EqVis}, ConverterParameter=Corner}">
+                        <Border Style="{StaticResource Divider}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="260"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource Label}" Text="{l:T capture.cameraPlace}"/>
+                                <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.cameraPlaceTip}" TextWrapping="Wrap" Margin="0,3,0,12"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource Label}" Text="{l:T capture.cameraRound}" VerticalAlignment="Center"/>
+                                    <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding CameraRound}"
+                                              AutomationProperties.Name="{l:T capture.cameraRound}"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource Label}" Text="{l:T capture.cameraSize}" Margin="0,12,0,0"/>
+                                <Slider Minimum="0.1" Maximum="0.5" Value="{Binding CameraSize}" SmallChange="0.02" LargeChange="0.05" Margin="0,6,0,0"
+                                        AutomationProperties.Name="{l:T capture.cameraSize}"/>
+                            </StackPanel>
+                            <l:CameraPlacer Grid.Column="1" X="{Binding CameraX}" Y="{Binding CameraY}" Size="{Binding CameraSize}" Round="{Binding CameraRound}"
+                                            VerticalAlignment="Top" AutomationProperties.Name="{l:T capture.cameraPlace}"/>
+                        </Grid>
+                    </StackPanel>
+                    <Border Style="{StaticResource Divider}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Label}" Text="{l:T capture.cameraFile}" Margin="0,0,16,0"/>
+                        <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding CameraSeparateFile}" VerticalAlignment="Center"
+                                  AutomationProperties.Name="{l:T capture.cameraFile}"/>
+                    </Grid>
+                </StackPanel>
             </StackPanel>
         </Border>
 
@@ -98,6 +221,38 @@
                     <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding ReplayEnabled}" VerticalAlignment="Center"
                               AutomationProperties.Name="{l:T capture.replay}"/>
                 </Grid>
+                <Border Style="{StaticResource Divider}"/>
+                <!-- Where the replay is kept: the disk (its kind named) or RAM; on the disk, its drive beside it and a line for a hard disk -->
+                <StackPanel IsEnabled="{Binding ReplayEnabled}">
+                    <!-- The label keeps its width; on a narrow window the drive list and the bar wrap under each other -->
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Left" Margin="0,0,16,0" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource Label}" Text="{l:T capture.onDisk}"/>
+                            <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.onDiskTip}"
+                                       Visibility="{Binding ReplayOnDisk, Converter={StaticResource Vis}}"/>
+                            <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.inRamTip}"
+                                       Visibility="{Binding ReplayOnDisk, Converter={StaticResource EqVis}, ConverterParameter=False}"/>
+                        </StackPanel>
+                        <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ComboBox ItemsSource="{Binding DiskDrives}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      SelectedValue="{Binding DiskDrive}" MinWidth="230" Margin="0,3,12,3" VerticalAlignment="Center"
+                                      AutomationProperties.Name="{l:T capture.onDisk}" Visibility="{Binding ReplayOnDisk, Converter={StaticResource Vis}}"/>
+                            <Border Background="{StaticResource FieldFill}" BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1"
+                                    CornerRadius="17" Padding="3" Margin="0,3" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Style="{StaticResource PillSide}" GroupName="replayPlace" Content="{Binding DiskKind}" FlowDirection="LeftToRight"
+                                                 IsChecked="{Binding ReplayOnDisk, Converter={StaticResource Eq}, ConverterParameter=True}"
+                                                 AutomationProperties.Name="{Binding DiskKind}"/>
+                                    <RadioButton Style="{StaticResource PillSide}" GroupName="replayPlace" Content="RAM" FlowDirection="LeftToRight"
+                                                 IsChecked="{Binding ReplayOnDisk, Converter={StaticResource Eq}, ConverterParameter=False}"
+                                                 AutomationProperties.Name="RAM"/>
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.diskHdd}" Foreground="{StaticResource Warning}" Margin="0,6,0,0"
+                               Visibility="{Binding DiskDriveIsHdd, Converter={StaticResource Vis}}"/>
+                </StackPanel>
                 <Border Style="{StaticResource Divider}"/>
                 <Grid IsEnabled="{Binding ReplayEnabled}">
                     <Grid.ColumnDefinitions>
@@ -117,11 +272,28 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Style="{StaticResource Label}" Text="{l:T capture.quick}" Margin="0,0,16,0"/>
+                    <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource Label}" Text="{l:T capture.quick}"/>
+                        <!-- On without a hotkey: nothing saves it but the tray menu -->
+                        <Button Style="{StaticResource Link}" Content="{l:T capture.quickNoKey}" Command="{Binding ShowHotkeysCommand}" HorizontalAlignment="Left"
+                                Visibility="{Binding QuickNeedsKey, Converter={StaticResource Vis}}"/>
+                    </StackPanel>
                     <ComboBox Grid.Column="1" Width="96" Margin="0,0,16,0" ItemsSource="{Binding QuickOptions}" DisplayMemberPath="Label" SelectedValuePath="Value"
                               SelectedValue="{Binding QuickSeconds}" IsEnabled="{Binding QuickEnabled}" VerticalAlignment="Center"
                               AutomationProperties.Name="{l:T capture.quick}"/>
                     <CheckBox Grid.Column="2" Style="{StaticResource Switch}" IsChecked="{Binding QuickEnabled}" AutomationProperties.Name="{l:T capture.quick}"/>
+                </Grid>
+                <Border Style="{StaticResource Divider}"/>
+                <Grid IsEnabled="{Binding ReplayEnabled}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource Label}" Text="{l:T capture.fresh}"/>
+                        <TextBlock Style="{StaticResource Caption}" Text="{l:T capture.freshTip}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding FreshAfterSave}" AutomationProperties.Name="{l:T capture.fresh}"/>
                 </Grid>
             </StackPanel>
         </Border>
