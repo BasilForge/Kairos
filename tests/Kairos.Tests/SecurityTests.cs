@@ -29,20 +29,20 @@ public static class SecurityTests
     public static void A_report_carries_no_user_folder_and_no_window_title()
     {
         string data = Folder(), desktop = Folder();
-        const string profile = @"C:\Users\Basil";
+        const string profile = @"C:\Users\Alex";
         Directory.CreateDirectory(Path.Combine(data, "logs"));
         // A log from before logs were cleaned (1.0.1), with the user's folder in both slashes.
-        File.WriteAllText(Path.Combine(data, "logs", "kairos-old.log"), @"output folder C:\Users\Basil\Videos\Kairos" + "\n" + "module c:/users/basil/x.dll\n");
+        File.WriteAllText(Path.Combine(data, "logs", "kairos-old.log"), @"output folder C:\Users\Alex\Videos\Kairos" + "\n" + "module c:/users/alex/x.dll\n");
         File.WriteAllText(Path.Combine(data, "settings.json"), """
             {"capture":{"window":"Secret DM - Discord:Chrome_WidgetWin_1:Discord.exe","apps":["Bank#3A login:Chrome_WidgetWin_1:chrome.exe"]},
              "audio":{"sources":[{"target":"Private chat:Qt5QWindowIcon:app.exe","label":"Chat"}]},
-             "output":{"folder":"C:\\Users\\Basil\\Videos\\Kairos"},"hotkeys":{"save":"Alt+F8"}}
+             "output":{"folder":"C:\\Users\\Alex\\Videos\\Kairos"},"hotkeys":{"save":"Alt+F8"}}
             """);
         string zip = Report.Save(data, desktop, new DateTime(2026, 10, 21, 9, 0, 0),
-            """{"lastClip":"C:\\Users\\Basil\\Videos\\Kairos\\a.mp4","capturing":"Secret DM - Discord:Chrome_WidgetWin_1:Discord.exe"}""", profile);
+            """{"lastClip":"C:\\Users\\Alex\\Videos\\Kairos\\a.mp4","capturing":"Secret DM - Discord:Chrome_WidgetWin_1:Discord.exe"}""", profile);
         using var archive = ZipFile.OpenRead(zip);
         string all = string.Join("\n", archive.Entries.Select(e => new StreamReader(e.Open()).ReadToEnd()));
-        Assert.True(!all.Contains("Basil", StringComparison.OrdinalIgnoreCase), "no user name: " + all);
+        Assert.True(!all.Contains("Alex", StringComparison.OrdinalIgnoreCase), "no user name: " + all);
         Assert.True(!all.Contains("Secret") && !all.Contains("Bank") && !all.Contains("Private chat"), "no window title: " + all);
         Assert.True(all.Contains(":Chrome_WidgetWin_1:Discord.exe") && all.Contains(":Qt5QWindowIcon:app.exe"), "the app is still known");
         Assert.True(all.Contains("%USERPROFILE%") && all.Contains("Alt+F8") && all.Contains("\"Chat\""), "the rest as it was");

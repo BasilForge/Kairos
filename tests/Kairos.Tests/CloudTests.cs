@@ -13,9 +13,9 @@ public static class CloudTests
         public Dictionary<string, string> Files = new(StringComparer.OrdinalIgnoreCase);
         public List<(string Root, string Label)> DriveList = [];
         public HashSet<string> Folders = new(StringComparer.OrdinalIgnoreCase);
-        public string UserProfile => @"C:\Users\Basil";
-        public string LocalAppData => @"C:\Users\Basil\AppData\Local";
-        public string AppData => @"C:\Users\Basil\AppData\Roaming";
+        public string UserProfile => @"C:\Users\Alex";
+        public string LocalAppData => @"C:\Users\Alex\AppData\Local";
+        public string AppData => @"C:\Users\Alex\AppData\Roaming";
         public string? Env(string name) => Environment.GetValueOrDefault(name);
         public IEnumerable<string> OneDriveUserFolders() => OneDriveFolders;
         public string? ReadFile(string path) => Files.GetValueOrDefault(path);
@@ -27,14 +27,14 @@ public static class CloudTests
     public static void Providers_are_found_from_what_they_leave_on_the_PC()
     {
         var s = new FakeSources();
-        s.Environment["OneDrive"] = @"C:\Users\Basil\OneDrive";
-        s.Environment["OneDriveConsumer"] = @"C:\Users\Basil\OneDrive";
-        s.OneDriveFolders.Add(@"C:\Users\Basil\OneDrive\");
-        s.Files[@"C:\Users\Basil\AppData\Local\Dropbox\info.json"] = """{"personal": {"path": "D:\\Dropbox", "host": 1}}""";
+        s.Environment["OneDrive"] = @"C:\Users\Alex\OneDrive";
+        s.Environment["OneDriveConsumer"] = @"C:\Users\Alex\OneDrive";
+        s.OneDriveFolders.Add(@"C:\Users\Alex\OneDrive\");
+        s.Files[@"C:\Users\Alex\AppData\Local\Dropbox\info.json"] = """{"personal": {"path": "D:\\Dropbox", "host": 1}}""";
         s.DriveList.Add((@"G:\", "Google Drive"));
-        s.Folders.UnionWith([@"C:\Users\Basil\OneDrive", @"D:\Dropbox", @"G:\My Drive"]);
+        s.Folders.UnionWith([@"C:\Users\Alex\OneDrive", @"D:\Dropbox", @"G:\My Drive"]);
         var found = CloudFolders.Find(s);
-        Assert.Equal(@"OneDrive C:\Users\Basil\OneDrive|Dropbox D:\Dropbox|GoogleDrive G:\My Drive",
+        Assert.Equal(@"OneDrive C:\Users\Alex\OneDrive|Dropbox D:\Dropbox|GoogleDrive G:\My Drive",
             string.Join("|", found.Select(f => $"{f.Kind} {f.Path}")), "one OneDrive, Dropbox, Google Drive");
         Assert.True(found.Single(f => f.Kind == CloudKind.GoogleDrive).Streams && !found[0].Streams, "Google Drive streams by itself");
     }
@@ -43,21 +43,21 @@ public static class CloudTests
     public static void Nothing_is_offered_that_is_not_there()
     {
         var s = new FakeSources();
-        s.Environment["OneDrive"] = @"C:\Users\Basil\OneDrive"; // left behind, the folder is gone
-        s.Files[@"C:\Users\Basil\AppData\Roaming\Dropbox\info.json"] = "not json";
+        s.Environment["OneDrive"] = @"C:\Users\Alex\OneDrive"; // left behind, the folder is gone
+        s.Files[@"C:\Users\Alex\AppData\Roaming\Dropbox\info.json"] = "not json";
         s.DriveList.Add((@"E:\", "Backup"));
         Assert.Equal(0, CloudFolders.Find(s).Count, "nothing");
-        s.Folders.Add(@"C:\Users\Basil\My Drive");
-        Assert.Equal(@"C:\Users\Basil\My Drive", CloudFolders.Find(s).Single().Path, "Google Drive in mirror mode");
+        s.Folders.Add(@"C:\Users\Alex\My Drive");
+        Assert.Equal(@"C:\Users\Alex\My Drive", CloudFolders.Find(s).Single().Path, "Google Drive in mirror mode");
     }
 
     [Test]
     public static void A_folder_is_in_the_cloud_only_inside_a_providers_folder()
     {
-        var found = new List<CloudFolder> { new(CloudKind.OneDrive, @"C:\Users\Basil\OneDrive") };
-        Assert.Equal(CloudKind.OneDrive, CloudFolders.Under(@"C:\Users\Basil\OneDrive\Kairos", found)?.Kind, "inside");
-        Assert.Equal(CloudKind.OneDrive, CloudFolders.Under(@"c:\users\basil\onedrive", found)?.Kind, "the folder itself, any case");
-        Assert.Equal(null, CloudFolders.Under(@"C:\Users\Basil\OneDriveBackup\Kairos", found), "a name that only starts the same");
+        var found = new List<CloudFolder> { new(CloudKind.OneDrive, @"C:\Users\Alex\OneDrive") };
+        Assert.Equal(CloudKind.OneDrive, CloudFolders.Under(@"C:\Users\Alex\OneDrive\Kairos", found)?.Kind, "inside");
+        Assert.Equal(CloudKind.OneDrive, CloudFolders.Under(@"c:\users\alex\onedrive", found)?.Kind, "the folder itself, any case");
+        Assert.Equal(null, CloudFolders.Under(@"C:\Users\Alex\OneDriveBackup\Kairos", found), "a name that only starts the same");
         Assert.Equal(null, CloudFolders.Under(@"D:\Clips", found), "elsewhere");
     }
 

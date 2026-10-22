@@ -24,14 +24,14 @@ public static class LogLinesTests
     {
         var s = Made();
         s.Capture.Mode = CaptureMode.Window;
-        s.Capture.Apps = ["Bank of Basil - Secret tab:Chrome_WidgetWin_1:chrome.exe", "General | My Server:Chrome_WidgetWin_1:Discord.exe"];
+        s.Capture.Apps = ["Bank of Alex - Secret tab:Chrome_WidgetWin_1:chrome.exe", "General | My Server:Chrome_WidgetWin_1:Discord.exe"];
         s.Normalize();
-        s.Output.Folder = @"C:\Users\Basil\OneDrive\Kairos";
+        s.Output.Folder = @"C:\Users\Alex\OneDrive\Kairos";
         s.General.OnlyWhenGaming = true;
         string line = LogLines.Settings(s, Kind);
         foreach (string part in new[] { "mode=Window", "apps=chrome,Discord", "only-gaming=on", "quality=", "replay=on", "folder=OneDrive", "lang=" })
             Assert.True(line.Contains(part, StringComparison.Ordinal), $"{part} in: {line}");
-        foreach (string secret in new[] { "Bank", "Secret", "My Server", "Basil", @"C:\Users" })
+        foreach (string secret in new[] { "Bank", "Secret", "My Server", "Alex", @"C:\Users" })
             Assert.True(!line.Contains(secret, StringComparison.Ordinal), $"no {secret} (window titles, paths): {line}");
         Assert.True(!line.Contains("key.", StringComparison.Ordinal), "the hotkeys have their own line");
     }
@@ -54,7 +54,7 @@ public static class LogLinesTests
         before.Normalize();
         var added = SettingsStore.Copy(before);
         added.Audio.Sources.Add(new AudioSource { Id = "app:spotify", Kind = AudioSourceKind.App, Target = "Spotify", OwnTrack = true });
-        added.Audio.Sources.Add(new AudioSource { Id = "input:x", Kind = AudioSourceKind.Input, Target = "{0.0.1.00000000}.{guid}", Label = "Basil's AirPods" });
+        added.Audio.Sources.Add(new AudioSource { Id = "input:x", Kind = AudioSourceKind.Input, Target = "{0.0.1.00000000}.{guid}", Label = "Alex's AirPods" });
         string sources = LogLines.Changes(before, added, Kind)!;
         Assert.True(sources.Contains("sources ", StringComparison.Ordinal) && sources.Contains("Spotify*", StringComparison.Ordinal), sources);
         Assert.True(!sources.Contains("AirPods", StringComparison.Ordinal) && !sources.Contains("guid", StringComparison.Ordinal),
@@ -91,10 +91,10 @@ public static class LogLinesTests
     [Test]
     public static void Log_lines_never_carry_the_users_folder()
     {
-        string profile = @"C:\Users\Basil";
-        Assert.Equal(@"pipeline built: folder=%USERPROFILE%\Videos\Kairos", ObsLog.Redact(@"pipeline built: folder=C:\Users\Basil\Videos\Kairos", profile),
+        string profile = @"C:\Users\Alex";
+        Assert.Equal(@"pipeline built: folder=%USERPROFILE%\Videos\Kairos", ObsLog.Redact(@"pipeline built: folder=C:\Users\Alex\Videos\Kairos", profile),
             "the user's name goes");
-        Assert.Equal(@"module %USERPROFILE%/AppData/x.dll", ObsLog.Redact(@"module c:/users/basil/AppData/x.dll", profile), "either slash, any case");
+        Assert.Equal(@"module %USERPROFILE%/AppData/x.dll", ObsLog.Redact(@"module c:/users/alex/AppData/x.dll", profile), "either slash, any case");
         Assert.Equal("nothing here", ObsLog.Redact("nothing here", profile), "other lines as they are");
     }
 
