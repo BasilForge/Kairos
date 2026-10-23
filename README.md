@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
-  <a href="https://discord.gg/YWgaS6JRzF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
   <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
 </p>
@@ -116,7 +116,7 @@ A clip can't be smoother than your screen or your game: recording 144 fps on a 6
 
 **Something doesn't work. What do I send?**
 
-Press **Save a report** on the Status page: a zip with Kairos's logs and settings lands on your Desktop. Send it in our [Discord](https://discord.gg/YWgaS6JRzF) or in a GitHub issue.
+Press **Save a report** on the Status page: a zip with Kairos's logs and settings lands on your Desktop. Send it in our [Discord](https://discord.gg/QgqsGEWzaF) or in a GitHub issue.
 
 ## Build from source
 

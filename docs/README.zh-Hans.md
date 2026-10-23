@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
-  <a href="https://discord.gg/YWgaS6JRzF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
   <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
 </p>
@@ -116,7 +116,7 @@ Windows 11 上不会。在 Windows 10 上，**应用** 模式下 Windows 自己�
 
 **出了问题，该发送什么？**
 
-在“状态”页点击 **保存报告**：桌面上会出现一个包含 Kairos 日志和设置的 zip。请在我们的 [Discord](https://discord.gg/YWgaS6JRzF) 或 GitHub issue 中发送。
+在“状态”页点击 **保存报告**：桌面上会出现一个包含 Kairos 日志和设置的 zip。请在我们的 [Discord](https://discord.gg/QgqsGEWzaF) 或 GitHub issue 中发送。
 
 ## 从源码构建
 

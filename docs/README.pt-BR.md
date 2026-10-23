@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
-  <a href="https://discord.gg/YWgaS6JRzF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
   <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
 </p>
@@ -116,7 +116,7 @@ Um clipe não fica mais suave que sua tela ou seu jogo: gravar a 144 fps numa te
 
 **Algo não funciona. O que eu envio?**
 
-Clique em **Salvar um relatório** na página Status: um zip com os registros e ajustes do Kairos vai para a sua Área de Trabalho. Envie no nosso [Discord](https://discord.gg/YWgaS6JRzF) ou numa issue no GitHub.
+Clique em **Salvar um relatório** na página Status: um zip com os registros e ajustes do Kairos vai para a sua Área de Trabalho. Envie no nosso [Discord](https://discord.gg/QgqsGEWzaF) ou numa issue no GitHub.
 
 ## Compilar a partir do código
 

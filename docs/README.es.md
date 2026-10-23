@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
-  <a href="https://discord.gg/YWgaS6JRzF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
   <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
 </p>
@@ -116,7 +116,7 @@ Un clip no puede ser más fluido que tu pantalla o tu juego: grabar a 144 fps en
 
 **Algo no funciona. ¿Qué envío?**
 
-Pulsa **Guardar un informe** en la página Estado: en tu escritorio aparece un zip con los registros y ajustes de Kairos. Envíalo en nuestro [Discord](https://discord.gg/YWgaS6JRzF) o en un issue de GitHub.
+Pulsa **Guardar un informe** en la página Estado: en tu escritorio aparece un zip con los registros y ajustes de Kairos. Envíalo en nuestro [Discord](https://discord.gg/QgqsGEWzaF) o en un issue de GitHub.
 
 ## Compilar desde el código
 
