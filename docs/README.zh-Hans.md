@@ -16,7 +16,7 @@
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
-  <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
+  <img src="https://img.shields.io/badge/languages-8-3A3130?style=for-the-badge" alt="8 languages">
 </p>
 
 <p align="center">
@@ -26,7 +26,8 @@
   <a href="README.ru.md">Русский</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="README.de.md">Deutsch</a>
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.fr.md">Français</a>
 </p>
 
 https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
@@ -86,7 +87,7 @@ Windows 可能会提示未知发布者（安装程序尚未签名）：选择 **
 - **自动字幕：** 在显卡上运行 Whisper。引擎和模型在你同意后只下载一次，可在设置中删除。
 - **分享：** 通过各网站自己的页面发到 X、TikTok、Instagram，或一次全发；“复制”可压到 Discord 的 10、50 或 500 MB；在帧条上裁剪并裁成 9:16；副本保存在剪辑文件夹的 Shared 中。
 - **帮助：** 在“状态”页点“保存报告”，日志和设置会打包成 zip 放到桌面，方便在 Discord 发送。
-- **七种语言：** 英语、阿拉伯语、中文、俄语、西班牙语、葡萄牙语和德语。首次运行时跟随 Windows 语言。
+- **八种语言：** 英语、阿拉伯语、中文、俄语、西班牙语、葡萄牙语、德语和法语。首次运行时跟随 Windows 语言。
 - **安静：** 随 Windows 启动并驻留在托盘中；除非你开启，否则没有弹窗和声音。
 
 </details>

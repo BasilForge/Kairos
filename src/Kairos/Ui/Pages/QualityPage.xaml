@@ -90,7 +90,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource Label}" Text="{l:T quality.maxBitrate}"/>
                         <TextBlock Grid.Column="1" FontWeight="SemiBold" FlowDirection="LeftToRight">
-                            <Run Text="{Binding CustomMbps, Mode=OneWay}"/><Run Text=" Mbps"/>
+                            <Run Text="{Binding CustomMbps, Mode=OneWay}"/><Run Text=" "/><Run Text="{l:T unit.mbps}"/>
                         </TextBlock>
                     </Grid>
                     <Slider Minimum="5" Maximum="200" Value="{Binding CustomMbps}" IsSnapToTickEnabled="True" TickFrequency="5" Margin="0,6,0,0"

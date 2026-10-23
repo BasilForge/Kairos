@@ -16,7 +16,7 @@
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
-  <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
+  <img src="https://img.shields.io/badge/languages-8-3A3130?style=for-the-badge" alt="8 languages">
 </p>
 
 <p align="center">
@@ -26,7 +26,8 @@
   <b>Русский</b> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="README.de.md">Deutsch</a>
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.fr.md">Français</a>
 </p>
 
 https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
@@ -86,7 +87,7 @@ Windows может предупредить о неизвестном издат
 - **Автосубтитры:** Whisper на видеокарте. Движок и модель скачиваются один раз после вашего согласия и удаляются в настройках.
 - **Публикация:** X, TikTok, Instagram или все сразу через страницу каждого сайта; «Копировать» под 10, 50 или 500 МБ Discord; обрезка по ленте кадров и кадр 9:16; копии хранятся в папке Shared рядом с клипами.
 - **Помощь:** «Сохранить отчёт» на странице Статус кладёт журналы и настройки в zip на рабочий стол, чтобы отправить в Discord.
-- **Семь языков:** английский, арабский, китайский, русский, испанский, португальский и немецкий. При первом запуске выбирается язык Windows.
+- **Восемь языков:** английский, арабский, китайский, русский, испанский, португальский, немецкий и французский. При первом запуске выбирается язык Windows.
 - **Тихий:** запускается вместе с Windows в трее, без всплывающих окон и звуков, пока вы их не включите.
 
 </details>

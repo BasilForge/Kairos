@@ -32,6 +32,40 @@ Kairos is built on libobs (OBS Studio), FFmpeg, ONNX Runtime, whisper.cpp, Velop
 
 ---
 
+## Sécurité
+
+### Signaler une vulnérabilité
+
+Merci de ne pas ouvrir d’issue publique pour un problème de sécurité. Signalez-le en privé sur GitHub : dans ce dépôt, ouvrez **Security**, puis **Report a vulnerability**. Seul le mainteneur voit le signalement.
+
+Indiquez ce que vous avez trouvé, comment reproduire le problème et la version de Kairos utilisée (**Paramètres → Général**, en bas de la page). Nous vous répondrons dès que possible et pourrons vous citer dans les notes de version si vous le souhaitez.
+
+### Versions prises en charge
+
+Seule la dernière version reçoit les correctifs de sécurité. Kairos se met à jour depuis l’application pour vous permettre de les recevoir.
+
+### Télécharger Kairos en toute sécurité
+
+- Téléchargez Kairos uniquement depuis la [page des versions](https://github.com/BasilForge/Kairos/releases).
+- Chaque version indique l’empreinte SHA-256 de ses fichiers. Pour vérifier un téléchargement, lancez cette commande dans PowerShell et comparez le résultat à la page de la version :
+
+  ```powershell
+  Get-FileHash .\Kairos-Setup.exe
+  ```
+
+- Les mises à jour proviennent de la même page des versions, via HTTPS. Velopack vérifie chaque mise à jour à l’aide de l’empreinte indiquée avant de l’appliquer.
+- Le moteur et le modèle de sous-titrage automatique sont téléchargés uniquement avec votre accord. Kairos vérifie leur empreinte SHA-256 avant de les utiliser.
+
+### Vos données
+
+Consultez la section [Confidentialité du README français](docs/README.fr.md#confidentialité) pour savoir ce que Kairos conserve sur votre PC et dans quels cas il se connecte à Internet.
+
+### Bibliothèques
+
+Kairos utilise libobs (OBS Studio), FFmpeg, ONNX Runtime, whisper.cpp, Velopack et Microsoft Edge WebView2. Un problème concernant l’un de ces composants doit de préférence aussi être signalé au projet concerné ; Kairos inclut ses correctifs dans sa prochaine version.
+
+---
+
 ## الإبلاغ عن ثغرة أمنية
 
 لا تفتح بلاغًا عامًا عن مشكلة أمنية. أبلغ عنها بشكل خاص على GitHub: افتح **Security** في هذا المستودع، ثم **Report a vulnerability**. لا يراها إلا المشرف على المشروع.

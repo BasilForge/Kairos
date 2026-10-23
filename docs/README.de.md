@@ -16,7 +16,7 @@
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
-  <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
+  <img src="https://img.shields.io/badge/languages-8-3A3130?style=for-the-badge" alt="8 languages">
 </p>
 
 <p align="center">
@@ -26,7 +26,8 @@
   <a href="README.ru.md">Русский</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
-  <b>Deutsch</b>
+  <b>Deutsch</b> ·
+  <a href="README.fr.md">Français</a>
 </p>
 
 https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
@@ -86,7 +87,7 @@ Updates kommen direkt in der App und nie während einer Aufnahme. Beim Deinstall
 - **Automatische Untertitel:** Whisper auf deiner Grafikkarte. Engine und Modell werden einmal heruntergeladen, nachdem du zugestimmt hast, und lassen sich in den Einstellungen entfernen.
 - **Teilen:** X, TikTok, Instagram oder alle zusammen über die Seite der jeweiligen Plattform; Kopieren passend zu Discords 10, 50 oder 500 MB; Kürzen auf einem Bildstreifen und Zuschneiden auf 9:16; Kopien bleiben im Ordner Shared deines Clip-Ordners.
 - **Hilfe:** „Bericht speichern“ auf der Statusseite legt Protokolle und Einstellungen als ZIP auf den Desktop, zum Senden auf Discord.
-- **Sieben Sprachen:** Englisch, Arabisch, Chinesisch, Russisch, Spanisch, Portugiesisch und Deutsch. Beim ersten Start folgt Kairos der Windows-Sprache.
+- **Acht Sprachen:** Englisch, Arabisch, Chinesisch, Russisch, Spanisch, Portugiesisch, Deutsch und Französisch. Beim ersten Start folgt Kairos der Windows-Sprache.
 - **Leise:** startet mit Windows im Infobereich, ohne Pop-ups oder Töne, außer du schaltest sie ein.
 
 </details>

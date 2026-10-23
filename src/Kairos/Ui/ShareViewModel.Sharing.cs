@@ -364,8 +364,8 @@ public sealed partial class ShareViewModel
         return $"{whole / 60}:{whole % 60:00}.{(int)Math.Round((t - whole) * 10) % 10}";
     }
 
-    static string Size(long bytes) => bytes >= 1_000_000_000 ? $"{bytes / 1e9:0.0} GB" : $"{bytes / 1e6:0.0} MB";
+    static string Size(long bytes) => bytes >= 1_000_000_000 ? $"{bytes / 1e9:0.0} {App.Text.Get("unit.gb")}" : $"{bytes / 1e6:0.0} {App.Text.Get("unit.mb")}";
 
-    static string RoundedSize(long bytes) => bytes >= 1_000_000_000 ? $"{bytes / 1e9:0.0} GB"
-        : bytes >= 10_000_000 ? $"{Math.Round(bytes / 1e6):0} MB" : $"{bytes / 1e6:0.0} MB";
+    static string RoundedSize(long bytes) => bytes >= 1_000_000_000 ? $"{bytes / 1e9:0.0} {App.Text.Get("unit.gb")}"
+        : bytes >= 10_000_000 ? $"{Math.Round(bytes / 1e6):0} {App.Text.Get("unit.mb")}" : $"{bytes / 1e6:0.0} {App.Text.Get("unit.mb")}";
 }

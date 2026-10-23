@@ -67,6 +67,6 @@ public static class StatusLogic
         Text.Ltr($"{Text.Duration((int)seconds)} • {Size(bytes)}");
 
     public static string Size(long bytes) => bytes >= 1L << 30
-        ? (bytes / (double)(1L << 30)).ToString("0.0", CultureInfo.InvariantCulture) + " GB"
-        : $"{bytes >> 20} MB";
+        ? (bytes / (double)(1L << 30)).ToString("0.0", CultureInfo.InvariantCulture) + " " + Text.Get("unit.gb")
+        : $"{bytes >> 20} {Text.Get("unit.mb")}";
 }

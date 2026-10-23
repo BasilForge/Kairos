@@ -16,7 +16,7 @@
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
-  <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
+  <img src="https://img.shields.io/badge/languages-8-3A3130?style=for-the-badge" alt="8 languages">
 </p>
 
 <p align="center">
@@ -26,7 +26,8 @@
   <a href="README.ru.md">Русский</a> ·
   <a href="README.es.md">Español</a> ·
   <b>Português (Brasil)</b> ·
-  <a href="README.de.md">Deutsch</a>
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.fr.md">Français</a>
 </p>
 
 https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
@@ -86,7 +87,7 @@ As atualizações chegam pelo próprio app e nunca durante uma gravação. Ao de
 - **Legendas automáticas:** Whisper na sua placa de vídeo. O motor e o modelo são baixados uma vez, depois que você concorda, e podem ser removidos nas Configurações.
 - **Compartilhar:** X, TikTok, Instagram ou todos juntos, pela página de cada site; Copiar no tamanho de 10, 50 ou 500 MB do Discord; corte numa faixa de quadros e enquadramento 9:16; as cópias ficam na pasta Shared dos seus clipes.
 - **Ajuda:** "Salvar um relatório" na página Status coloca os registros e ajustes num zip na Área de Trabalho, para enviar no Discord.
-- **Sete idiomas:** inglês, árabe, chinês, russo, espanhol, português e alemão. A primeira execução segue o idioma do Windows.
+- **Oito idiomas:** inglês, árabe, chinês, russo, espanhol, português, alemão e francês. A primeira execução segue o idioma do Windows.
 - **Discreto:** inicia com o Windows na bandeja, sem pop-ups nem sons, a menos que você os ative.
 
 </details>

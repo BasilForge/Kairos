@@ -114,6 +114,12 @@ public static class ThemeEverywhereTests
         Assert.Equal(Text.Get("audio.default"), vm.Speakers[0].Label, "the default device");
         Assert.True(vm.Resolutions.Count == 0 || vm.Resolutions[0].Label.StartsWith(Text.Get("quality.native")), "native resolution");
 
+        vm.ApplyLanguage("fr");
+        Assert.Equal("30 i/s", vm.FpsOptions[0].Label, "French frame rate");
+        Assert.Equal("128 kbit/s", vm.AudioBitrates[0].Label, "French audio bitrate");
+        Assert.Equal("100 Go", vm.FolderLimits[3].Label, "French sizes");
+        Assert.Equal("1 To", vm.FolderLimits[^1].Label, "French terabytes");
+
         vm.ApplyLanguage("ar");
         Assert.Equal("بلا حد", vm.FolderLimits[0].Label, "and back");
         Text.Language = "en";

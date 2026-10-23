@@ -16,7 +16,7 @@
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
-  <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
+  <img src="https://img.shields.io/badge/languages-8-3A3130?style=for-the-badge" alt="8 languages">
 </p>
 
 <p align="center">
@@ -26,7 +26,8 @@
   <a href="README.ru.md">Русский</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="README.de.md">Deutsch</a>
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.fr.md">Français</a>
 </p>
 
 https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
@@ -88,7 +89,7 @@ https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
 - **التسميات التوضيحية التلقائية:** Whisper على بطاقة الرسوميات. يُنزَّل المحرك والنموذج مرة واحدة بعد موافقتك، ويمكن حذفهما من الإعدادات.
 - **المشاركة:** X وتيك توك وإنستغرام، أو كلها معًا، عبر صفحة كل موقع؛ ونسخ بحجم ديسكورد 10 أو 50 أو 500 ميغابايت؛ وقص على شريط الإطارات وقص إلى 9:16؛ وتُحفظ النسخ في مجلد Shared داخل مجلد المقاطع.
 - **المساعدة:** «حفظ تقرير» في صفحة الحالة يضع السجلات والإعدادات في ملف مضغوط على سطح المكتب لترسله في ديسكورد.
-- **سبع لغات:** العربية والإنجليزية والصينية والروسية والإسبانية والبرتغالية والألمانية، ويتبع التشغيل الأول لغة ويندوز.
+- **ثماني لغات:** العربية والإنجليزية والصينية والروسية والإسبانية والبرتغالية والألمانية والفرنسية، ويتبع التشغيل الأول لغة ويندوز.
 - **هادئ:** يبدأ مع ويندوز في منطقة الإعلامات، دون نوافذ منبثقة أو أصوات ما لم تفعّلها.
 
 </details>
