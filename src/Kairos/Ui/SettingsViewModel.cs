@@ -438,13 +438,13 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
     void BuildTextOptions()
     {
         _diskDrives = null;
-        FpsOptions = [.. new[] { 30, 60, 90, 120, 144, 165, 240 }.Select(f => new Option(Text.Ltr($"{f} fps"), f))];
+        FpsOptions = [.. new[] { 30, 60, 90, 120, 144, 165, 240 }.Select(f => new Option(Text.Ltr($"{f} {Text.Get("unit.fps")}"), f))];
         QuickOptions = [.. new[] { 10, 15, 20, 30, 45, 60 }.Select(s => new Option(Text.Format("unit.seconds", s), s))];
-        AudioBitrates = [.. new[] { 128, 160, 192, 256, 320 }.Select(b => new Option(Text.Ltr($"{b} kbps"), b))];
+        AudioBitrates = [.. new[] { 128, 160, 192, 256, 320 }.Select(b => new Option(Text.Ltr($"{b} {Text.Get("unit.kbps")}"), b))];
         FolderLimits =
         [
-            new(Text.Get("saving.noLimit"), 0), .. new[] { 25, 50, 100, 200, 500 }.Select(g => new Option(Text.Ltr($"{g} GB"), g)),
-            new(Text.Ltr("1 TB"), 1000),
+            new(Text.Get("saving.noLimit"), 0), .. new[] { 25, 50, 100, 200, 500 }.Select(g => new Option(Text.Ltr($"{g} {Text.Get("unit.gb")}"), g)),
+            new(Text.Ltr($"1 {Text.Get("unit.tb")}"), 1000),
         ];
     }
 
@@ -1273,7 +1273,7 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
     public double BufferProgress => _s.Replay.Enabled && _status?.Engine is { BufferTargetSeconds: > 0 } e ? (double)e.BufferSeconds / e.BufferTargetSeconds : 0;
     public string BufferText => !_s.Replay.Enabled ? Text.Get("status.replayOff")
         : _status?.Engine is { } e ? $"{Text.Duration(e.BufferSeconds)} / {Text.Duration(e.BufferTargetSeconds)}" : "–";
-    public string MemoryText => _status?.Engine is { } e ? Text.Ltr($"{e.WorkingSetMb} MB") : "–";
+    public string MemoryText => _status?.Engine is { } e ? Text.Ltr($"{e.WorkingSetMb} {Text.Get("unit.mb")}") : "–";
 
     public string QualityText => _status?.Engine is { } e ? $"{CodecName(e.Encoder)} • {e.Height}p{Math.Round(e.Fps)}" : "–";
 
@@ -1515,8 +1515,8 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
 
     public static string FormatSize(long bytes) => bytes switch
     {
-        >= 1L << 30 => $"{bytes / (double)(1L << 30):0.0} GB",
-        >= 1L << 20 => $"{bytes / (double)(1L << 20):0} MB",
-        _ => $"{bytes / 1024.0:0} KB",
+        >= 1L << 30 => $"{bytes / (double)(1L << 30):0.0} {Text.Get("unit.gb")}",
+        >= 1L << 20 => $"{bytes / (double)(1L << 20):0} {Text.Get("unit.mb")}",
+        _ => $"{bytes / 1024.0:0} {Text.Get("unit.kb")}",
     };
 }

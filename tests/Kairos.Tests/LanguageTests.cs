@@ -82,6 +82,7 @@ public static class LanguageTests
         string FormsOf(string code, params int[] ns) => string.Join(",", ns.Select(n => Text.PluralForm(code, n)));
         Assert.Equal("one,few,many,many,one,few,many,many", FormsOf("ru", 1, 2, 5, 11, 21, 22, 112, 14), "Russian");
         Assert.Equal("one,one,other", FormsOf("pt-BR", 0, 1, 2), "Portuguese");
+        Assert.Equal("one,one,other,other", FormsOf("fr", 0, 1, 2, 21), "French");
         Assert.Equal("other,other", FormsOf("zh-Hans", 1, 2), "Chinese");
         Assert.Equal("one,other,other", FormsOf("de", 1, 2, 0), "German");
         Assert.Equal("one,two,few,many,other", FormsOf("ar", 1, 2, 3, 11, 100), "Arabic");
@@ -103,8 +104,30 @@ public static class LanguageTests
         Assert.Equal("de", Pick("de-AT"), "German, Austria");
         Assert.Equal("zh-Hans", Pick("zh-CN"), "Simplified Chinese");
         Assert.Equal("en", Pick("zh-TW"), "Traditional Chinese: not yet, English");
-        Assert.Equal("en", Pick("fr-FR"), "not one of Kairos's: English");
+        foreach (string culture in new[] { "fr-FR", "fr-BE", "fr-CA", "fr-CH" })
+            Assert.Equal("fr", Pick(culture), culture + ": French");
+        Assert.Equal("en", Pick("it-IT"), "not one of Kairos's: English");
         Assert.Equal("en", Pick("en-GB"), "English, Britain");
+    }
+
+    [Test]
+    public static void French_counts_use_the_singular_for_zero_and_one_and_keep_accents()
+    {
+        WithLanguage("fr", () =>
+        {
+            Assert.Equal("0 capture d’écran", Text.Count("count.shots", 0), "zero: singular");
+            Assert.Equal("1 capture d’écran", Text.Count("count.shots", 1), "one: singular");
+            Assert.Equal("2 captures d’écran", Text.Count("count.shots", 2), "two: plural");
+            Assert.Equal("21 captures d’écran", Text.Count("count.shots", 21), "21: plural");
+            Assert.Equal("État", Text.Get("nav.status"), "accented text");
+            Assert.Equal("Mettre à jour vers Kairos 1.2.0", Text.Format("tray.update", "1.2.0"), "formatted tray text");
+            Assert.True(!Text.IsRightToLeft, "French is written left to right");
+            Assert.Equal("1 Mo", Kairos.Ui.SettingsViewModel.FormatSize(1L << 20), "library sizes in French");
+            Assert.Equal("1 Ko", Kairos.Ui.SettingsViewModel.FormatSize(1024), "small library files");
+            Assert.Equal("1 Mo", Kairos.Ui.StatusLogic.Size(1L << 20), "recording size in French");
+        });
+        var settings = SettingsStore.Deserialize("""{"general":{"language":"fr"}}""");
+        Assert.Equal("fr", SettingsStore.Copy(settings).General.Language, "French survives a settings round trip");
     }
 
     [Test]

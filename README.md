@@ -16,7 +16,7 @@
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
-  <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
+  <img src="https://img.shields.io/badge/languages-8-3A3130?style=for-the-badge" alt="8 languages">
 </p>
 
 <p align="center">
@@ -26,7 +26,8 @@
   <a href="docs/README.ru.md">Русский</a> ·
   <a href="docs/README.es.md">Español</a> ·
   <a href="docs/README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="docs/README.de.md">Deutsch</a>
+  <a href="docs/README.de.md">Deutsch</a> ·
+  <a href="docs/README.fr.md">Français</a>
 </p>
 
 https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
@@ -86,7 +87,7 @@ Updates come from inside the app, and never during a recording. Uninstalling kee
 - **Auto captions:** Whisper on your graphics card. The engine and model are downloaded once, after you agree, and can be removed in Settings.
 - **Share:** X, TikTok, Instagram, or all of them, through each site's own page; Copy made to fit Discord's 10, 50 or 500 MB; trim on a frame strip and crop to 9:16; copies kept in your clips folder's Shared.
 - **Help:** Save a report on the Status page puts the logs and settings in a zip on your Desktop, to send on Discord.
-- **Seven languages:** English, Arabic, Chinese, Russian, Spanish, Portuguese and German. The first run follows your Windows language.
+- **Eight languages:** English, Arabic, Chinese, Russian, Spanish, Portuguese, German and French. The first run follows your Windows language.
 - **Quiet:** starts with Windows in the tray, with no pop-ups or sounds unless you turn them on.
 
 </details>

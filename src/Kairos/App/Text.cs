@@ -36,6 +36,7 @@ public static class Text
         new("es", "Español"),
         new("pt-BR", "Português (Brasil)", Plural: n => n is 0 or 1 ? "one" : "other"),
         new("de", "Deutsch"),
+        new("fr", "Français", Plural: n => n is 0 or 1 ? "one" : "other"),
     ];
 
     /// <summary>The language an unknown or missing one becomes.</summary>

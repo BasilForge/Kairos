@@ -38,7 +38,8 @@ public static class SettingsTests
         Assert.Equal("ar", AppSettings.DefaultLanguage(new System.Globalization.CultureInfo("ar-SA")), "arabic");
         Assert.Equal("ar", AppSettings.DefaultLanguage(new System.Globalization.CultureInfo("ar-EG")), "arabic egypt");
         Assert.Equal("en", AppSettings.DefaultLanguage(new System.Globalization.CultureInfo("en-US")), "english");
-        Assert.Equal("en", AppSettings.DefaultLanguage(new System.Globalization.CultureInfo("fr-FR")), "other");
+        Assert.Equal("fr", AppSettings.DefaultLanguage(new System.Globalization.CultureInfo("fr-FR")), "french");
+        Assert.Equal("en", AppSettings.DefaultLanguage(new System.Globalization.CultureInfo("it-IT")), "other");
     }
 
     [Test]

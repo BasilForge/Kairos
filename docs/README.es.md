@@ -16,7 +16,7 @@
   <a href="https://github.com/BasilForge/Kairos/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%2010%20%7C%2011-F48BA4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://discord.gg/QgqsGEWzaF"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-3A3130?style=for-the-badge" alt="License: GPL-2.0">
-  <img src="https://img.shields.io/badge/languages-7-3A3130?style=for-the-badge" alt="7 languages">
+  <img src="https://img.shields.io/badge/languages-8-3A3130?style=for-the-badge" alt="8 languages">
 </p>
 
 <p align="center">
@@ -26,7 +26,8 @@
   <a href="README.ru.md">Русский</a> ·
   <b>Español</b> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="README.de.md">Deutsch</a>
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.fr.md">Français</a>
 </p>
 
 https://github.com/user-attachments/assets/c7afb475-f4a2-4356-acc5-327935e879e2
@@ -86,7 +87,7 @@ Las actualizaciones llegan desde la propia app y nunca durante una grabación. A
 - **Subtítulos automáticos:** Whisper en tu tarjeta gráfica. El motor y el modelo se descargan una vez, después de que aceptes, y se pueden quitar en Configuración.
 - **Compartir:** X, TikTok, Instagram o todos a la vez, desde la propia página de cada sitio; Copiar ajustado a los 10, 50 o 500 MB de Discord; recorte sobre una tira de fotogramas y encuadre 9:16; las copias se guardan en la carpeta Shared de tus clips.
 - **Ayuda:** «Guardar un informe» en la página Estado deja los registros y ajustes en un zip en tu escritorio, para enviarlo por Discord.
-- **Siete idiomas:** inglés, árabe, chino, ruso, español, portugués y alemán. La primera vez sigue el idioma de Windows.
+- **Ocho idiomas:** inglés, árabe, chino, ruso, español, portugués, alemán y francés. La primera vez sigue el idioma de Windows.
 - **Silencioso:** se inicia con Windows en la bandeja, sin ventanas emergentes ni sonidos salvo que los actives.
 
 </details>
