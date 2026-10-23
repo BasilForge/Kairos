@@ -92,7 +92,7 @@ public static class UiRefreshTests
     }
 
     [Test]
-    public static void The_library_groups_cards_by_day()
+    public static void The_library_splits_videos_and_screenshots_when_both_are_shown()
     {
         Text.Language = "en";
         string root = TempRoot();
@@ -104,7 +104,10 @@ public static class UiRefreshTests
             Put(root, @"Game\Game old.mp4", now.Date.AddDays(-60));
             var vm = new ClipsViewModel(() => root, () => "Alt+F10", () => "Alt+F12");
             vm.Refresh();
-            Assert.Equal("Today | Yesterday | Older", string.Join(" | ", vm.Items.Select(c => c.GroupLabel)), "newest first, a heading per day range");
+            Assert.Equal("Videos | Videos | Screenshots", string.Join(" | ", vm.Items.Select(c => c.GroupLabel)),
+                "All: videos first, then screenshots, each with its own heading");
+            vm.Kind = "video";
+            Assert.Equal("Today | Older", string.Join(" | ", vm.Items.Select(c => c.GroupLabel)), "one kind: day headings again");
         }
         finally
         {
@@ -126,9 +129,11 @@ public static class UiRefreshTests
             Put(root, @"Other\a.png", t);
             var vm = new ClipsViewModel(() => root, () => "Alt+F10", () => "Alt+F12");
             vm.Refresh();
-            var first = vm.Items[0];
-            Assert.Equal("b", vm.NextPicture(first, +1)?.Name, "the next picture, skipping the video");
-            Assert.Equal(null, vm.NextPicture(first, -1), "nothing before the first");
+            Assert.Equal("video", vm.Items[0].Name, "All: the videos section is listed first");
+            var first = vm.Items.First(c => c.IsPicture);
+            Assert.Equal("c", first.Name, "newest screenshot");
+            Assert.Equal("b", vm.NextPicture(first, +1)?.Name, "the next picture (videos sit in their own section)");
+            Assert.Equal(null, vm.NextPicture(first, -1), "nothing before the first screenshot");
             vm.Filter = "Game";
             Assert.Equal(null, vm.NextPicture(vm.Items.Single(c => c.Name == "b"), +1), "only within what is shown (this folder)");
         }

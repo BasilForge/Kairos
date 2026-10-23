@@ -460,6 +460,8 @@
   "clips.groupWeek": "На этой неделе",
   "clips.groupMonth": "В этом месяце",
   "clips.groupOlder": "Раньше",
+  "clips.groupVideos": "Видео",
+  "clips.groupPictures": "Скриншоты",
   "clips.emptyShots": "Скриншотов пока нет. Нажмите {0}, чтобы сделать.",
   "clips.share": "Поделиться",
   "tray.share": "Поделиться последним клипом",

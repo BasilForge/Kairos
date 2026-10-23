@@ -140,6 +140,9 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
         AskPermanentCommand = new RelayCommand(_ => { _confirmingPermanent = true; Raise(); });
         ConfirmPermanentCommand = new RelayCommand(_ => Remove(Selected, permanent: true));
         CancelPermanentCommand = new RelayCommand(_ => { _confirmingPermanent = false; Raise(); });
+        // Kind segments bind to Kinds[0..2] before the first scan; keep three entries from the start.
+        UpdateChoices(Kinds, [("", Text.Format("clips.kind.all", 0)), ("video", Text.Format("clips.kind.videos", 0)),
+            ("picture", Text.Format("clips.kind.pictures", 0))]);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -178,6 +181,7 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
             if (value == null || value == _kind)
                 return;
             _kind = value;
+            Raise(nameof(Kind));
             ApplyFilter();
         }
     }
@@ -190,6 +194,7 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
             if (value == null || value == _filter)
                 return;
             _filter = value;
+            Raise(nameof(Filter));
             ApplyFilter();
         }
     }
@@ -340,9 +345,20 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
         Items.Clear();
         _filtered = _all.Where(c => (_filter.Length == 0 || string.Equals(c.App, _filter, StringComparison.OrdinalIgnoreCase))
                                     && (_kind.Length == 0 || c.IsPicture == (_kind == "picture"))).ToList();
-        var now = DateTime.Now;
-        foreach (var clip in _filtered)
-            clip.GroupLabel = DayGroup(clip.Time, now);
+        // All: videos and screenshots in their own sections (newest first in each). One kind only: by day as before.
+        bool splitByKind = _kind.Length == 0 && _filtered.Any(c => c.IsPicture) && _filtered.Any(c => !c.IsPicture);
+        if (splitByKind)
+        {
+            _filtered = [.. _filtered.Where(c => !c.IsPicture), .. _filtered.Where(c => c.IsPicture)];
+            foreach (var clip in _filtered)
+                clip.GroupLabel = Text.Get(clip.IsPicture ? "clips.groupPictures" : "clips.groupVideos");
+        }
+        else
+        {
+            var now = DateTime.Now;
+            foreach (var clip in _filtered)
+                clip.GroupLabel = DayGroup(clip.Time, now);
+        }
         LoadMore();
         Raise();
     }

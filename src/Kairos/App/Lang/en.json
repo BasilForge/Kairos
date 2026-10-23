@@ -455,6 +455,8 @@
   "clips.groupWeek": "This week",
   "clips.groupMonth": "This month",
   "clips.groupOlder": "Older",
+  "clips.groupVideos": "Videos",
+  "clips.groupPictures": "Screenshots",
   "clips.emptyShots": "No screenshots yet. Press {0} to take one.",
   "clips.share": "Share",
   "tray.share": "Share last clip",

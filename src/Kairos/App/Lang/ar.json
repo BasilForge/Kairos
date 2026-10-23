@@ -470,6 +470,8 @@
   "clips.groupWeek": "هذا الأسبوع",
   "clips.groupMonth": "هذا الشهر",
   "clips.groupOlder": "أقدم",
+  "clips.groupVideos": "المقاطع",
+  "clips.groupPictures": "لقطات الشاشة",
   "clips.emptyShots": "لا توجد لقطات شاشة بعد. اضغط {0} لالتقاط لقطة.",
   "clips.share": "مشاركة",
   "tray.share": "مشاركة آخر مقطع",
