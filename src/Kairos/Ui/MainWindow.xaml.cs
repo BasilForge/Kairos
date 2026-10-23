@@ -22,7 +22,9 @@ public partial class MainWindow : Window
     {
         _vm = vm;
         _clips = new ClipsViewModel(() => _vm.EffectiveFolder, () => _vm.HkSave, () => _vm.HkScreenshot);
-        _share = new ShareViewModel(shareHost ?? new WpfShareHost(_vm.RememberShare), () => _vm.SharePrefs);
+        shareHost ??= new WpfShareHost(_vm.RememberShare, () => _vm.EffectiveFolder);
+        _share = new ShareViewModel(shareHost, () => _vm.SharePrefs);
+        _clips.Copies = new PlayableCopies(shareHost);
         _accounts = new ConnectionsViewModel(accountsHost ?? new WpfAccountsHost(this));
         SettingsApp.StartupTrace?.Invoke("window models");
         InitializeComponent();
@@ -65,7 +67,10 @@ public partial class MainWindow : Window
         PictureLayer.EditRequested += picture => OpenEditor(picture.Path, isPicture: true, Edit.EditorMode.Library);
         // Share: the editor on the shared clip; its saved edit is shared from then on
         _share.EditRequested += path => OpenEditor(path, Engine.ClipOrganizer.IsPicture(path), Edit.EditorMode.Share);
-        _jobs = new Edit.EditJobs(RenderEdit, path => App.RecycleBin.Send(path, App.RecycleBin.UserFlags));
+        _jobs = new Edit.EditJobs(RenderEdit, path => App.RecycleBin.Send(path, App.RecycleBin.UserFlags))
+        {
+            Saved = path => App.CloudFolders.Saved(path, _vm.FreeLocalCopies),
+        };
         Closed += (_, _) => _jobs.CancelAll();
         // An update closes this window only when nothing here would be lost.
         _vm.InUse = () => _editor != null || _share.IsOpen || _jobs.Busy;
@@ -127,6 +132,7 @@ public partial class MainWindow : Window
             if (_shareLayer == null)
             {
                 _shareLayer = new ShareOverlay { DataContext = _share };
+                _share.CopySizeAsked += _shareLayer.ShowCopySizes;
                 ShareHost.Content = _shareLayer;
             }
             return _shareLayer;
@@ -135,6 +141,9 @@ public partial class MainWindow : Window
 
     /// <summary>The share panel's emoji picker, out of its popup (for --render share-emoji).</summary>
     internal FrameworkElement TakeEmojiPicker() => ShareLayer.TakeEmojiPicker();
+
+    /// <summary>Copy's sizes, placed under its tile (for --render share-copysizes).</summary>
+    internal System.Windows.Controls.ContextMenu CopySizes() => ShareLayer.CopySizes();
 
     void OnMinimize(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
@@ -191,6 +200,7 @@ public partial class MainWindow : Window
         Engine.Edit.EditProject start;
         double aspect;
         int audioStreams = 0;
+        Engine.Audio.TrackLayout? layout = null;
         System.Windows.Media.Imaging.BitmapSource? still;
         try
         {
@@ -207,6 +217,7 @@ public partial class MainWindow : Window
                 var info = Engine.Share.ClipTranscoder.Probe(path);
                 aspect = info.Width / (double)Math.Max(1, info.Height);
                 audioStreams = info.AudioStreams;
+                layout = Engine.Audio.TrackLayout.Of(info);
                 start = Engine.Edit.EditProject.For(path, info.Duration);
                 using var grabber = new Engine.Share.FrameGrabber(path);
                 var frame = grabber.Grab(0, 1280, exact: true);
@@ -220,7 +231,7 @@ public partial class MainWindow : Window
         }
         // Auto captions run Whisper in a hidden Kairos process of their own (Kairos.exe --captions).
         captions ??= new Edit.CaptionMaker(Engine.Captions.CaptionModel.Default, Engine.Captions.CaptionRuntime.Default, Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Kairos.exe"));
-        var vm = new Edit.EditorViewModel(start, isPicture, mode, aspect, audioStreams, captions);
+        var vm = new Edit.EditorViewModel(start, isPicture, mode, aspect, audioStreams, captions, layout);
         var view = new Edit.EditorView(vm);
         view.SetPicture(still);
         vm.Closed += CloseEditor;
@@ -240,10 +251,7 @@ public partial class MainWindow : Window
     string RenderEdit(Engine.Edit.EditProject p, string part, IProgress<double> progress, CancellationToken ct)
     {
         if (Engine.ClipOrganizer.IsPicture(p.Source))
-        {
-            Dispatcher.Invoke(() => Edit.PictureComposer.Save(p.Source, p, part));
-            return part;
-        }
+            return Dispatcher.Invoke(() => Edit.PictureComposer.Save(p.Source, p, part));
         var info = Engine.Share.ClipTranscoder.Probe(p.Source);
         string overlays = Path.Combine(Path.GetTempPath(), "Kairos", "edit-" + Guid.NewGuid().ToString("N"));
         try
@@ -256,7 +264,8 @@ public partial class MainWindow : Window
                 ct.ThrowIfCancellationRequested();
                 pngs[item.Id] = Dispatcher.Invoke(() => Edit.ItemRenderer.RenderPng(item, info.Width, info.Height, overlays));
             }
-            var graph = Engine.Edit.EditGraph.Build(p, info.Width, info.Height, info.Fps, info.AudioStreams, pngs);
+            var graph = Engine.Edit.EditGraph.Build(p, info.Width, info.Height, info.Fps, info.AudioStreams, pngs,
+                Engine.Audio.TrackLayout.Of(info));
             var codec = info.VideoCodec switch { "av1" => Settings.VideoCodec.Av1, "hevc" => Settings.VideoCodec.Hevc, _ => Settings.VideoCodec.H264 };
             var plan = Engine.EncoderPresets.Plan(codec, _vm.Quality, info.Width, info.Height, (int)Math.Round(info.Fps), _vm.CustomCq, _vm.CustomMbps,
                 nvencAvailable: true);
@@ -397,6 +406,7 @@ public partial class MainWindow : Window
         if (_current == page)
             return;
         _current = page;
+        _vm.OnStatusPage = page == "status";
         var content = _pages[page]();
         // The Clips page is kept, laid out, in its own host: coming back shows the same cards at once (its Refresh only
         // adds or drops what changed on disk). Other pages are light and made fresh.

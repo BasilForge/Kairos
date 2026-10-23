@@ -25,9 +25,13 @@ public sealed class SaveWatch
     /// <summary>How long writing a save may take before it counts as failed: 30 s plus the buffer at 40 MB/s (a slow disk).</summary>
     public static TimeSpan WriteLimit(long bufferBytes) => TimeSpan.FromSeconds(30 + Math.Max(0, bufferBytes) / (40.0 * 1024 * 1024));
 
-    /// <summary>Why instant replay could not save: turned off, paused by the user, or waiting for a game.</summary>
-    public static string OffReason(bool enabled, bool paused, bool waiting) =>
-        !enabled ? "toast.notSaved.off" : paused ? "toast.notSaved.paused" : waiting ? "toast.notSaved.waiting" : "toast.notSaved.off";
+    /// <summary>
+    /// Why instant replay could not save: turned off, paused by the user, waiting for a game, or <paramref name="failed"/>
+    /// to start (the encoder would not open, for one).
+    /// </summary>
+    public static string OffReason(bool enabled, bool paused, bool waiting, bool failed = false) =>
+        !enabled ? "toast.notSaved.off" : paused ? "toast.notSaved.paused" : waiting ? "toast.notSaved.waiting"
+        : failed ? "toast.notSaved.failed" : "toast.notSaved.off";
 
     /// <summary>A save was asked for: the reason to show (a text key), or null.</summary>
     public string? Requested(Request request, DateTime now, long bufferBytes, string? offReason)
@@ -59,14 +63,23 @@ public sealed class SaveWatch
         return null;
     }
 
-    /// <summary>On the engine's tick: the reason, once, when a save was never finished.</summary>
-    public string? Tick(DateTime now)
+    /// <summary>
+    /// On the engine's tick: the reason, once, when a save was never finished: recording <paramref name="behind"/> a game
+    /// (libobs writes a clip only once its encoder reaches the press, minutes late then), else a write that never ended.
+    /// </summary>
+    public string? Tick(DateTime now, bool behind = false)
     {
         if (_since is not { } since || now - since <= _limit)
             return null;
         _since = null;
-        return "toast.notSaved.write";
+        return behind ? "toast.notSaved.behind" : "toast.notSaved.write";
     }
+
+    /// <summary>A save is being written (asked for, not reported yet).</summary>
+    public bool Pending => _since != null;
+
+    /// <summary>The pipeline was built again: the save it was writing is gone, and is not reported later as not written.</summary>
+    public void Cancel() => _since = null;
 
     /// <summary>After a save: true when the disk is nearly full and that was not said in the last hours.</summary>
     public bool ShouldWarnLowDisk(long freeBytes, DateTime now)

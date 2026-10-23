@@ -6,10 +6,46 @@ namespace Kairos.Engine.Captions;
 /// <summary>One sound track as Whisper hears it, and where it starts in the clip (source seconds).</summary>
 public sealed record TrackSound(float[] Samples, double Start);
 
-/// <summary>Reads one audio stream of a clip as 16 kHz mono with the FFmpeg next to Kairos (load it first).</summary>
+/// <summary>Reads audio streams of a clip as 16 kHz mono with the FFmpeg next to Kairos (load it first).</summary>
 public static class TrackAudio
 {
     public const int Rate = 16000;
+
+    /// <summary>Several streams heard together (Discord and the mic): their sum, each in its place in the clip.</summary>
+    public static TrackSound Read(string clip, IReadOnlyList<int> streams, IProgress<double>? progress, CancellationToken ct)
+    {
+        if (streams.Count == 1)
+            return Read(clip, streams[0], progress, ct);
+        TrackSound? sum = null;
+        for (int t = 0; t < streams.Count; t++)
+        {
+            var sound = Read(clip, streams[t], progress == null ? null : new ScaledProgress(progress, t / (double)streams.Count, (t + 1) / (double)streams.Count), ct);
+            sum = sum == null ? sound : Add(sum, sound, last: t == streams.Count - 1);
+        }
+        return sum!;
+    }
+
+    /// <summary>
+    /// Two tracks as one, each in its place in the clip (the last add keeps the sum within -1..1): into the first's own
+    /// samples when the second fits in them (Kairos's tracks start and end together), so an hour is not held three times.
+    /// </summary>
+    static TrackSound Add(TrackSound a, TrackSound b, bool last)
+    {
+        double start = Math.Min(a.Start, b.Start);
+        int atA = (int)Math.Round((a.Start - start) * Rate), atB = (int)Math.Round((b.Start - start) * Rate);
+        float[] sum = a.Samples;
+        if (atA != 0 || atB + b.Samples.Length > a.Samples.Length)
+        {
+            sum = new float[Math.Max(atA + a.Samples.Length, atB + b.Samples.Length)];
+            a.Samples.CopyTo(sum, atA);
+        }
+        for (int i = 0; i < b.Samples.Length; i++)
+            sum[atB + i] += b.Samples[i];
+        if (last)
+            for (int i = 0; i < sum.Length; i++)
+                sum[i] = Math.Clamp(sum[i], -1f, 1f);
+        return new TrackSound(sum, start);
+    }
 
     /// <param name="stream">Which audio stream (0 = the first, the full mix in Kairos's clips).</param>
     public static TrackSound Read(string clip, int stream, IProgress<double>? progress, CancellationToken ct)
@@ -64,12 +100,7 @@ public static class TrackAudio
                 if (_audio == null)
                     throw new ShareException("The clip has no such sound track.");
 
-                AVCodec* codec = ffmpeg.avcodec_find_decoder(_audio->codecpar->codec_id);
-                if (codec == null)
-                    throw new ShareException("The clip's sound cannot be read.");
-                _decoder = ffmpeg.avcodec_alloc_context3(codec);
-                ClipTranscoder.Check(ffmpeg.avcodec_parameters_to_context(_decoder, _audio->codecpar), "Reading the sound");
-                ClipTranscoder.Check(ffmpeg.avcodec_open2(_decoder, codec, null), "Reading the sound");
+                _decoder = SoundCodecs.OpenDecoder(_audio);
 
                 AVStream* clock = video != null ? video : _audio;
                 _origin = (clock->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : clock->start_time) * ffmpeg.av_q2d(clock->time_base);

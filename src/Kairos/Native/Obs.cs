@@ -47,6 +47,8 @@ public struct CallData
 
 public static class ObsConst
 {
+    /// <summary>win-dshow's "res_type": the camera's own default size, or the "resolution" given.</summary>
+    public const long DshowResTypePreferred = 0, DshowResTypeCustom = 1;
     public const int VideoFormatNv12 = 2;
     public const int VideoCs709 = 2;
     public const int VideoRangePartial = 1;
@@ -55,7 +57,10 @@ public static class ObsConst
     public const int SpeakersStereo = 2;
     public const int VideoSuccess = 0;
     public const int ModuleSuccess = 0;
+    public const int BoundsStretch = 1;
     public const int BoundsScaleInner = 2;
+    /// <summary>Covers the bounds (with <see cref="Obs.obs_sceneitem_set_bounds_crop"/>: cut to them).</summary>
+    public const int BoundsScaleOuter = 3;
     public const uint AlignCenter = 0;
     public const int LogError = 100, LogWarning = 200, LogInfo = 300, LogDebug = 400;
     // graphics/graphics.h: enum gs_color_format, gs_zstencil_format, gs_blend_type and the clear flags.
@@ -76,6 +81,10 @@ public delegate void ObsVolmeterCallback(IntPtr param, IntPtr magnitude, IntPtr 
 /// <summary>obs_source_audio_capture_t: audio after the source's resampler, planar float at the output rate.</summary>
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 public delegate void ObsAudioCaptureCallback(IntPtr param, IntPtr source, IntPtr audioData, [MarshalAs(UnmanagedType.U1)] bool muted);
+
+/// <summary>audio_output_callback_t (media-io/audio-io.h): one libobs mix's audio, planar float, before encoding.</summary>
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+public delegate void AudioOutputCallback(IntPtr param, nuint mixIndex, IntPtr audioData);
 
 /// <summary>obs_add_tick_callback's tick: called on libobs's graphics thread once per frame.</summary>
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -137,6 +146,14 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_data_release(IntPtr data);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_data_set_string(IntPtr data, [MarshalAs(U8)] string name, [MarshalAs(U8)] string val);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_data_set_int(IntPtr data, [MarshalAs(U8)] string name, long val);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern long obs_data_get_int(IntPtr data, [MarshalAs(U8)] string name);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_register_source_s(IntPtr info, nuint size);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_output_audio(IntPtr source, IntPtr audio);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern ulong os_gettime_ns();
+    [DllImport(Lib, CallingConvention = Cc)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    public static extern bool audio_output_connect(IntPtr audio, nuint mixIndex, IntPtr conversion, AudioOutputCallback callback, IntPtr param);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void audio_output_disconnect(IntPtr audio, nuint mixIndex, AudioOutputCallback callback, IntPtr param);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_data_set_double(IntPtr data, [MarshalAs(U8)] string name, double val);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_data_set_bool(IntPtr data, [MarshalAs(U8)] string name, [MarshalAs(UnmanagedType.U1)] bool val);
 
@@ -144,6 +161,8 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_get_source_properties([MarshalAs(U8)] string id);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_properties_get(IntPtr props, [MarshalAs(U8)] string name);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_properties_destroy(IntPtr props);
+    /// <summary>Runs the properties' change callbacks on <paramref name="settings"/> (lists that depend on a choice fill in).</summary>
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_properties_apply_settings(IntPtr props, IntPtr settings);
     [DllImport(Lib, CallingConvention = Cc)] public static extern UIntPtr obs_property_list_item_count(IntPtr p);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_property_list_item_name(IntPtr p, UIntPtr idx);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_property_list_item_string(IntPtr p, UIntPtr idx);
@@ -151,11 +170,18 @@ public static class Obs
     // Sources and scenes
     [DllImport(Lib, CallingConvention = Cc)]
     public static extern IntPtr obs_source_create([MarshalAs(U8)] string id, [MarshalAs(U8)] string name, IntPtr settings, IntPtr hotkeyData);
+    [DllImport(Lib, CallingConvention = Cc)]
+    public static extern IntPtr obs_source_create_private([MarshalAs(U8)] string id, [MarshalAs(U8)] string name, IntPtr settings);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_scene_create_private([MarshalAs(U8)] string name);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_release(IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_remove(IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_set_audio_mixers(IntPtr source, uint mixers);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_set_volume(IntPtr source, float volume);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern float obs_source_get_volume(IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_update(IntPtr source, IntPtr settings);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_source_get_width(IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_set_muted(IntPtr source, [MarshalAs(UnmanagedType.U1)] bool muted);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool obs_source_muted(IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_scene_create([MarshalAs(U8)] string name);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_scene_release(IntPtr scene);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_scene_get_source(IntPtr scene);
@@ -164,6 +190,20 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_sceneitem_set_bounds_alignment(IntPtr item, uint alignment);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_sceneitem_set_bounds(IntPtr item, ref Vec2 bounds);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_sceneitem_set_pos(IntPtr item, ref Vec2 pos);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_sceneitem_set_visible(IntPtr item, [MarshalAs(UnmanagedType.U1)] bool visible);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool obs_sceneitem_visible(IntPtr item);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_sceneitem_set_bounds_crop(IntPtr item, [MarshalAs(UnmanagedType.U1)] bool crop);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_sceneitem_remove(IntPtr item);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_filter_add(IntPtr source, IntPtr filter);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_filter_remove(IntPtr source, IntPtr filter);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_source_get_height(IntPtr source);
+
+    // Views: a second picture (the camera alone), with its own size, for its own encoder
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_view_create();
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_view_destroy(IntPtr view);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_view_set_source(IntPtr view, uint channel, IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_view_add2(IntPtr view, ref ObsVideoInfo ovi);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_view_remove(IntPtr view);
 
     // Encoders
     [DllImport(Lib, CallingConvention = Cc)]
@@ -171,6 +211,10 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)]
     public static extern IntPtr obs_audio_encoder_create([MarshalAs(U8)] string id, [MarshalAs(U8)] string name, IntPtr settings, UIntPtr mixerIdx, IntPtr hotkeyData);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_encoder_set_video(IntPtr encoder, IntPtr video);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_inc_showing(IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_dec_showing(IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_source_get_proc_handler(IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool obs_encoder_set_frame_rate_divisor(IntPtr encoder, uint divisor);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_encoder_set_audio(IntPtr encoder, IntPtr audio);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_encoder_release(IntPtr encoder);
 
@@ -192,6 +236,45 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_output_get_signal_handler(IntPtr output);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_output_get_proc_handler(IntPtr output);
 
+    // ---- an output of Kairos's own (the replay on the disk: Engine/Replay/DiskReplayOutput.cs)
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_register_output_s(IntPtr info, nuint size);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)]
+    public static extern bool obs_output_can_begin_data_capture(IntPtr output, uint flags);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)]
+    public static extern bool obs_output_initialize_encoders(IntPtr output, uint flags);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)]
+    public static extern bool obs_output_begin_data_capture(IntPtr output, uint flags);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_output_end_data_capture(IntPtr output);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_output_get_name(IntPtr output);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_output_get_video_encoder(IntPtr output);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_output_get_audio_encoder(IntPtr output, nuint idx);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_encoder_get_codec(IntPtr encoder);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_encoder_get_width(IntPtr encoder);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_encoder_get_height(IntPtr encoder);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_encoder_get_sample_rate(IntPtr encoder);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_encoder_audio(IntPtr encoder);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern nuint audio_output_get_channels(IntPtr audio);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)]
+    public static extern bool obs_encoder_get_extra_data(IntPtr encoder, out IntPtr data, out nuint size);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_data_get_string(IntPtr data, [MarshalAs(U8)] string name);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)]
+    public static extern bool signal_handler_add(IntPtr handler, [MarshalAs(U8)] string declaration);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern void signal_handler_signal(IntPtr handler, [MarshalAs(U8)] string signal, ref CallData calldata);
+    [DllImport(Lib, CallingConvention = Cc)]
+    public static extern unsafe void proc_handler_add(IntPtr handler, [MarshalAs(U8)] string declaration,
+        delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void> proc, IntPtr data);
+    [DllImport(Lib, CallingConvention = Cc, EntryPoint = "calldata_set_data")]
+    static extern void calldata_set_data_ptr(IntPtr calldata, [MarshalAs(U8)] string name, byte[] value, UIntPtr size);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr os_generate_formatted_filename([MarshalAs(U8)] string extension,
+        [MarshalAs(UnmanagedType.U1)] bool space, [MarshalAs(U8)] string format);
+
+    /// <summary>calldata_set_string (static inline in C) on a calldata a proc handler was given.</summary>
+    public static void CallDataSetString(IntPtr cd, string name, string value)
+    {
+        byte[] bytes = [.. System.Text.Encoding.UTF8.GetBytes(value), 0];
+        calldata_set_data_ptr(cd, name, bytes, (UIntPtr)bytes.Length);
+    }
+
     // Volume meters (obs-audio-controls.h)
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_volmeter_create(int faderType);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_volmeter_destroy(IntPtr volmeter);
@@ -212,6 +295,8 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_remove_tick_callback(ObsTickCallback tick, IntPtr param);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_enter_graphics();
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_leave_graphics();
+    /// <summary>The graphics device under libobs (an ID3D11Device on Windows); call inside obs_enter_graphics.</summary>
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr gs_get_device_obj();
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_render_main_texture();
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr gs_texrender_create(int format, int zsformat);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void gs_texrender_destroy(IntPtr texrender);
@@ -240,6 +325,15 @@ public static class Obs
     public static extern void signal_handler_disconnect(IntPtr handler, [MarshalAs(U8)] string signal, ObsSignalCallback callback, IntPtr data);
     [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool calldata_get_string(ref CallData calldata, [MarshalAs(U8)] string name, out IntPtr str);
+    [DllImport(Lib, CallingConvention = Cc)]
+    static extern void calldata_set_data(ref CallData calldata, [MarshalAs(U8)] string name, ref byte value, UIntPtr size);
+
+    /// <summary>calldata_set_bool from callback/calldata.h (static inline in C): a one-byte bool.</summary>
+    public static void CallDataSetBool(ref CallData cd, string name, bool value)
+    {
+        byte b = value ? (byte)1 : (byte)0;
+        calldata_set_data(ref cd, name, ref b, 1);
+    }
 
     public static string? Utf8(IntPtr p) => p == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(p);
 

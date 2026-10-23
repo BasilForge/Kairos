@@ -12,7 +12,7 @@ public static class PipeClientTests
     public static void An_async_question_gets_the_engines_answer()
     {
         string name = "kairos-test-" + Guid.NewGuid().ToString("N");
-        using var server = new PipeServer(command => "ok:" + command, () => (0, 0), name);
+        using var server = new PipeServer(command => "ok:" + command, () => [], name);
         for (int i = 0; i < 3; i++)
             Assert.Equal("ok:status", PipeClient.SendAsync("status", 2000, name).GetAwaiter().GetResult(), $"answer {i}");
     }
@@ -24,7 +24,7 @@ public static class PipeClientTests
         string name = "kairos-test-" + Guid.NewGuid().ToString("N");
         int asker = 0;
         string? asked = null;
-        using var server = new PipeServer(command => "ok:" + command, () => (0, 0), name, onRequest: (request, pid) => (asked, asker) = (request, pid));
+        using var server = new PipeServer(command => "ok:" + command, () => [], name, onRequest: (request, pid) => (asked, asker) = (request, pid));
         PipeClient.SendAsync("exit", 2000, name).GetAwaiter().GetResult();
         Assert.Equal("exit", asked, "the request");
         Assert.Equal(Environment.ProcessId, asker, "this process asked");
@@ -43,7 +43,7 @@ public static class PipeClientTests
     public static void Questions_cost_little_cpu()
     {
         string name = "kairos-test-" + Guid.NewGuid().ToString("N");
-        using var server = new PipeServer(command => "ok:" + command, () => (0, 0), name);
+        using var server = new PipeServer(command => "ok:" + command, () => [], name);
         PipeClient.SendAsync("status", 2000, name).GetAwaiter().GetResult(); // warm up
         using var self = System.Diagnostics.Process.GetCurrentProcess();
         var before = self.TotalProcessorTime;

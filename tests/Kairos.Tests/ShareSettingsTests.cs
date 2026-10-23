@@ -96,4 +96,28 @@ public static class ShareSettingsTests
         Assert.Equal(Path.Combine(dir, "TikTok", "ELDEN RING 2026-10-12 21-04-55.mp4"),
             ShareFiles.Target(dir, SharePlatform.TikTok, @"D:\Clips\ELDEN RING\ELDEN RING 2026-10-12 21-04-55.mp4"), "per-platform folder, same name");
     }
+
+    [Test]
+    public static void The_copy_size_is_saved()
+    {
+        var s = new AppSettings();
+        Assert.Equal(0, s.Share.CopyMb, "Original until a size is picked");
+        s.Share.CopyMb = 50;
+        Assert.Equal(50, SettingsStore.Deserialize(SettingsStore.Serialize(s)).Share.CopyMb, "round trip");
+        Assert.True(SettingsStore.Serialize(s).Contains("\"copyMb\": 50"), "named copyMb");
+        Assert.Equal(0, SettingsStore.Deserialize("""{"share":{"tags":"#a"}}""").Share.CopyMb, "a 1.0 file: Original");
+        s.Share.CopyMb = 33;
+        s.Normalize();
+        Assert.Equal(0, s.Share.CopyMb, "a size Copy does not offer: Original");
+    }
+
+    [Test]
+    public static void A_copy_is_named_by_its_part_and_size()
+    {
+        const string clip = @"D:\Clips\ELDEN RING\ELDEN RING 2026-10-12 21-04-55.mp4";
+        Assert.Equal(@"D:\Clips\Shared\ELDEN RING 2026-10-12 21-04-55 (0.05-0.35).mp4", ShareFiles.CopyTarget(@"D:\Clips\Shared", clip, 5, 35, 0), "a cut");
+        Assert.Equal(@"D:\Clips\Shared\ELDEN RING 2026-10-12 21-04-55 (4.30-5.00, 10 MB).mp4", ShareFiles.CopyTarget(@"D:\Clips\Shared", clip, 270, 300, 10), "a cut at a size");
+        Assert.Equal(@"D:\Clips\Shared\ELDEN RING 2026-10-12 21-04-55 (1.00.00-1.02.30).mp4", ShareFiles.CopyTarget(@"D:\Clips\Shared", clip, 3600, 3750, 0), "past an hour");
+        Assert.Equal(@"D:\Clips\Shared", ShareFiles.SharedIn(@"D:\Clips"), "the clips folder's Shared");
+    }
 }

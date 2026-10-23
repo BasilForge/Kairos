@@ -26,6 +26,20 @@ public partial class ClipsPage : UserControl
         };
     }
 
+    /// <summary>Each card's picture can be dragged out as its file (the card it shows when the drag starts).</summary>
+    void OnCardInitialized(object? sender, EventArgs e)
+    {
+        if (sender is System.Windows.FrameworkElement card)
+            FileDrag.Attach(card,
+                // Null from the Library (an HEVC clip's H.264 copy still to make) means nothing to drag yet, never the clip.
+                () => card.DataContext is ClipItem clip ? DataContext is ClipsViewModel library ? library.DragFile(clip) : clip.Path : null,
+                () =>
+                {
+                    if (card.DataContext is ClipItem clip)
+                        (DataContext as ClipsViewModel)?.PrepareDrag(clip);
+                });
+    }
+
     void OnScroll(object sender, ScrollChangedEventArgs e)
     {
         // Only when the user scrolls down near the end, or the cards do not fill the window yet; never while hidden
@@ -51,7 +65,33 @@ public partial class CapturePage : UserControl { public CapturePage() => Initial
 
 public partial class QualityPage : UserControl { public QualityPage() => InitializeComponent(); }
 
-public partial class AudioPage : UserControl { public AudioPage() => InitializeComponent(); }
+public partial class AudioPage : UserControl
+{
+    public AudioPage() => InitializeComponent();
+
+    /// <summary>"+ Add source": apps playing sound now, then input devices (each list only when it has any).</summary>
+    void OnAddSource(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm)
+            return;
+        var menu = new ContextMenu { PlacementTarget = (Button)sender, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        void Group(string title, IReadOnlyList<Option> options, System.Windows.Input.ICommand command)
+        {
+            if (options.Count == 0)
+                return;
+            if (menu.Items.Count > 0)
+                menu.Items.Add(new Separator());
+            menu.Items.Add(new MenuItem { Header = App.Text.Get(title), IsEnabled = false });
+            foreach (var o in options)
+                menu.Items.Add(new MenuItem { Header = o.Label, Command = command, CommandParameter = o.Value });
+        }
+        Group("audio.addApps", vm.AddAudioApps, vm.AddAudioAppCommand);
+        Group("audio.addDevices", vm.AddAudioDevices, vm.AddAudioDeviceCommand);
+        if (menu.Items.Count == 0)
+            menu.Items.Add(new MenuItem { Header = App.Text.Get("audio.addNone"), IsEnabled = false });
+        menu.IsOpen = true;
+    }
+}
 
 public partial class HotkeysPage : UserControl { public HotkeysPage() => InitializeComponent(); }
 

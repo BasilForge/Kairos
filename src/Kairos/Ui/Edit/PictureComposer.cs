@@ -11,7 +11,8 @@ namespace Kairos.Ui.Edit;
 /// </summary>
 public static class PictureComposer
 {
-    public static void Save(string source, EditProject p, string target)
+    /// <returns>The file written: <paramref name="target"/>, or "name (2)" beside it when that is open in another program.</returns>
+    public static string Save(string source, EditProject p, string target)
     {
         var picture = Compose(source, p);
         var encoder = new PngBitmapEncoder();
@@ -21,12 +22,11 @@ public static class PictureComposer
         {
             using (var file = File.Create(temp))
                 encoder.Save(file);
-            File.Move(temp, target, overwrite: true);
+            return Engine.Share.ClipTranscoder.Place(temp, target);
         }
         finally
         {
-            if (File.Exists(temp))
-                File.Delete(temp);
+            Engine.Share.ClipTranscoder.TryDelete(temp);
         }
     }
 

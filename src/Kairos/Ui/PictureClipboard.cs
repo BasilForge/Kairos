@@ -21,6 +21,8 @@ public static class PictureClipboard
     /// <summary>Puts the picture on the clipboard. False when another app kept it busy.</summary>
     public static bool Copy(string path)
     {
+        if (App.SideEffects.Held($"copy picture {path}"))
+            return true;
         var data = Data(path);
         // Another app can hold the clipboard for a moment; a few short retries cover it.
         for (int attempt = 0; attempt < 5; attempt++)

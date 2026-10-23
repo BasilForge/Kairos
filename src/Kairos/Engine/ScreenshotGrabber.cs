@@ -14,9 +14,9 @@ public static class ScreenshotGrabber
     static readonly ObsTickCallback Tick = OnTick; // held here for as long as libobs may call it
     static Job? _job;
 
-    sealed class Job(int width, int height)
+    sealed class Job(int width, int height, int canvasWidth, int canvasHeight)
     {
-        public readonly int Width = width, Height = height;
+        public readonly int Width = width, Height = height, CanvasWidth = canvasWidth, CanvasHeight = canvasHeight;
         public readonly TaskCompletionSource<ScreenshotFrame?> Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IntPtr TexRender, Stage;
         public int Ticks;
@@ -34,9 +34,10 @@ public static class ScreenshotGrabber
 
     /// <summary>
     /// The next frame of the canvas at <paramref name="width"/> × <paramref name="height"/>, or null when libobs is not
-    /// running, another grab is under way, or it took longer than <paramref name="timeout"/>.
+    /// running, another grab is under way, or it took longer than <paramref name="timeout"/>. With the canvas's own size
+    /// (<paramref name="canvasWidth"/> × <paramref name="canvasHeight"/>) the whole canvas is scaled down into it.
     /// </summary>
-    public static Task<ScreenshotFrame?> Grab(int width, int height, TimeSpan timeout)
+    public static Task<ScreenshotFrame?> Grab(int width, int height, TimeSpan timeout, int canvasWidth = 0, int canvasHeight = 0)
     {
         if (!ObsHost.Started || width <= 0 || height <= 0)
             return Task.FromResult<ScreenshotFrame?>(null);
@@ -45,7 +46,7 @@ public static class ScreenshotGrabber
         {
             if (_job != null)
                 return Task.FromResult<ScreenshotFrame?>(null);
-            _job = job = new Job(width, height);
+            _job = job = new Job(width, height, canvasWidth > 0 ? canvasWidth : width, canvasHeight > 0 ? canvasHeight : height);
         }
         Obs.obs_add_tick_callback(Tick, IntPtr.Zero);
         _ = GiveUpAfter(job, timeout);
@@ -107,7 +108,7 @@ public static class ScreenshotGrabber
             return false;
         var clear = new Vec4();
         Obs.gs_clear(ObsConst.GsClearColor, ref clear, 0, 0);
-        Obs.gs_ortho(0, job.Width, 0, job.Height, -100, 100);
+        Obs.gs_ortho(0, job.CanvasWidth, 0, job.CanvasHeight, -100, 100);
         Obs.gs_blend_state_push();
         Obs.gs_blend_function(ObsConst.GsBlendOne, ObsConst.GsBlendZero);
         Obs.obs_render_main_texture();

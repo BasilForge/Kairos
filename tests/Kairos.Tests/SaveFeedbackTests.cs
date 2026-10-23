@@ -86,10 +86,78 @@ public static class SaveFeedbackTests
             var c = ok.GetPixel(22, 32);
             Assert.True(c.G > 190 && c.R < 100, $"a save: green ({c})");
         }
-        using (var problem = SaveToast.Paint("Alt+F10 doesn't work", "Another app is using it", rtl: false, scale: 1f, warning: true))
+        using (var problem = SaveToast.Paint("Alt+F10 doesn't work", "Another app is using it", rtl: false, scale: 1f, ToastIcon.Warning))
         {
             var c = problem.GetPixel(22, 32);
             Assert.True(c.R > 230 && c.G is > 140 and < 200 && c.B < 80, $"a problem: amber ({c})");
+        }
+    }
+
+    [Test]
+    public static void A_replay_that_could_not_start_says_so_with_the_hint()
+    {
+        Text.Language = "en";
+        Assert.Equal((Text.Get("toast.notSaved.failed"), Text.Get("fix.closeRecorders")), EngineApp.NotSavedToast("toast.notSaved.failed"), "failed: what happened, then what to do");
+        Assert.Equal((Text.Get("toast.notSaved"), Text.Get("toast.notSaved.paused")), EngineApp.NotSavedToast("toast.notSaved.paused"), "the other reasons as before");
+    }
+
+    [Test]
+    public static void Every_toast_shows_whole_in_every_language()
+    {
+        // Every card Kairos shows, with sample values in its blanks: the title on one line, the line under it on up to two.
+        static IEnumerable<(string Title, string Detail)> Cards()
+        {
+            yield return (Text.Get("toast.saved"), "Apex Legends • 0:30");
+            yield return (Text.Get("toast.shot"), "Apex Legends • " + Text.Get("toast.byVoice"));
+            yield return (Text.Get("toast.shotFailed"), "");
+            yield return EngineApp.TakenToast(["Alt+Shift+F10"]);
+            yield return EngineApp.TakenToast(["Alt+F10", "Alt+Shift+F10", "Alt+F9"]);
+            yield return (Text.Get("toast.keysPicked"), Text.Format("toast.keysPickedSave", "Alt+Shift+F10"));
+            yield return (Text.Get("toast.recordStarted"), Text.Format("toast.recordHint", "Alt+Shift+F9"));
+            yield return (Text.Get("toast.recordPaused"), "12:34 • 1.2 GB");
+            yield return (Text.Get("toast.recordResumed"), "12:34 • 1.2 GB");
+            yield return (Text.Get("toast.recordSaved"), "Apex Legends • 12:34 • 1.2 GB");
+            yield return EngineApp.RecordFailedToast();
+            foreach (string reason in new[] { "off", "paused", "waiting", "starting", "write", "disk", "failed" })
+                yield return EngineApp.NotSavedToast("toast.notSaved." + reason);
+            yield return (Text.Get("toast.lowDisk"), Text.Format("toast.lowDiskBody", "8.2 GB", "C:"));
+            yield return (Text.Format("toast.update", "1.1.0"), Text.Get("toast.updateDetail"));
+        }
+        var cut = new List<string>();
+        foreach (var language in Text.Languages)
+            LanguageTests.WithLanguage(language.Code, () =>
+            {
+                foreach (var (title, detail) in Cards())
+                    foreach (float scale in new[] { 1f, 1.25f, 1.5f })
+                        if (!SaveToast.Fits(title, detail, scale))
+                            cut.Add($"{language.Code} at {scale:P0}: {title} / {detail}");
+            });
+        Assert.True(cut.Count == 0, "cut short: " + string.Join("; ", cut));
+    }
+
+    [Test]
+    public static void A_long_line_makes_the_card_taller_not_shorter_text()
+    {
+        using var shortCard = SaveToast.Paint("Clip not saved", "The disk is full", rtl: false, scale: 1f, ToastIcon.Warning);
+        using var longCard = SaveToast.Paint("Clip not saved", "Instant replay is starting, try again in a moment", rtl: false, scale: 1f, ToastIcon.Warning);
+        Assert.Equal(64, shortCard.Height, "one line: the usual card");
+        Assert.True(longCard.Height > shortCard.Height && longCard.Width == shortCard.Width, $"two lines: taller ({longCard.Height}), same width");
+    }
+
+    [Test]
+    public static void A_recording_that_cannot_start_gives_a_hint_in_the_users_language()
+    {
+        Text.Language = "ar";
+        try
+        {
+            var (title, detail) = EngineApp.RecordFailedToast();
+            Assert.Equal(Text.Get("toast.recordFailed"), title, "title");
+            Assert.Equal(Text.Get("fix.closeRecorders"), detail, "the hint, not OBS's English");
+            Assert.True(detail != title && detail != "fix.closeRecorders" && !detail.Contains("Recording could not start"), "no repeated, missing or English line");
+        }
+        finally
+        {
+            Text.Language = "en";
         }
     }
 }

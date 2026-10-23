@@ -40,7 +40,22 @@ public static class EditGraphTests
         Assert.True(g.Video.Contains("trim=start=0:end=30", StringComparison.Ordinal), g.Video);
         Assert.True(!g.Video.Contains("concat", StringComparison.Ordinal), "one piece: no concat");
         Assert.True(g.Audio.Contains("[aout]", StringComparison.Ordinal), g.Audio);
-        Assert.Equal("aout,agame,amic", string.Join(",", g.AudioOutputs), "the mix, the game and the mic, like the clip");
+        Assert.Equal("aout,at0,at1", string.Join(",", g.AudioOutputs), "the mix, the game and the mic, like the clip");
+        Assert.True(!g.Audio.Contains("amix", StringComparison.Ordinal) && g.Audio.Contains("[a0]", StringComparison.Ordinal),
+            "nothing changed in the sound: track 1 is copied as recorded, not mixed again: " + g.Audio);
+        Assert.Equal("0,1,2", string.Join(",", g.AudioStreams), "every track read");
+    }
+
+    [Test]
+    public static void An_unchanged_sound_copies_every_track_cut_and_retimed()
+    {
+        var layout = Kairos.Engine.Audio.TrackLayout.Of(["Mix", "Game", "Discord", "Microphone", "Other sounds"], 5);
+        var p = EditProject.For("c.mp4", 30).SplitAt(10).WithParts([0], k => k with { Speed = 2 });
+        var g = EditGraph.Build(p, 1920, 1080, 60, 5, NoPngs, layout);
+        Assert.True(!g.Audio.Contains("amix", StringComparison.Ordinal) && !g.Audio.Contains("volume=", StringComparison.Ordinal), "no mixing, no levels: " + g.Audio);
+        Assert.True(g.Audio.Contains("[a0]asplit=2", StringComparison.Ordinal) && g.Audio.Contains("atempo=2", StringComparison.Ordinal), "cut and retimed: " + g.Audio);
+        Assert.Equal(5, g.AudioOutputs.Count, "the mix and the four tracks");
+        Assert.True(g.Audio.Contains("concat=n=2:v=0:a=1[aout]", StringComparison.Ordinal) && g.Audio.Contains("concat=n=2:v=0:a=1[at3]", StringComparison.Ordinal), g.Audio);
     }
 
     [Test]
@@ -82,13 +97,31 @@ public static class EditGraphTests
     [Test]
     public static void Game_and_mic_mix_with_their_levels()
     {
-        var g = Build(EditProject.For("c.mp4", 30) with { Sound = new SoundLevels(Game: 0.5, MicMuted: true) });
+        var g = Build(EditProject.For("c.mp4", 30) with { Sound = Sounds.Clip(game: 0.5, micMuted: true) });
         Assert.Equal("1,2", string.Join(",", g.AudioStreams), "game and mic tracks");
         Assert.True(g.Audio.Contains("volume=0.5,asplit=2[", StringComparison.Ordinal), g.Audio);
         Assert.True(g.Audio.Contains("volume=0,asplit=2[", StringComparison.Ordinal), g.Audio);
-        Assert.True(g.Audio.Contains("[go0]anull[agame]", StringComparison.Ordinal) && g.Audio.Contains("[mo0]anull[amic]", StringComparison.Ordinal),
+        Assert.True(g.Audio.Contains("[t0o0]anull[at0]", StringComparison.Ordinal) && g.Audio.Contains("[t1o0]anull[at1]", StringComparison.Ordinal),
             "game and mic kept apart at their levels: " + g.Audio);
         Assert.True(g.Audio.Contains("amix=inputs=2", StringComparison.Ordinal), g.Audio);
+    }
+
+    [Test]
+    public static void A_clip_with_its_own_tracks_sets_each_one()
+    {
+        var layout = Kairos.Engine.Audio.TrackLayout.Of(["Mix", "Game", "Discord", "Microphone", "Other sounds"], 5);
+        var p = EditProject.For("c.mp4", 30).SplitAt(10).WithParts([1], k => k with { Levels = k.Levels.With(0, 1.5) })
+            with { Sound = new SoundLevels { Tracks = default(TrackLevels).WithMuted(1, true).With(2, 0.5) } };
+        var g = EditGraph.Build(p, 1920, 1080, 60, 5, NoPngs, layout);
+        Assert.Equal("1,2,3,4", string.Join(",", g.AudioStreams), "the four tracks that make the mix");
+        Assert.Equal("Mix,Game,Discord,Microphone,Other sounds", string.Join(",", g.AudioNames), "named like the clip");
+        Assert.Equal(5, g.AudioOutputs.Count, "the mix and each track");
+        Assert.True(g.Audio.Contains("amix=inputs=4:normalize=0", StringComparison.Ordinal), g.Audio);
+        Assert.True(g.Audio.Contains("atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0,", StringComparison.Ordinal), "Discord muted: " + g.Audio);
+        Assert.True(g.Audio.Contains("atrim=start=10:end=30,asetpts=PTS-STARTPTS,volume=1.5,", StringComparison.Ordinal), "the part's louder game: " + g.Audio);
+        Assert.True(g.Audio.Contains("atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0.5,", StringComparison.Ordinal), "the mic at half: " + g.Audio);
+        Assert.Equal("Mix,System,Microphone", string.Join(",", Build(EditProject.For("c.mp4", 30)).AudioNames), "a 1.0.1 clip's tracks get their names");
+        Assert.Equal("Mix", string.Join(",", Build(EditProject.For("c.mp4", 30), audioStreams: 1).AudioNames), "one track: the mix");
     }
 
     [Test]
@@ -105,16 +138,16 @@ public static class EditGraphTests
     [Test]
     public static void A_louder_part_has_its_own_volume()
     {
-        var p = EditProject.For("c.mp4", 30).SplitAt(10).WithParts([1], k => k with { Game = 1.5, Mic = 0.5 })
-            with { Sound = new SoundLevels(Game: 0.8) };
+        var p = EditProject.For("c.mp4", 30).SplitAt(10).WithParts([1], k => k with { Levels = Sounds.Part(game: 1.5, mic: 0.5) })
+            with { Sound = Sounds.Clip(game: 0.8) };
         var g = Build(p);
         Assert.True(g.Audio.Contains("atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0.8,asplit=2[", StringComparison.Ordinal), "first part's game: " + g.Audio);
         Assert.True(g.Audio.Contains("atrim=start=10:end=30,asetpts=PTS-STARTPTS,volume=1.2,asplit=2[", StringComparison.Ordinal), "second part's game 0.8 x 1.5: " + g.Audio);
         Assert.True(g.Audio.Contains("atrim=start=10:end=30,asetpts=PTS-STARTPTS,volume=0.5,asplit=2[", StringComparison.Ordinal), "second part's mic: " + g.Audio);
         Assert.True(g.Audio.Contains("concat=n=2:v=0:a=1[aout]", StringComparison.Ordinal), g.Audio);
-        Assert.True(g.Audio.Contains("[gq0][gq1]concat=n=2:v=0:a=1[agame]", StringComparison.Ordinal)
-                    && g.Audio.Contains("[mq0][mq1]concat=n=2:v=0:a=1[amic]", StringComparison.Ordinal), "game and mic joined apart: " + g.Audio);
-        var one = Build(EditProject.For("c.mp4", 30).SplitAt(10).WithParts([0], k => k with { Game = 2, Speed = 2 }), audioStreams: 1);
+        Assert.True(g.Audio.Contains("[t0q0][t0q1]concat=n=2:v=0:a=1[at0]", StringComparison.Ordinal)
+                    && g.Audio.Contains("[t1q0][t1q1]concat=n=2:v=0:a=1[at1]", StringComparison.Ordinal), "game and mic joined apart: " + g.Audio);
+        var one = Build(EditProject.For("c.mp4", 30).SplitAt(10).WithParts([0], k => k with { Levels = Sounds.Part(game: 2), Speed = 2 }), audioStreams: 1);
         Assert.True(one.Audio.Contains("atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=2,atempo=2[", StringComparison.Ordinal), "a one-track clip: " + one.Audio);
     }
 
@@ -139,5 +172,32 @@ public static class EditGraphTests
         var g = Build(EditProject.For("c.mp4", 30).With(item), pngs: new Dictionary<Guid, Overlay> { [item.Id] = new(@"C:\T\a.png", 128, 72) });
         Assert.True(g.Video.Contains(@"movie='C\:/T/a.png'", StringComparison.Ordinal), g.Video);
         Assert.True(g.Video.Contains("overlay=128:72:enable='between(t,1,2)'", StringComparison.Ordinal), "laid where the item is: " + g.Video);
+    }
+
+    [Test]
+    public static void A_zoom_crops_after_the_looks_and_blurs_and_before_the_drawings()
+    {
+        var plain = EditProject.For("clip.mp4", 30).SplitAt(10);
+        Assert.True(!Build(plain).Video.Contains("zoom"), "no zoom: no crop");
+        Assert.Equal(null, Build(plain).ZoomAt, "nothing to drive");
+        var blur = new BlurItem(Guid.NewGuid(), 0, 30, new System.Windows.Rect(0.1, 0.1, 0.2, 0.2));
+        var text = new TextItem(Guid.NewGuid(), 0, 30, "hi", new System.Windows.Rect(0.4, 0.4, 0.2, 0.1), "#FFFFFF", 0.05, TextEffect.Plain);
+        var zoomed = plain.With(text).With(blur).WithParts([1], k => k with { Zoom = new System.Windows.Rect(0, 0, 0.5, 0.5) });
+        var g = Build(zoomed, pngs: new Dictionary<Guid, Overlay> { [text.Id] = new Overlay(@"C:		ext.png", 10, 10) });
+        int crop = g.Video.IndexOf("crop@zoom=w=iw:h=ih:x=0:y=0,scale=1920:1080", StringComparison.Ordinal);
+        Assert.True(crop > 0, g.Video);
+        Assert.True(g.Video.IndexOf("boxblur", StringComparison.Ordinal) < crop, "the blur is zoomed with the picture");
+        Assert.True(g.Video.IndexOf("movie=", StringComparison.Ordinal) > crop, "texts and drawings stay put");
+        Assert.True(g.ZoomAt != null, "the export drives it");
+    }
+
+    [Test]
+    public static void A_zoom_in_pixels_is_even_and_inside_the_picture()
+    {
+        Assert.Equal((960, 540, 0, 0), VideoZoom.Crop(new System.Windows.Rect(0, 0, 0.5, 0.5), 1920, 1080), "the top-left quarter");
+        var (w, h, x, y) = VideoZoom.Crop(new System.Windows.Rect(0.333, 0.777, 0.3, 0.3), 1920, 1080);
+        Assert.True(w % 2 == 0 && h % 2 == 0 && x % 2 == 0 && y % 2 == 0, "even (4:2:0)");
+        Assert.True(x + w <= 1920 && y + h <= 1080, "inside");
+        Assert.Equal((1920, 1080, 0, 0), VideoZoom.Crop(VideoZoom.Full, 1920, 1080), "the whole picture");
     }
 }

@@ -1,12 +1,9 @@
 bin/
 obj/
-.superpowers/
 *.user
 .vs/
 dist/
 third_party/whisper/bin/
 releases/
-
-# Internal working notes (specs, plans, audits): kept on this PC, not published
-docs/superpowers/
-docs/audits/
+# Microsoft's Visual C++ runtime installer, carried by the wizard (tools\release.ps1 checks it)
+installer/redist/

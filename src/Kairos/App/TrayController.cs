@@ -16,7 +16,9 @@ public sealed class TrayController : IDisposable
     TrayState _state = TrayState.Starting;
     string? _menuKey;
 
-    public event Action? SaveClicked, QuickClicked, ScreenshotClicked, PauseClicked, RecordClicked, PauseRecordClicked, FolderClicked, ShareClicked, DeleteLastClicked, SettingsClicked, ExitClicked;
+    public event Action? SaveClicked, QuickClicked, ScreenshotClicked, PauseClicked, RecordClicked, PauseRecordClicked, FolderClicked, ShareClicked, DeleteLastClicked, SettingsClicked, ExitClicked, UpdateClicked;
+    /// <summary>A newer Kairos is offered: an amber dot on the icon and "Update to …" first in the menu.</summary>
+    string? _update;
 
     public TrayController()
     {
@@ -33,28 +35,40 @@ public sealed class TrayController : IDisposable
 
     /// <summary>Everything the menu's items depend on. The tooltip is not part of it.</summary>
     public static string MenuKey(TrayState state, bool quickEnabled, int quickSeconds, bool paused, bool recording, string language,
-        bool canUndo = false, bool canShare = false, bool recordingPaused = false, bool lastIsShot = false) =>
-        $"{state}|{quickEnabled}|{quickSeconds}|{paused}|{recording}|{language}|{canUndo}|{canShare}|{recordingPaused}|{lastIsShot}";
+        bool canUndo = false, bool canShare = false, bool recordingPaused = false, bool lastIsShot = false, string? update = null) =>
+        $"{state}|{quickEnabled}|{quickSeconds}|{paused}|{recording}|{language}|{canUndo}|{canShare}|{recordingPaused}|{lastIsShot}|{update}";
 
     /// <summary>Updates the icon; rebuilds the menu only when its items change (so an open menu stays open).</summary>
     /// <param name="canUndo">A clip saved in this session can still be sent to the Recycle Bin from the menu.</param>
     /// <param name="canShare">There is a last clip to open in the share panel.</param>
     /// <param name="recordingPaused">The full recording is paused: its menu item resumes it.</param>
     /// <param name="lastIsShot">The last thing saved is a screenshot: the share and delete items say so.</param>
+    /// <param name="update">A newer Kairos's version, shown as offered; null when there is none.</param>
     public void Update(TrayState state, bool quickEnabled, int quickSeconds, bool paused, bool recording, bool canUndo = false,
-        bool canShare = false, bool recordingPaused = false, bool lastIsShot = false)
+        bool canShare = false, bool recordingPaused = false, bool lastIsShot = false, string? update = null)
     {
         _state = state;
+        _update = update;
         _icon.Text = Tooltip;
         if (!_flashTimer.Enabled)
             ApplyIcon();
 
-        string key = MenuKey(state, quickEnabled, quickSeconds, paused, recording, Text.Language, canUndo, canShare, recordingPaused, lastIsShot);
+        string key = MenuKey(state, quickEnabled, quickSeconds, paused, recording, Text.Language, canUndo, canShare, recordingPaused, lastIsShot, update);
         if (key == _menuKey)
             return;
         _menuKey = key;
 
         var menu = TrayMenu.Create(Text.IsRightToLeft);
+        if (update != null)
+        {
+            var item = new ToolStripMenuItem(Text.Format("tray.update", update), null, (_, _) => UpdateClicked?.Invoke())
+            {
+                ForeColor = TrayMenu.Rgb(Settings.ThemeColors.Accent),
+                Font = TrayMenu.AccentFont,
+            };
+            menu.Items.Add(item);
+            menu.Items.Add(new ToolStripSeparator());
+        }
         menu.Items.Add(Text.Get("tray.save"), null, (_, _) => SaveClicked?.Invoke());
         if (quickEnabled)
             menu.Items.Add(Text.Format("tray.quick", Text.Count("count.seconds", quickSeconds)), null, (_, _) => QuickClicked?.Invoke());
@@ -89,8 +103,8 @@ public sealed class TrayController : IDisposable
     public static uint ColorFor(string kind) => kind switch
     {
         "active" or "recording" => Settings.ThemeColors.Accent,
-        "saved" => 0x2ED47A,
-        "error" => 0xFFB020,
+        "saved" => Settings.ThemeColors.Saved,
+        "error" => Settings.ThemeColors.Warning,
         _ => 0xA3928F,
     };
 
@@ -102,18 +116,33 @@ public sealed class TrayController : IDisposable
         _flashTimer.Start();
     }
 
-    void ApplyIcon() => _icon.Icon = _icons[_state switch
+    void ApplyIcon()
     {
-        TrayState.Active => "active",
-        TrayState.Paused => "paused",
-        TrayState.Recording => "recording",
-        TrayState.Error => "error",
-        _ => "waiting",
-    }];
+        string kind = _state switch
+        {
+            TrayState.Active => "active",
+            TrayState.Paused => "paused",
+            TrayState.Recording => "recording",
+            TrayState.Error => "error",
+            _ => "waiting",
+        };
+        if (_update != null)
+        {
+            // With the update's dot: drawn the first time one is offered (most sessions never need them).
+            string dotted = kind + "+update";
+            if (!_icons.TryGetValue(dotted, out var icon))
+                _icons[dotted] = icon = DrawIcon(kind, updateDot: true);
+            _icon.Icon = icon;
+        }
+        else
+        {
+            _icon.Icon = _icons[kind];
+        }
+    }
 
-    static Icon DrawIcon(string kind)
+    static Icon DrawIcon(string kind, bool updateDot = false)
     {
-        using var bmp = DrawBitmap(kind);
+        using var bmp = DrawBitmap(kind, updateDot);
         IntPtr h = bmp.GetHicon();
         var icon = (Icon)Icon.FromHandle(h).Clone();
         DestroyIcon(h);
@@ -121,7 +150,8 @@ public sealed class TrayController : IDisposable
     }
 
     /// <summary>The 32 px tray picture for <paramref name="kind"/>: the app's mark in the state's color.</summary>
-    public static Bitmap DrawBitmap(string kind)
+    /// <param name="updateDot">A newer Kairos is offered: an amber dot in the top corner.</param>
+    public static Bitmap DrawBitmap(string kind, bool updateDot = false)
     {
         const int size = 32;
         var bmp = new Bitmap(size, size);
@@ -149,6 +179,14 @@ public sealed class TrayController : IDisposable
                 default:
                     g.FillEllipse(brush, 12, 12, 8, 8);
                     break;
+            }
+            if (updateDot)
+            {
+                // Amber (the theme's Warning), ringed in the icon's background so it reads on any taskbar.
+                using var ring = new SolidBrush(TrayMenu.Rgb(Settings.ThemeColors.Background));
+                using var dot = new SolidBrush(TrayMenu.Rgb(Settings.ThemeColors.Warning));
+                g.FillEllipse(ring, 19, 0, 13, 13);
+                g.FillEllipse(dot, 21, 2, 9, 9);
             }
         }
         return bmp;

@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
@@ -32,40 +31,18 @@ public static class ShellThumbnail
 
     static BitmapSource? Load(string path, int width, int height)
     {
-        SHCreateItemFromParsingName(path, IntPtr.Zero, typeof(IShellItemImageFactory).GUID, out IShellItemImageFactory factory);
+        IntPtr hbitmap = App.ShellImage.Get(path, width, height);
+        if (hbitmap == IntPtr.Zero)
+            return null;
         try
         {
-            if (factory.GetImage(new SIZE { cx = width, cy = height }, 0x1 /* BIGGERSIZEOK */, out IntPtr hbitmap) != 0)
-                return null;
-            try
-            {
-                var source = Imaging.CreateBitmapSourceFromHBitmap(hbitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                source.Freeze();
-                return source;
-            }
-            finally
-            {
-                DeleteObject(hbitmap);
-            }
+            var source = Imaging.CreateBitmapSourceFromHBitmap(hbitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            source.Freeze();
+            return source;
         }
         finally
         {
-            Marshal.ReleaseComObject(factory);
+            App.ShellImage.Delete(hbitmap);
         }
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct SIZE { public int cx, cy; }
-
-    [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IShellItemImageFactory
-    {
-        [PreserveSig] int GetImage(SIZE size, int flags, out IntPtr phbm);
-    }
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
-    static extern void SHCreateItemFromParsingName(string path, IntPtr pbc, [MarshalAs(UnmanagedType.LPStruct)] Guid riid,
-        out IShellItemImageFactory factory);
-
-    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr obj);
 }

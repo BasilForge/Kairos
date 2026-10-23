@@ -21,36 +21,50 @@ public static class StorageJanitor
     }
 
     /// <summary>
-    /// Only clips and screenshots listed in <paramref name="index"/> (saved by Kairos) count and can be removed; any
-    /// other video or picture in the folder is left alone. Returns how many files were removed.
+    /// The files to remove so the folder drops under the limit. In a cloud folder (<paramref name="cloud"/>) only the copies
+    /// on this PC count: the oldest are kept online only, never one that already is.
     /// </summary>
-    public static int Enforce(string folder, long limitBytes, ClipIndex index, Action<string> recycle)
+    public static List<string> Choose(IEnumerable<(string Path, long Size, DateTime Time, FileAttributes Attributes)> files, long limitBytes, bool cloud) =>
+        SelectForDeletion(files.Where(f => !cloud || CloudFiles.IsLocal(f.Attributes)).Select(f => (f.Path, f.Size, f.Time)), limitBytes);
+
+    /// <summary>
+    /// Only clips and screenshots listed in <paramref name="index"/> (saved by Kairos) count and can be removed; any
+    /// other video or picture in the folder is left alone. In a cloud folder (<paramref name="cloud"/>) the oldest local
+    /// copies are freed (kept online only) instead: removing them there would remove them from the cloud. Returns how
+    /// many files were removed or freed.
+    /// </summary>
+    public static int Enforce(string folder, long limitBytes, ClipIndex index, Action<string> recycle, CloudFolder? provider = null)
     {
-        if (limitBytes <= 0 || !Directory.Exists(folder))
+        // Google Drive keeps its own local copies, and removing a file there removes it from the cloud too.
+        if (limitBytes <= 0 || !Directory.Exists(folder) || provider is { Streams: true })
             return 0;
+        bool cloud = provider != null;
 
         var mine = index.Load();
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
         var root = new DirectoryInfo(folder);
         var files = root.EnumerateFiles("*.mp4", options).Concat(root.EnumerateFiles("*.png", options))
             .Where(f => mine.Contains(f.FullName))
-            .Select(f => (f.FullName, f.Length, f.LastWriteTime));
+            .Select(f => (f.FullName, f.Length, f.LastWriteTime, f.Attributes));
         int deleted = 0;
-        foreach (string path in SelectForDeletion(files, limitBytes))
+        Action<string> remove = cloud ? CloudFiles.FreeLocalCopy : recycle;
+        foreach (string path in Choose(files, limitBytes, cloud))
         {
             try
             {
-                recycle(path);
+                foreach (string file in Engine.ClipLibrary.FilesOf(path)) // its camera file goes with it
+                    remove(file);
                 deleted++;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or OperationCanceledException)
             {
             }
         }
-        index.Prune();
+        if (!cloud)
+            index.Prune();
         return deleted;
     }
 
-    public static int Enforce(string folder, int maxFolderGb, ClipIndex index) =>
-        Enforce(folder, (long)maxFolderGb << 30, index, path => RecycleBin.Send(path, RecycleBin.BackgroundFlags));
+    public static int Enforce(string folder, int maxFolderGb, ClipIndex index, CloudFolder? provider = null) =>
+        Enforce(folder, (long)maxFolderGb << 30, index, path => RecycleBin.Send(path, RecycleBin.BackgroundFlags), provider);
 }

@@ -62,10 +62,10 @@ public sealed partial class EditorViewModel
     public ICommand ShapesCommand { get; }
     public ICommand BlurCommand { get; }
     public ICommand CropCommand { get; }
+    public ICommand ZoomCommand { get; }
+    public ICommand RemoveZoomCommand { get; }
     public ICommand ModeDoneCommand { get; }
     public ICommand PlaceCommand { get; }
-    public ICommand GameMuteCommand { get; }
-    public ICommand MicMuteCommand { get; }
 
     bool _askingDiscard;
 

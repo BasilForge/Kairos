@@ -28,6 +28,10 @@ public partial class TrimBar : UserControl
         new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
     public static readonly DependencyProperty PlayheadProperty = DependencyProperty.Register(nameof(Playhead), typeof(double), typeof(TrimBar),
         new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, (d, _) => ((TrimBar)d).Arrange()));
+    /// <summary>A handle, the cut or the playhead is being dragged (the preview then shows fast key frames).</summary>
+    public static readonly DependencyProperty IsScrubbingProperty = DependencyProperty.Register(nameof(IsScrubbing), typeof(bool), typeof(TrimBar),
+        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+    public bool IsScrubbing { get => (bool)GetValue(IsScrubbingProperty); set => SetValue(IsScrubbingProperty, value); }
     public static readonly DependencyProperty ShowPlayheadProperty = DependencyProperty.Register(nameof(ShowPlayhead), typeof(bool), typeof(TrimBar),
         new PropertyMetadata(false, (d, _) => ((TrimBar)d).Arrange()));
     public static readonly DependencyProperty FramesProperty = DependencyProperty.Register(nameof(Frames), typeof(IEnumerable), typeof(TrimBar),
@@ -52,7 +56,11 @@ public partial class TrimBar : UserControl
         SizeChanged += (_, _) => Arrange();
         MouseMove += OnMove;
         MouseLeftButtonUp += (_, e) => EndDrag(e.GetPosition(this).X);
-        LostMouseCapture += (_, _) => _drag = Drag.None;
+        LostMouseCapture += (_, _) =>
+        {
+            _drag = Drag.None;
+            IsScrubbing = false;
+        };
     }
 
     double TrackWidth => Math.Max(1, ActualWidth - 2 * Edge);
@@ -103,6 +111,7 @@ public partial class TrimBar : UserControl
     void BeginDrag(Drag drag, IInputElement focus, MouseButtonEventArgs e)
     {
         _drag = drag;
+        IsScrubbing = true;
         Keyboard.Focus(focus);
         CaptureMouse();
         e.Handled = true;
@@ -131,6 +140,7 @@ public partial class TrimBar : UserControl
             Playhead = Time(x); // a click on the cut
         _drag = Drag.None;
         ReleaseMouseCapture();
+        IsScrubbing = false;
     }
 
     static double Step() => Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 0.1;

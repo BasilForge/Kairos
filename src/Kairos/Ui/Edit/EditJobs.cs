@@ -56,6 +56,9 @@ public sealed class EditJobs(EditRender render, Action<string> recycle)
 {
     readonly List<EditJob> _running = [];
 
+    /// <summary>A save's file is in place (on the save's thread): a cloud folder may keep it online only.</summary>
+    public Action<string>? Saved { get; init; }
+
     /// <summary>A save is still running (asked twice a second: no copy of the list).</summary>
     public bool Busy
     {
@@ -100,20 +103,14 @@ public sealed class EditJobs(EditRender render, Action<string> recycle)
             {
                 written = render(p, part, new Reporter(job, OnStarter), job.Token);
                 job.Token.ThrowIfCancellationRequested();
-                string target;
                 if (replaceOriginal)
                 {
-                    target = p.Source;
                     OnStarter(() => releaseSource?.Invoke());
                     recycle(p.Source);
-                    File.Move(written, target);
                 }
-                else
-                {
-                    target = ClipOrganizer.FreePath(NewCopyPath(p.Source));
-                    File.Move(written, target);
-                }
+                string target = ClipOrganizer.Move(written, replaceOriginal ? p.Source : NewCopyPath(p.Source));
                 written = null;
+                Saved?.Invoke(target);
                 OnStarter(() => job.Complete(target));
                 return target;
             }
@@ -179,10 +176,23 @@ public sealed class EditJobs(EditRender render, Action<string> recycle)
                 TryDelete(file);
     }
 
-    /// <summary>"Game 2026-10-16 18-00-00 (edited).mp4" beside the original ("(معدّل)" in Arabic).</summary>
-    public static string NewCopyPath(string original) =>
-        Path.Combine(Path.GetDirectoryName(original)!,
-            $"{Path.GetFileNameWithoutExtension(original)} ({Text.Get("editor.edited")}){Path.GetExtension(original)}");
+    /// <summary>
+    /// "Game 2026-10-16 18-00-00 (edited).mp4" beside the original ("(معدّل)" in Arabic). An edited copy edited again keeps
+    /// one mark: its number ("(edited) (2)") and its mark in any language come off first (the save numbers a taken name).
+    /// </summary>
+    public static string NewCopyPath(string original)
+    {
+        string name = Copies.Replace(Path.GetFileNameWithoutExtension(original), "");
+        foreach (var language in Text.Languages)
+            if (Text.Load(language.Code).TryGetValue("editor.edited", out string? word) && name.EndsWith($" ({word})", StringComparison.Ordinal))
+            {
+                name = name[..^(word.Length + 3)];
+                break;
+            }
+        return Path.Combine(Path.GetDirectoryName(original)!, $"{name} ({Text.Get("editor.edited")}){Path.GetExtension(original)}");
+    }
+
+    static readonly System.Text.RegularExpressions.Regex Copies = new(@" \(\d+\)$");
 
     static void TryDelete(string path) => Engine.Share.ClipTranscoder.TryDelete(path);
 

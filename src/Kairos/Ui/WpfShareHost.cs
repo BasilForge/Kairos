@@ -9,9 +9,12 @@ using Kairos.Settings;
 namespace Kairos.Ui;
 
 /// <summary>The share panel's link to the real world: OBS's FFmpeg next to Kairos, the clipboard, the browser.</summary>
-public sealed class WpfShareHost(Action<ShareSettings> remember) : IShareHost
+public sealed class WpfShareHost(Action<ShareSettings> remember, Func<string> clipsFolder) : IShareHost
 {
     public string Folder => ShareFiles.DefaultFolder;
+
+    /// <summary>The clips folder's Shared (the default clips folder before the engine has said which one it uses).</summary>
+    public string SharedFolder => ShareFiles.SharedIn(clipsFolder() is { Length: > 0 } clips ? clips : OutputSettings.DefaultFolder);
 
     public MediaInfo Probe(string clip) => ClipTranscoder.Probe(clip);
 
@@ -71,16 +74,7 @@ public sealed class WpfShareHost(Action<ShareSettings> remember) : IShareHost
         }
     }
 
-    public void Launch(string target)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-        }
-    }
+    public void Launch(string target) => App.ShellPaths.Open(target);
 
     public Task<PublishOutcome> Publish(SharePlatform platform, string file, string caption, Action<string> status, CancellationToken ct)
     {
@@ -94,11 +88,7 @@ public sealed class WpfShareHost(Action<ShareSettings> remember) : IShareHost
 
     public void RevealSite(SharePlatform platform) => ShareSites.Reveal(platform);
 
-    public void ShowInFolder(string path)
-    {
-        if (File.Exists(path))
-            Process.Start(new ProcessStartInfo(App.ShellPaths.Explorer, $"/select,\"{path}\"") { UseShellExecute = true });
-    }
+    public void ShowInFolder(string path) => App.ShellPaths.ShowInExplorer(path);
 
     public void Remember(ShareSettings prefs) => remember(prefs);
 

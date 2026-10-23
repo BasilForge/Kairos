@@ -68,6 +68,7 @@ public static class InstallPaths
             {
                 using var process = Process.GetProcessById(id);
                 process.Kill();
+                process.WaitForExit(5000); // its files closed before they are removed below
             }
             catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
             {
@@ -75,6 +76,10 @@ public static class InstallPaths
             }
         }
         Autostart.RemoveIfPointsInto(root);
+        WizardLanguage.Forget();
+        // The replay's ring files (gigabytes on whichever drive was chosen): Kairos's working files, not the user's.
+        foreach (string folder in Engine.Replay.DiskReplayPlace.AllFolders(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)))
+            Engine.Replay.DiskReplayPlace.Remove(folder);
     }
 
     static List<int> Own(string root)
@@ -96,7 +101,7 @@ public static class InstallPaths
     {
         try
         {
-            using var pipe = new NamedPipeClientStream(".", AppInfo.PipeName, PipeDirection.InOut);
+            using var pipe = new NamedPipeClientStream(".", AppInfo.PipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly);
             pipe.Connect(500);
             return GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint id) ? (int)id : null;
         }

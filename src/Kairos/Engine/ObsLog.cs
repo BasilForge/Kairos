@@ -53,8 +53,30 @@ public static class ObsLog
     static void Write(string level, string message)
     {
         lock (Gate)
-            _writer?.WriteLine($"{DateTime.Now:HH:mm:ss.fff} [{level}] {message}");
+            _writer?.WriteLine($"{DateTime.Now:HH:mm:ss.fff} [{level}] {Redact(message, Profile)}");
     }
+
+    /// <summary>The user's folder (C:\Users\name): its name is personal, and logs are sent to us.</summary>
+    static readonly string Profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    /// <summary>
+    /// <paramref name="line"/> without the user's folder <paramref name="profile"/> (either slash, any case, or as JSON
+    /// writes it): a log or report sent for help carries no one's name. Kairos's and libobs's lines alike.
+    /// </summary>
+    public static string Redact(string line, string profile)
+    {
+        if (profile.Length < 4)
+            return line;
+        return line.Replace(profile, "%USERPROFILE%", StringComparison.OrdinalIgnoreCase)
+            .Replace(profile.Replace('\\', '/'), "%USERPROFILE%", StringComparison.OrdinalIgnoreCase)
+            .Replace(profile.Replace(@"\", @"\\"), "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>NVENC's test said the NVIDIA driver is older than the SDK libobs needs (NVENC is then not there).</summary>
+    public static bool NvencOutdated { get; private set; }
+
+    /// <summary>The sound devices libobs reports trouble with (read from its own log lines).</summary>
+    public static readonly AudioDeviceTrouble AudioDevices = new();
 
     static unsafe void OnObsLog(int level, IntPtr format, IntPtr args, IntPtr param)
     {
@@ -66,6 +88,10 @@ public static class ObsLog
             int n = __stdio_common_vsprintf(StandardSnprintfBehavior, buffer, 4096, format, IntPtr.Zero, args);
             string text = n < 0 ? Marshal.PtrToStringUTF8(format) ?? "" : Encoding.UTF8.GetString(buffer, Math.Min(n, 4095));
             Write(level switch { ObsConst.LogError => "obs-error", ObsConst.LogWarning => "obs-warn", _ => "obs" }, text);
+            if (text.StartsWith("WASAPI: Device", StringComparison.Ordinal) || text.StartsWith("Device '", StringComparison.Ordinal))
+                AudioDevices.Note(text);
+            else if (text.Contains("outdated_driver", StringComparison.Ordinal))
+                NvencOutdated = true; // "[NVENC] Test process failed: outdated_driver": NVENC did not load
         }
         catch
         {

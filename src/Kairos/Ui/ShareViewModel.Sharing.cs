@@ -10,15 +10,15 @@ public sealed partial class ShareViewModel
         if (!HasClip || _phase != Phase.Choosing || _platform is not { } platform)
             return;
         StopPlayback();
-        _host.Remember(new ShareSettings
-        {
-            XPremium = _xPremium,
-            VerticalFor = [.. _verticalFor],
-            CropPosition = _crop,
-            Tags = SharePlanner.RememberTags(_caption, Game),
-            PreviewVolume = _volume,
-            PreviewMuted = _muted,
-        });
+        // What the panel shows now; the rest (the copy size) as it was.
+        var prefs = _prefs().Copy();
+        prefs.XPremium = _xPremium;
+        prefs.VerticalFor = [.. _verticalFor];
+        prefs.CropPosition = _crop;
+        prefs.Tags = SharePlanner.RememberTags(_caption, Game);
+        prefs.PreviewVolume = _volume;
+        prefs.PreviewMuted = _muted;
+        _host.Remember(prefs);
         _resultPlatform = platform;
         _resultCaption = _caption;
         _outcome = null;

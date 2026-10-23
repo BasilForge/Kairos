@@ -21,27 +21,43 @@ public static class Program
             case "--selftest-host":
                 return SelfTest.Host(Console.Out);
             case "--selftest":
-                return SelfTest.Pipeline(args, Console.Out);
+                return SelfTest.Tidy(SelfTest.Pipeline(args, Console.Out));
             case "--selftest-record":
-                return SelfTest.Recording(Console.Out);
+                return SelfTest.Tidy(SelfTest.Recording(Console.Out));
             case "--selftest-screenshot":
-                return SelfTest.Screenshot(Console.Out);
+                return SelfTest.Tidy(SelfTest.Screenshot(Console.Out));
+            case "--selftest-disk-rebuild":
+                return SelfTest.Tidy(SelfTest.DiskRebuild(Console.Out));
+            case "--selftest-scene":
+                return SelfTest.Tidy(SelfTest.Scene(args, Console.Out));
+            case "--selftest-process-audio":
+                return SelfTest.Tidy(SelfTest.ProcessAudio(Console.Out));
+            case "--tone":
+                return SelfTest.Tone(args); // the hidden helper of --selftest-process-audio
             case "--settings":
                 return Ui.SettingsApp.Run();
             case "--selftest-reload":
                 return Ui.SettingsApp.SelfTestReload(Console.Out);
             case "--render-toast":
                 Text.Language = args.Length > 2 ? args[2] : "ar";
-                // --render-toast <png> [ar|en] [keys-taken|key-taken|not-saved|disk-full|low-disk]
+                // --render-toast <png> [ar|en] [keys-taken|key-taken|not-saved|disk-full|starting|low-disk|record-failed|replay-failed|update|update-important|updated]
                 string state = args.Length > 3 ? args[3] : "";
+                string next = AppInfo.Display("1.2.0");
                 var taken = state is "keys-taken" or "key-taken"
                     ? EngineApp.TakenToast(state == "keys-taken" ? ["Alt+F10", "Alt+Shift+F10", "Alt+F9"] : ["Alt+F10"])
-                    : state == "not-saved" ? (Title: Text.Get("toast.notSaved"), Detail: Text.Get("toast.notSaved.paused"))
-                    : state == "disk-full" ? (Title: Text.Get("toast.notSaved"), Detail: Text.Get("toast.notSaved.disk"))
+                    : state == "not-saved" ? EngineApp.NotSavedToast("toast.notSaved.paused")
+                    : state == "disk-full" ? EngineApp.NotSavedToast("toast.notSaved.disk")
+                    : state == "starting" ? EngineApp.NotSavedToast("toast.notSaved.starting")
+                    : state == "record-failed" ? EngineApp.RecordFailedToast()
+                    : state == "replay-failed" ? EngineApp.NotSavedToast("toast.notSaved.failed")
                     : state == "low-disk" ? (Title: Text.Get("toast.lowDisk"), Detail: Text.Format("toast.lowDiskBody", Text.Ltr("8.2 GB"), Text.Ltr("C:")))
+                    : state == "update" ? (Title: Text.Format("toast.update", next), Detail: Text.Get("toast.updateDetail"))
+                    : state == "update-important" ? (Title: Text.Format("toast.updateImportant", next), Detail: Text.Get("toast.updateImportantDetail"))
+                    : state == "updated" ? (Title: Text.Format("toast.updated", next), Detail: Text.Get("toast.updatedDetail"))
                     : default;
+                var icon = state is "update" or "update-important" ? ToastIcon.Update : state == "updated" ? ToastIcon.Saved : ToastIcon.Warning;
                 using (var card = taken.Title != null
-                           ? SaveToast.Paint(taken.Title, taken.Detail, Text.IsRightToLeft, 1.5f, warning: true)
+                           ? SaveToast.Paint(taken.Title, taken.Detail, Text.IsRightToLeft, 1.5f, icon)
                            : SaveToast.Paint(Text.Get("toast.saved"), "ELDEN RING™ • 5:00", Text.IsRightToLeft, 1.5f))
                     card.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
                 return 0;
@@ -75,7 +91,7 @@ public static class Program
                 // A hidden helper started by the editor: auto captions in a process of their own.
                 return Engine.Captions.CaptionProcess.Helper(args);
             case "--selftest-share":
-                return SelfTestShare(args.Length > 1 ? args[1] : null, args.Length > 2 && int.TryParse(args[2], out int side) ? side : null);
+                return SelfTestShare(args);
             case "--selftest-share-site":
                 return SelfTestShareSite(args.Length > 1 ? args[1] : null);
             case "--selftest-accounts":
@@ -90,7 +106,7 @@ public static class Program
                 return 0;
         }
 
-        using var mutex = new Mutex(true, AppInfo.EngineMutex, out bool first);
+        using var mutex = new Mutex(true, AppInfo.EngineLock(Environment.GetEnvironmentVariable("KAIROS_PIPE")), out bool first);
         if (!first)
         {
             // Already running: a plain launch means "show me the settings".
@@ -98,6 +114,10 @@ public static class Program
                 PipeClient.Send("open-settings");
             return 0;
         }
+
+        // An important update downloaded earlier goes in now, before anything records; Kairos then starts again into it.
+        if (Engine.Updates.UpdateService.ApplyPendingImportant(Settings.SettingsStore.AppDataDir, mode == "--background" ? ["--background"] : []))
+            return 0;
 
         System.Windows.Forms.Application.EnableVisualStyles();
         System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
@@ -126,7 +146,7 @@ public static class Program
         var watch = System.Diagnostics.Stopwatch.StartNew();
         using var player = new Ui.PreviewPlayer(clip, from, to, Ui.ShareViewModel.PreviewPixels,
             (int)Math.Round(Ui.ShareViewModel.PreviewPixels * info.Height / (double)info.Width) & ~1, mute: true,
-            t => last = t, failure => result = failure ?? "ended", track);
+            t => last = t, failure => result = failure ?? "ended", mix: track > 0 ? new Engine.Share.TrackMix([track], [1.0]) : null);
         // Ticks stand in for screen refreshes: a precise timer, or Windows stretches each 4 ms sleep to 15.6 ms.
         timeBeginPeriod(1);
         while (result == "running" && watch.Elapsed.TotalSeconds < seconds + 5)
@@ -145,20 +165,24 @@ public static class Program
     }
 
     /// <summary>
-    /// Converts a clip for copying (its last 30 s, or 10 s at <paramref name="shortSide"/>) with the FFmpeg next to Kairos
-    /// into the temp folder and prints the result. Nothing is copied, opened or shown. Checks that a packaged build can share.
+    /// --selftest-share &lt;clip&gt; [short side, 2160 = 4K] [--mb N]: Copy's conversion of the clip's last 30 s (10 s at a
+    /// given size), or with --mb the whole clip made to fit N MB (Discord's sizes), with the FFmpeg next to Kairos into
+    /// the temp folder; prints the result. Nothing is copied, opened or shown. Checks that a packaged build can share.
     /// </summary>
-    /// <param name="shortSide">A copy's size (2160 = 4K); none = the clip's own size.</param>
-    static int SelfTestShare(string? clip, int? shortSide)
+    static int SelfTestShare(string[] args)
     {
+        string? clip = args.Length > 1 ? args[1] : null;
+        int? shortSide = args.Length > 2 && int.TryParse(args[2], out int s) ? s : null;
+        int mbAt = Array.IndexOf(args, "--mb");
+        int mb = mbAt > 0 && mbAt + 1 < args.Length && int.TryParse(args[mbAt + 1], out int m) ? m : 0;
         if (clip == null || !File.Exists(clip))
         {
-            Console.WriteLine("usage: --selftest-share <clip.mp4> [short side, e.g. 2160]");
+            Console.WriteLine("usage: --selftest-share <clip.mp4> [short side, e.g. 2160] [--mb 10]");
             return 2;
         }
         var info = Engine.Share.ClipTranscoder.Probe(clip);
-        var spec = Engine.Share.SharePlanner.Spec(Engine.Share.SharePlatform.Copy);
-        double end = info.Duration, start = Math.Max(0, end - (shortSide == null ? 30 : 10));
+        var spec = Engine.Share.SharePlanner.CopySpec(mb);
+        double end = info.Duration, start = mb > 0 ? 0 : Math.Max(0, end - (shortSide == null ? 30 : 10));
         int side = shortSide ?? Engine.Share.SharePlanner.DefaultSize(spec, end - start, info.Width, info.Height, info.Fps, info.AudioBitrate, false).ShortSide;
         var plan = Engine.Share.SharePlanner.Plan(spec, start, end - start, info.Width, info.Height, info.Fps, info.AudioBitrate,
             vertical: false, cropPosition: 0.5, shortSide: side);
@@ -169,7 +193,9 @@ public static class Program
         Console.WriteLine($"share: {info.VideoCodec} {info.Width}x{info.Height} -> {output.VideoCodec}/{output.AudioCodec} " +
             $"{output.Width}x{output.Height} {output.Duration:F1}s {result.Bytes / 1e6:F1} MB via {result.Encoder} in {watch.Elapsed.TotalSeconds:F1}s");
         File.Delete(target);
-        bool ok = output.VideoCodec == "h264" && result.Bytes <= spec.MaxBytes;
+        if (mb > 0)
+            Console.WriteLine($"share: {result.Bytes / 1e6:F1} MB <= {mb:F1} MB: {result.Bytes <= spec.MaxBytes}, sound {output.AudioBitrate / 1000} kb/s");
+        bool ok = output.VideoCodec == "h264" && output.AudioCodec is "aac" or null && result.Bytes <= spec.MaxBytes;
         return ok ? 0 : 1;
     }
 

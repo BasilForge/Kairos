@@ -23,6 +23,8 @@ public static partial class SettingsApp
 {
     public static int Perf(string[] args)
     {
+        if (args.Length >= 4 && args[1] == "walk")
+            return PerfWalk(args[2], args[3], args.Length > 4 ? args[4] : "ar");
         if (args.Length >= 4 && args[1] == "export")
             return PerfExport(args[2], args[3]);
         if (args.Length >= 3 && args[1] == "startup")
@@ -186,7 +188,8 @@ public static partial class SettingsApp
         Engine.Share.ClipTranscoder.RequireLoaded();
         var info = Engine.Share.ClipTranscoder.Probe(clip);
         var p = Engine.Edit.EditProject.For(clip, info.Duration) with { Look = Engine.Edit.ColourLook.Vivid, LookStrength = 1 };
-        var graph = Engine.Edit.EditGraph.Build(p, info.Width, info.Height, info.Fps, info.AudioStreams, new Dictionary<Guid, Engine.Edit.Overlay>());
+        var graph = Engine.Edit.EditGraph.Build(p, info.Width, info.Height, info.Fps, info.AudioStreams, new Dictionary<Guid, Engine.Edit.Overlay>(),
+            Engine.Audio.TrackLayout.Of(info));
         var plan = Engine.EncoderPresets.Plan(VideoCodec.Av1, QualityPreset.High, info.Width, info.Height, (int)Math.Round(info.Fps), 22, 40,
             nvencAvailable: true);
         // KAIROS_PERF_OWNDEVICE=1: the encoder on a device of its own (as before the shared one), to compare.

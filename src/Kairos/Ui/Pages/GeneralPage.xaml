@@ -18,13 +18,37 @@
                     <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding StartWithWindows}" AutomationProperties.Name="{l:T general.startup}"/>
                 </Grid>
                 <Border Style="{StaticResource Divider}"/>
+                <!-- One line: the label, Check now (it says how the look went for a moment), and the daily look's switch -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Style="{StaticResource Label}" Text="{l:T general.checkUpdates}"/>
-                    <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding CheckUpdates}" AutomationProperties.Name="{l:T general.checkUpdates}"/>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T general.checkUpdates}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Style="{StaticResource Ghost}" Padding="11,6" FontSize="12.5" Margin="16,0,14,0" VerticalAlignment="Center"
+                            Command="{Binding CheckUpdatesNowCommand}" AutomationProperties.Name="{Binding UpdateLookText}"
+                            Visibility="{Binding CanCheckUpdates, Converter={StaticResource Vis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;" FontSize="12" Margin="0,0,7,0"
+                                       Visibility="{Binding UpdateLookIdle, Converter={StaticResource Vis}}"/>
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12" Margin="0,0,7,0" Foreground="{StaticResource Success}"
+                                       Visibility="{Binding UpdateLookOk, Converter={StaticResource Vis}}"/>
+                            <TextBlock Text="{Binding UpdateLookText}" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding UpdateLookFailed}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource Warning}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
+                    <CheckBox Grid.Column="2" Style="{StaticResource Switch}" IsChecked="{Binding CheckUpdates}" VerticalAlignment="Center"
+                              AutomationProperties.Name="{l:T general.checkUpdates}"/>
                 </Grid>
             </StackPanel>
         </Border>
@@ -50,6 +74,58 @@
                         <TextBlock Style="{StaticResource Icon}" Text="&#xE838;" FontSize="13"/>
                     </Button>
                 </Grid>
+                <!-- The cloud folders on this PC: one press saves new clips there (only the providers found show) -->
+                <DockPanel Margin="0,10,0,0" Visibility="{Binding HasCloud, Converter={StaticResource Vis}}">
+                    <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding CloudChoices}" Focusable="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource Ghost}" Margin="8,0,0,0" Padding="11,6" FontSize="12.5"
+                                        Command="{Binding DataContext.SaveToCloudCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding Value}" AutomationProperties.Name="{Binding Label}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE753;" FontSize="12" Margin="0,0,7,0"/>
+                                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource Label}" Text="{l:T general.cloud}"/>
+                        <TextBlock Style="{StaticResource Caption}" Text="{l:T general.cloudTip}"/>
+                    </StackPanel>
+                </DockPanel>
+                <!-- No cloud app on this PC: how to get one, so the feature is not hidden from them -->
+                <StackPanel Margin="0,10,0,0" Visibility="{Binding HasCloud, Converter={StaticResource EqVis}, ConverterParameter=False}">
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T general.cloud}"/>
+                    <TextBlock Style="{StaticResource Caption}" Text="{l:T general.cloudNone}" TextWrapping="Wrap"/>
+                </StackPanel>
+                <!-- In OneDrive or Dropbox: saved files kept online only once uploaded -->
+                <StackPanel Visibility="{Binding ShowsFreeLocal, Converter={StaticResource Vis}}">
+                    <Border Style="{StaticResource Divider}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,16,0">
+                            <TextBlock Style="{StaticResource Label}" Text="{l:T general.freeLocal}"/>
+                            <TextBlock Style="{StaticResource Caption}" Text="{l:T general.freeLocalTip}"/>
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding FreeLocalCopies}" VerticalAlignment="Center"
+                                  AutomationProperties.Name="{l:T general.freeLocal}"/>
+                    </Grid>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Caption}" Text="{l:T general.cloudStreams}" Margin="0,8,0,0"
+                           Visibility="{Binding ShowsCloudStreams, Converter={StaticResource Vis}}"/>
+                <!-- The clips folder is in a cloud whose app is closed: nothing uploads until it runs -->
+                <TextBlock Style="{StaticResource Caption}" Text="{Binding CloudOff}" Foreground="{StaticResource Warning}" Margin="0,8,0,0"
+                           Visibility="{Binding CloudOff, Converter={StaticResource Vis}}"/>
                 <Border Style="{StaticResource Divider}"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -124,6 +200,42 @@
                 <ComboBox Grid.Column="1" ItemsSource="{Binding Languages}" DisplayMemberPath="Label" SelectedValuePath="Value"
                           SelectedValue="{Binding Language}" AutomationProperties.Name="{l:T general.language}"/>
             </Grid>
+        </Border>
+
+        <!-- Help: Kairos's Discord, and the report to send there when something goes wrong -->
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Section}" Text="{l:T general.community}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Style="{StaticResource Ghost}" Command="{Binding OpenDiscordCommand}" Padding="12,7" VerticalAlignment="Center"
+                            AutomationProperties.Name="{l:T general.discord}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8A7;" FontSize="13" Margin="0,0,8,0"/>
+                            <TextBlock Text="{l:T general.discord}" FontSize="13.5" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+                <Border Style="{StaticResource Divider}"/>
+                <!-- The logs, settings and what the engine says, in a zip on the Desktop -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Caption}" Text="{l:T status.reportTip}" TextWrapping="Wrap" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Style="{StaticResource Ghost}" Command="{Binding ReportCommand}" Padding="12,7" VerticalAlignment="Center"
+                            AutomationProperties.Name="{l:T status.report}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE9F9;" FontSize="13" Margin="0,0,8,0"/>
+                            <TextBlock Text="{l:T status.report}" FontSize="13.5" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </StackPanel>
         </Border>
 
         <TextBlock Text="{Binding VersionText}" Style="{StaticResource Caption}" HorizontalAlignment="Center" Margin="0,6,0,0" Opacity="0.7"/>

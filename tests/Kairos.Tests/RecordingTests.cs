@@ -55,6 +55,45 @@ public static class RecordingTests
     }
 
     [Test]
+    public static void A_replay_error_is_said_in_the_users_language()
+    {
+        Text.Language = "ar";
+        try
+        {
+            Assert.Equal(Text.Get("fix.closeRecorders"), StatusLogic.ReplayDetail("error"), "what to try, not OBS's English");
+            Assert.Equal(Text.Get("status.offHint"), StatusLogic.ReplayDetail("off"), "off: how to turn it on, as before");
+            Assert.Equal("", StatusLogic.ReplayDetail("active"), "nothing to say");
+        }
+        finally
+        {
+            Text.Language = "en";
+        }
+    }
+
+    [Test]
+    public static void A_capture_notice_shows_its_text()
+    {
+        Text.Language = "en";
+        var engine = Status().Engine!;
+        Assert.Equal(Text.Get("status.antiCheat"), StatusLogic.CaptureWarning(engine with { CaptureNotice = "status.antiCheat" }), "the guard's line");
+        Assert.True(StatusLogic.CaptureWarning(engine with { CaptureNotice = "status.antiCheat" }) != "status.antiCheat", "a text, not its key");
+        Assert.Equal("", StatusLogic.CaptureWarning(engine), "nothing to say");
+        Assert.Equal("", StatusLogic.CaptureWarning(null), "no engine");
+    }
+
+    [Test]
+    public static void Changing_a_volume_keeps_the_replay()
+    {
+        var before = new AppSettings();
+        var after = SettingsStore.Deserialize(SettingsStore.Serialize(before));
+        after.Audio.SystemVolume = 0.4;
+        after.Audio.MicVolume = 1.7;
+        Assert.True(!SettingsDiff.NeedsRebuild(before, after), "a volume is set on the running source");
+        after.Audio.MicDevice = "other";
+        Assert.True(SettingsDiff.NeedsRebuild(before, after), "a new device still needs a new source");
+    }
+
+    [Test]
     public static void Instant_replay_and_the_recording_each_have_their_own_state()
     {
         Assert.Equal("active", StatusLogic.ReplayState(Status(), replayEnabled: true), "instant replay on");
@@ -100,11 +139,11 @@ public static class RecordingTests
     public static void Only_a_problem_or_instant_replay_off_takes_the_line_under_the_title()
     {
         Text.Language = "en";
-        Assert.Equal("", StatusLogic.ReplayDetail("active", null), "on: the hotkey sits in Save clip instead");
-        Assert.Equal("", StatusLogic.ReplayDetail("waiting", null), "waiting for a game");
-        Assert.Equal("Turn it on in Capture", StatusLogic.ReplayDetail("off", null), "instant replay off");
-        Assert.Equal("No GPU", StatusLogic.ReplayDetail("error", "No GPU"), "the problem");
-        Assert.Equal("", StatusLogic.ReplayDetail("offline", null), "engine not running");
+        Assert.Equal("", StatusLogic.ReplayDetail("active"), "on: the hotkey sits in Save clip instead");
+        Assert.Equal("", StatusLogic.ReplayDetail("waiting"), "waiting for a game");
+        Assert.Equal("Turn it on in Capture", StatusLogic.ReplayDetail("off"), "instant replay off");
+        Assert.Equal(Text.Get("fix.closeRecorders"), StatusLogic.ReplayDetail("error"), "the problem: what to try (the details are in the log)");
+        Assert.Equal("", StatusLogic.ReplayDetail("offline"), "engine not running");
     }
 
     [Test]
@@ -113,5 +152,36 @@ public static class RecordingTests
         string running = TrayController.MenuKey(TrayState.Recording, false, 30, paused: false, recording: true, "ar");
         string paused = TrayController.MenuKey(TrayState.Recording, false, 30, paused: false, recording: true, "ar", recordingPaused: true);
         Assert.True(running != paused, "pause / resume item");
+    }
+
+    /// <summary>When the chosen encoder could not start, the Status page says what records instead and why.</summary>
+    [Test]
+    public static void The_status_says_which_encoder_records_after_a_fallback()
+    {
+        Text.Language = "en";
+        var engine = Status().Engine!;
+        var fell = engine with { Encoder = "obs_x264", EncoderFallback = "HEVC" };
+        Assert.Equal("Recording with H.264 (CPU): the HEVC encoder could not start", StatusLogic.CaptureWarning(fell), "the fallback line");
+        Assert.Equal(Text.Get("status.antiCheat"), StatusLogic.CaptureWarning(fell with { CaptureNotice = "status.antiCheat" }), "a capture notice comes first");
+    }
+
+    /// <summary>A system-sound device Windows refuses (a Bluetooth headset in hands-free mode) is said, not retried in silence.</summary>
+    [Test]
+    public static void A_refused_sound_device_is_said()
+    {
+        Text.Language = "en";
+        var trouble = new AudioDeviceTrouble();
+        Assert.True(!trouble.Note("[win-wasapi: 'Desktop audio'] update settings:"), "nothing yet");
+        Assert.True(trouble.Note("WASAPI: Device 'default' failed to start (source: Desktop audio)"), "refused");
+        Assert.Equal("default", trouble.SystemDevice, "which device");
+        trouble.Note("Device '26 (soundcore Q20i)' invalidated.  Retrying (source: Desktop audio)");
+        Assert.Equal("26 (soundcore Q20i)", trouble.SystemDevice, "its name once libobs says it");
+        Assert.True(trouble.Note("WASAPI: Device 'Microphone Array (Realtek(R) Audio)' [48000 Hz] initialized (source: Microphone)") == false
+            && trouble.SystemDevice != null, "the mic starting changes nothing for the system sound");
+        trouble.Note("WASAPI: Device '26 (soundcore Q20i)' [48000 Hz] initialized (source: Desktop audio)");
+        Assert.True(trouble.SystemDevice == null, "started: nothing to say");
+        var engine = Status().Engine! with { AudioDeviceTrouble = "26 (soundcore Q20i)" };
+        Assert.Equal("System sound could not be captured from 26 (soundcore Q20i): pick it by name in Audio, or switch the headset to Stereo",
+            StatusLogic.CaptureWarning(engine), "the line");
     }
 }

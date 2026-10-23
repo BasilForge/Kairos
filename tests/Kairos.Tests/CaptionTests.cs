@@ -1,4 +1,5 @@
 using System.Windows;
+using Kairos.Engine.Audio;
 using Kairos.Engine.Captions;
 using Kairos.Engine.Voice;
 using Kairos.Engine.Edit;
@@ -223,7 +224,7 @@ public static class CaptionTests
         string clip = Path.Combine(Folder(), "talk.wav");
         WavFile.Write(clip, audio);
         double firstStarts = 4, secondStarts = 4 + first.Length / 16000.0 + 5;
-        var captions = Transcriber.Run(clip, 0, null, CancellationToken.None, runtimeFolder: Whisper);
+        var captions = Transcriber.Run(clip, [0], null, CancellationToken.None, runtimeFolder: Whisper);
         foreach (var c in captions)
             Console.WriteLine($"  {c.Start:F2}-{c.End:F2} {c.Text}");
         Assert.True(captions.Count >= 2, "both sentences");
@@ -233,12 +234,34 @@ public static class CaptionTests
     }
 
     [Test]
-    public static void The_mic_track_is_used_when_there_is_one()
+    public static void The_voice_tracks_are_used_when_there_are_any()
     {
-        Assert.Equal(2, Captions.Stream(3), "Kairos's clips: track 3 is the mic");
-        Assert.Equal(2, Captions.Stream(4), "more tracks");
-        Assert.Equal(0, Captions.Stream(2), "no separate mic: the mix");
-        Assert.Equal(0, Captions.Stream(1), "one track");
+        string Streams(TrackLayout layout) => string.Join(",", Captions.Streams(layout));
+        Assert.Equal("2", Streams(TrackLayout.Of([], 3)), "1.0.1's clips: track 3 is the mic");
+        Assert.Equal("0", Streams(TrackLayout.Of([], 4)), "four tracks without names: nothing is known, the mix");
+        Assert.Equal("0", Streams(TrackLayout.Of([], 2)), "no separate mic: the mix");
+        Assert.Equal("0", Streams(TrackLayout.Of([], 1)), "one track");
+        Assert.Equal("2,3", Streams(TrackLayout.Of(["Mix", "Game", "Discord", "Microphone", "Other sounds"], 5)), "Discord and the mic");
+        Assert.Equal("0", Streams(TrackLayout.Of(["Mix", "Game", "Other sounds"], 3)), "no voice of its own: the mix");
+    }
+
+    /// <summary>Two voice tracks (Discord, the mic) are heard as one: their sum, in step.</summary>
+    [Test]
+    public static void Two_voice_tracks_are_listened_to_together()
+    {
+        TestFfmpeg.Load();
+        // Discord speaks before 1 s, the mic after (Fixtures/Share/clip-h264-5tracks.mp4).
+        string clip = Path.Combine(AppContext.BaseDirectory, "Fixtures", "Share", "clip-h264-5tracks.mp4");
+        double Loud(TrackSound sound, double from, double to)
+        {
+            int a = (int)((from - sound.Start) * TrackAudio.Rate), b = (int)((to - sound.Start) * TrackAudio.Rate);
+            return sound.Samples.Skip(a).Take(b - a).Max(Math.Abs);
+        }
+        var both = TrackAudio.Read(clip, [2, 3], null, CancellationToken.None);
+        Assert.True(Loud(both, 0.1, 0.9) > 0.1 && Loud(both, 1.2, 2.5) > 0.1, "Discord, then the mic");
+        var mic = TrackAudio.Read(clip, [3], null, CancellationToken.None);
+        Assert.True(Loud(mic, 0.1, 0.9) < 0.01 && Loud(mic, 1.2, 2.5) > 0.1, "one track alone as before");
+        Assert.Near(mic.Samples.Length, both.Samples.Length, TrackAudio.Rate / 50, "as long as each track");
     }
 
     [Test]
@@ -313,7 +336,7 @@ public static class CaptionTests
         TestFfmpeg.Load();
         double seconds = WavFile.Read(Voice("chat_v1_1")).Length / 16000.0;
         double reached = 0;
-        var captions = Transcriber.Run(Voice("chat_v1_1"), 0, new InlineProgress(v => reached = v), CancellationToken.None, runtimeFolder: Whisper);
+        var captions = Transcriber.Run(Voice("chat_v1_1"), [0], new InlineProgress(v => reached = v), CancellationToken.None, runtimeFolder: Whisper);
         string text = string.Join(" ", captions.Select(c => c.Text));
         Console.WriteLine($"  heard: {text}");
         Assert.True(captions.Count > 0, "lines");
@@ -332,7 +355,7 @@ public static class CaptionTests
         }
         string ffmpeg = TestFfmpeg.Folder ?? throw new InvalidOperationException("FFmpeg 8 DLLs from OBS not found");
         double reached = 0;
-        var captions = CaptionProcess.Run(Path.Combine(AppContext.BaseDirectory, "Kairos.exe"), Voice("chat_v1_1"), 0,
+        var captions = CaptionProcess.Run(Path.Combine(AppContext.BaseDirectory, "Kairos.exe"), Voice("chat_v1_1"), [0],
             new InlineProgress(v => reached = v), CancellationToken.None, ffmpeg, Whisper).GetAwaiter().GetResult();
         Assert.True(captions.Count > 0 && captions.Any(c => c.Text.Any(char.IsLetter)), "lines came back");
         Assert.Near(1, reached, 1e-9, "progress came back");
@@ -352,7 +375,7 @@ public static class CaptionTests
         bool cancelled = false;
         try
         {
-            CaptionProcess.Run(Path.Combine(AppContext.BaseDirectory, "Kairos.exe"), Voice("chat_v1_1"), 0, null, cts.Token, ffmpeg, Whisper)
+            CaptionProcess.Run(Path.Combine(AppContext.BaseDirectory, "Kairos.exe"), Voice("chat_v1_1"), [0], null, cts.Token, ffmpeg, Whisper)
                 .GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
@@ -371,7 +394,7 @@ public static class CaptionTests
         public bool Ready { get; private set; } = present;
         public long DownloadBytes => Ready ? 0 : CaptionModel.Bytes + CaptionRuntime.Bytes;
         public int Downloads, Listens;
-        public int Stream = -1;
+        public string Streams = "";
         public Exception? Fails;
 
         public Task Download(IProgress<double> progress, CancellationToken ct)
@@ -381,10 +404,10 @@ public static class CaptionTests
             return Task.CompletedTask;
         }
 
-        public Task<IReadOnlyList<Caption>> Listen(string clip, int stream, IProgress<double> progress, CancellationToken ct)
+        public Task<IReadOnlyList<Caption>> Listen(string clip, IReadOnlyList<int> streams, IProgress<double> progress, CancellationToken ct)
         {
             Listens++;
-            Stream = stream;
+            Streams = string.Join(",", streams);
             return Fails != null ? Task.FromException<IReadOnlyList<Caption>>(Fails) : Task.FromResult<IReadOnlyList<Caption>>(lines);
         }
     }
@@ -475,7 +498,7 @@ public static class CaptionTests
         vm.TextColor = "#FFD54A";
         vm.TextFont = "lalezar";
         Press(vm);
-        Assert.Equal(2, maker.Stream, "Kairos's clip: the mic track");
+        Assert.Equal("2", maker.Streams, "Kairos's clip: the mic track");
         var items = vm.Project.Items.OfType<TextItem>().OrderBy(i => i.Start).ToList();
         Assert.Equal("push left|he is one shot", string.Join("|", items.Select(i => i.Text)), "the lines");
         Assert.True(items.All(i => i.ColorHex == "#FFD54A" && i.Font == "lalezar"), "in the text tool's colour and font");
@@ -613,7 +636,7 @@ public static class CaptionTests
     {
         var maker = new FakeMaker(present: true, new Caption(1, 2, "gg"));
         Press(Editor(maker, audioStreams: 2));
-        Assert.Equal(0, maker.Stream, "the mix");
+        Assert.Equal("0", maker.Streams, "the mix");
     }
 
     [Test]

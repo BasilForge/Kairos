@@ -14,7 +14,7 @@ public static class SettingsTests
         Assert.Equal(300, s.Replay.Seconds, "buffer seconds");
         Assert.Equal(OutputResolution.P1440, s.Video.Resolution, "resolution");
         Assert.Equal(60, s.Video.Fps, "fps");
-        Assert.Equal(VideoCodec.Av1, s.Video.Codec, "codec");
+        Assert.Equal(VideoCodec.H264, s.Video.Codec, "codec: H.264, plays everywhere");
         Assert.Equal(QualityPreset.Ultra, s.Video.Quality, "quality");
         Assert.Equal(true, s.Audio.System, "system audio");
         Assert.Equal(true, s.Audio.Mic, "mic on");
@@ -106,5 +106,91 @@ public static class SettingsTests
         var loaded = SettingsStore.Load(path);
         Assert.Equal(VideoCodec.Av1, loaded.Video.Codec, "codec");
         Assert.Equal(30, loaded.Video.Fps, "fps");
+    }
+
+    [Test]
+    public static void The_chosen_app_becomes_the_first_of_the_apps()
+    {
+        var old = SettingsStore.Deserialize("""{"Capture":{"Mode":"Window","Window":"Roblox:WINDOWSCLIENT:RobloxPlayerBeta.exe"}}""");
+        Assert.True(old.Capture.Apps!.SequenceEqual(["Roblox:WINDOWSCLIENT:RobloxPlayerBeta.exe"]), "kept as the first app");
+        old.Capture.Apps = [];
+        old.Normalize();
+        Assert.Equal("", old.Capture.Window, "all removed: none chosen");
+        Assert.Equal(CaptureMode.Screen, Kairos.Engine.SceneRules.BuildMode(old.Capture), "and the screen is recorded");
+        var many = new AppSettings();
+        many.Capture.Apps = ["a:b:one.exe", "a:b:two.exe", "a:b:three.exe", "a:b:four.exe", "a:b:five.exe", "a:b:six.exe", "a:b:one.exe"];
+        many.Normalize();
+        Assert.Equal(5, many.Capture.Apps!.Count, "five at most, each once");
+        Assert.Equal("a:b:one.exe", many.Capture.Window, "the first one, for what reads one app");
+    }
+
+    /// <summary>The settings file 1.0.1 wrote, read the way the engine and the window read it (Load, not Deserialize).</summary>
+    [Test]
+    public static void A_1_0_1_settings_file_keeps_its_chosen_app_when_loaded()
+    {
+        string path = TempFile();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """{"capture":{"mode":"Window","window":"Roblox:WINDOWSCLIENT:RobloxPlayerBeta.exe"},"general":{"language":"ar"}}""");
+        var loaded = SettingsStore.Load(path);
+        Assert.True(loaded.Capture.Apps.SequenceEqual(["Roblox:WINDOWSCLIENT:RobloxPlayerBeta.exe"]), "kept as the first app");
+        Assert.Equal(CaptureMode.Window, Kairos.Engine.SceneRules.BuildMode(loaded.Capture), "and that app is still what is recorded");
+        Assert.Equal("ar", loaded.General.Language, "the rest kept");
+    }
+
+    [Test]
+    public static void Starting_fresh_after_a_save_is_off_and_needs_no_rebuild()
+    {
+        var a = new AppSettings();
+        Assert.True(!a.Replay.FreshAfterSave, "off by default");
+        var b = SettingsStore.Copy(a);
+        b.Replay.FreshAfterSave = true;
+        Assert.True(!SettingsDiff.NeedsRebuild(a, b), "read when a clip is saved: no rebuild");
+        var c = SettingsStore.Copy(a);
+        c.Capture.Apps = ["a:b:roblox.exe"];
+        c.Normalize();
+        Assert.True(SettingsDiff.NeedsRebuild(a, c), "another app: rebuilt");
+    }
+
+    [Test]
+    public static void An_update_from_untouched_old_quality_defaults_turns_automatic_once()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "kairos-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string Write(string name, string video)
+        {
+            string path = Path.Combine(dir, name);
+            File.WriteAllText(path, "{\"Version\":1,\"Video\":{" + video + "},\"Replay\":{\"Seconds\":120}}");
+            return path;
+        }
+        const string old = "\"Codec\":\"Av1\",\"Fps\":60,\"Resolution\":\"P1440\",\"Quality\":\"Ultra\",\"CustomCq\":22,\"CustomMbps\":40,\"Preset\":\"p5\"";
+
+        var untouched = SettingsStore.Load(Write("a.json", old));
+        Assert.True(untouched.Video.Auto, "1.0.1's own defaults, never changed: Automatic");
+        Assert.Equal(AppSettings.CurrentVersion, untouched.Version, "marked done");
+        Assert.Equal(120, untouched.Replay.Seconds, "everything else kept");
+
+        var chosen = SettingsStore.Load(Write("b.json", old.Replace("\"Fps\":60", "\"Fps\":120")));
+        Assert.True(!chosen.Video.Auto && chosen.Video.Fps == 120, "anything changed: the user's choice stays");
+
+        string done = Path.Combine(dir, "c.json");
+        File.WriteAllText(done, "{\"Version\":" + AppSettings.CurrentVersion + ",\"Video\":{" + old + ",\"Auto\":false}}");
+        Assert.True(!SettingsStore.Load(done).Video.Auto, "Automatic turned off after the update: stays off");
+
+        // A 1.1 build's file before this (Version 1, but Automatic already a choice in it): left as it is.
+        string tried = Write("d.json", old + ",\"Auto\":false");
+        Assert.True(!SettingsStore.Load(tried).Video.Auto, "a 1.1 tester who turned Automatic off: still off");
+
+        string missing = Path.Combine(dir, "new", "settings.json");
+        Assert.Equal(AppSettings.CurrentVersion, SettingsStore.Load(missing).Version, "a new install: current");
+
+        // As 1.0.1 itself wrote it: no version at all (found by updating a real 1.0.1 install, 2026-10-21).
+        string real = Path.Combine(dir, "real-1.0.1.json");
+        File.WriteAllText(real, """
+            {"capture":{"mode":"Screen"},"video":{"codec":"Av1","fps":60,"resolution":"P1440","quality":"Ultra","customCq":22,"customMbps":40,"preset":"p5"},
+             "replay":{"enabled":true,"seconds":300},"general":{"language":"en"}}
+            """);
+        var updated = SettingsStore.Load(real);
+        Assert.True(updated.Video.Auto, "a real 1.0.1 file on its own defaults: Automatic");
+        Assert.Equal(AppSettings.CurrentVersion, updated.Version, "and marked done");
     }
 }

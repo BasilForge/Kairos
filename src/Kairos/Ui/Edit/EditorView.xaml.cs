@@ -1,8 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Kairos.Engine.Edit;
 
 namespace Kairos.Ui.Edit;
 
@@ -12,9 +14,8 @@ namespace Kairos.Ui.Edit;
 /// </summary>
 public partial class EditorView : UserControl
 {
-    // Segoe Fluent Icons: back, forward, undo, redo, play, pause, volume.
-    const char Back = (char)0xE72B, Forward = (char)0xE72A, Undo = (char)0xE7A7, Redo = (char)0xE7A6, PlayGlyph = (char)0xF5B0, PauseGlyph = (char)0xF8AE,
-        Volume = (char)0xE767;
+    // Segoe Fluent Icons: back, forward, undo, redo, play, pause.
+    const char Back = (char)0xE72B, Forward = (char)0xE72A, Undo = (char)0xE7A7, Redo = (char)0xE7A6, PlayGlyph = (char)0xF5B0, PauseGlyph = (char)0xF8AE;
 
     /// <summary>The play bar is narrow: the Add buttons show their icons only (their names stay as tooltips).</summary>
     public static readonly DependencyProperty CompactProperty = DependencyProperty.Register(nameof(Compact), typeof(bool), typeof(EditorView));
@@ -48,6 +49,7 @@ public partial class EditorView : UserControl
         _playback = new EditorPlayback(vm, SetPicture, ShowPlaying);
         _playback.StillRead += OnStillRead;
         vm.SaveAsked += AskSave;
+        WordsBox.LostKeyboardFocus += (_, _) => Model.DropEmptyTexts(); // a new text whose words were not typed there
         vm.PropertyChanged += OnCaptionsChanged;
         vm.PropertyChanged += (_, e) =>
         {
@@ -64,8 +66,6 @@ public partial class EditorView : UserControl
             _thumbTimer.Stop();
             MakeThumbs();
         };
-        if (!vm.HasSeparateTracks)
-            PartGameIcon.Text = Volume.ToString(); // one track: the part's whole sound
         // Arrows that point a way are mirrored for Arabic (chosen by the language: the page may be drawn before it loads).
         bool rtl = App.Text.IsRightToLeft;
         BackIcon.Text = (rtl ? Forward : Back).ToString();
@@ -78,10 +78,13 @@ public partial class EditorView : UserControl
         Loaded += (_, _) => Focus();
         FillShortcuts(KeysLeft, EditorShortcuts.Left);
         FillShortcuts(KeysRight, EditorShortcuts.Right);
+        PreviewHost.SizeChanged += (_, _) => ShowZoom();
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(EditorViewModel.PlayheadOutput) or nameof(EditorViewModel.Project))
                 ShowTime();
+            if (e.PropertyName is nameof(EditorViewModel.PlayheadOutput) or nameof(EditorViewModel.Project) or nameof(EditorViewModel.EditMode))
+                ShowZoom();
             if (e.PropertyName is nameof(EditorViewModel.IsClipPage) or nameof(EditorViewModel.IsPartPage)
                 && (vm.IsClipPage || vm.IsPartPage) && _thumbSource != null)
                 _thumbTimer.Start();
@@ -281,6 +284,34 @@ public partial class EditorView : UserControl
     public Grid Preview => PreviewHost;
 
     public void SetPicture(BitmapSource? picture) => PreviewImage.Source = picture;
+
+    (Rect Zoom, Size Host) _zoomShown = (VideoZoom.Full, Size.Empty);
+
+    /// <summary>
+    /// A zoomed part shows its area: the picture is scaled and clipped (no pixel work), under the item canvas, so texts and
+    /// drawings stay put as in the export. The Zoom tool shows the whole picture to draw on.
+    /// </summary>
+    void ShowZoom()
+    {
+        var p = Model.Project;
+        var zoom = Model.IsZoomMode || !p.HasZoom || p.ToSource(Model.PlayheadOutput) is not { } source ? VideoZoom.Full : p.ZoomAt(source);
+        var host = PreviewHost.RenderSize;
+        if (_zoomShown == (zoom, host))
+            return;
+        _zoomShown = (zoom, host);
+        if (zoom == VideoZoom.Full)
+        {
+            PreviewImage.RenderTransform = null;
+            PreviewImage.Clip = null;
+            return;
+        }
+        // The image is the picture's own size, centred in the host: its area in its own coordinates.
+        var picture = EditGeometry.PictureRect(host, Model.Aspect);
+        var area = new Rect(zoom.X * picture.Width, zoom.Y * picture.Height, zoom.Width * picture.Width, zoom.Height * picture.Height);
+        double sx = picture.Width / area.Width, sy = picture.Height / area.Height;
+        PreviewImage.Clip = new RectangleGeometry(area);
+        PreviewImage.RenderTransform = new MatrixTransform(sx, 0, 0, sy, -area.X * sx, -area.Y * sy);
+    }
 
     public void ShowPlaying(bool playing)
     {

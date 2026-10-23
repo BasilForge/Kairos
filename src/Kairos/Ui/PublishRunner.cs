@@ -84,7 +84,7 @@ public sealed class PublishRunner(CoreWebView2 core, PublishRecipe recipe, strin
             if (flow.State == PublishState.Posted)
             {
                 StatusChanged?.Invoke(flow.StatusKey);
-                string? url = JsonSerializer.Deserialize<string?>(await Eval(recipe.PostUrlJs));
+                string? url = PublishRecipe.PostAddress(recipe.Platform, JsonSerializer.Deserialize<string?>(await Eval(recipe.PostUrlJs)));
                 return new PublishOutcome(PublishResult.Posted, url, XPremium: premium);
             }
             if (flow.State == PublishState.NeedsUser)
@@ -191,11 +191,48 @@ public sealed class PublishRunner(CoreWebView2 core, PublishRecipe recipe, strin
         return result;
     }
 
+    /// <summary>
+    /// The site browser's limits on a real page (https, its own origin): no developer tools or bridge to Kairos, a
+    /// download never starts, and a permission request is refused without asking.
+    /// </summary>
+    static async Task<string?> LockedCheck(CoreWebView2 core, string folder)
+    {
+        if (core.Settings.AreDevToolsEnabled || core.Settings.IsWebMessageEnabled || core.Settings.AreHostObjectsAllowed)
+            return "developer tools or a bridge to Kairos left on";
+        string site = Path.Combine(folder, "site"), downloads = Path.Combine(folder, "downloads");
+        Directory.CreateDirectory(site);
+        Directory.CreateDirectory(downloads);
+        File.WriteAllText(Path.Combine(site, "file.txt"), "a file");
+        File.WriteAllText(Path.Combine(site, "page.html"), "<html><body><a id=d download href='file.txt'>file</a></body></html>");
+        core.Profile.DefaultDownloadFolderPath = downloads; // never the user's Downloads
+        core.SetVirtualHostNameToFolderMapping("kairos.test", site, CoreWebView2HostResourceAccessKind.Allow);
+        var loaded = new TaskCompletionSource();
+        core.NavigationCompleted += (_, _) => loaded.TrySetResult();
+        core.Navigate("https://kairos.test/page.html");
+        await loaded.Task;
+        // The location: WebView2 would otherwise ask the user (a notification is refused by default anyway).
+        await core.ExecuteScriptAsync("navigator.geolocation.getCurrentPosition(() => window.__asked = 'allowed', " +
+                                      "e => window.__asked = e.code === 1 ? 'denied' : 'error ' + e.code); document.getElementById('d').click()");
+        string asked = "null";
+        for (int i = 0; i < 30 && asked == "null"; i++)
+        {
+            await Task.Delay(100);
+            asked = await core.ExecuteScriptAsync("window.__asked || null");
+        }
+        await Task.Delay(1500);
+        if (Directory.EnumerateFileSystemEntries(downloads).Any())
+            return "a download was saved";
+        return asked == "\"denied\"" ? null : "a permission request was not refused: " + asked;
+    }
+
     static async Task<string?> RunSelfTest(WebView2 web, string mode, string video, string caption, string userDataFolder)
     {
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         await web.EnsureCoreWebView2Async(env);
         var core = web.CoreWebView2;
+        ShareSites.Lock(core);
+        if (mode == "locked")
+            return await LockedCheck(core, userDataFolder);
         var platform = mode switch { "tiktok" => SharePlatform.TikTok, "instagram" => SharePlatform.Instagram, _ => SharePlatform.X };
         var recipe = PublishRecipe.For(platform, caption, Kairos.Engine.ClipOrganizer.IsPicture(video));
         if (mode == "stuck")

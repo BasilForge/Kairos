@@ -13,10 +13,13 @@ public static class ClipDeleter
             {
                 if (!File.Exists(path))
                     continue;
-                if (permanent)
-                    File.Delete(path);
-                else
-                    recycle(path);
+                foreach (string file in Engine.ClipLibrary.FilesOf(path)) // its camera file goes with it
+                {
+                    if (permanent)
+                        File.Delete(file);
+                    else
+                        recycle(file);
+                }
                 deleted++;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or OperationCanceledException)

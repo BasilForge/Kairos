@@ -1,5 +1,6 @@
 using Kairos.App;
 using Kairos.Engine;
+using Kairos.Engine.Audio;
 using Kairos.Engine.Edit;
 using Kairos.Ui;
 using Kairos.Ui.Edit;
@@ -183,7 +184,7 @@ public static class EditorUiTests
         Assert.True(closed && !vm.AskingDiscard, "thrown away only when asked to");
     }
 
-    static void OnSta(Action test)
+    internal static void OnSta(Action test)
     {
         string? error = null;
         var thread = new Thread(() =>
@@ -204,27 +205,126 @@ public static class EditorUiTests
     }
 
     /// <summary>Stands in for the preview player: no picture decoding, no sound.</summary>
-    sealed class FakeSession : IPlayerSession
+    internal sealed class FakeSession : IPlayerSession
     {
         public readonly List<double> Starts = [];
+        public readonly List<int> Widths = [];
         public readonly List<Action<double>> Positions = [];
         public readonly List<Action<byte[], double>?> Filters = [];
+        /// <summary>Where each part read ahead starts, and each started or read-ahead part's picture.</summary>
+        public readonly List<double> Queued = [];
+        public readonly List<System.Windows.Media.Imaging.WriteableBitmap> Pictures = [];
         public bool Playing;
+        public Kairos.Engine.Share.TrackMix? Mix;
+        Action<string?>? _ended;
+        (Action<double> Position, Action<string?> Ended, Action<byte[], double>? Filter, Kairos.Engine.Share.TrackMix? Mix, double Volume)? _next;
 
-        public System.Windows.Media.Imaging.WriteableBitmap? Start(string clip, double from, double to, int width, int height,
-            Action<double> position, Action<string?> ended, int audioTrack = 0, double rate = 1, Action<byte[], double>? filter = null)
+        public bool Start(string clip, double from, double to, int width, int height,
+            Action<System.Windows.Media.Imaging.WriteableBitmap> show, Action<double> position, Action<string?> ended, double rate = 1,
+            Action<byte[], double>? filter = null, Kairos.Engine.Share.TrackMix? mix = null)
         {
             Starts.Add(from);
-            Positions.Add(position);
+            Widths.Add(width);
+            Mix = mix;
+            Positions.Add(ShownFirst(show, position));
             Filters.Add(filter);
             Playing = true;
-            return new System.Windows.Media.Imaging.WriteableBitmap(2, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            _ended = ended;
+            _next = null;
+            return true;
         }
 
-        public void Stop() => Playing = false;
+        public bool Queue(string clip, double from, double to, int width, int height,
+            Action<System.Windows.Media.Imaging.WriteableBitmap> show, Action<double> position, Action<string?> ended, double rate,
+            Action<byte[], double>? filter, Kairos.Engine.Share.TrackMix? mix, double volume)
+        {
+            Queued.Add(from);
+            _next = (ShownFirst(show, position), ended, filter, mix, volume);
+            return true;
+        }
+
+        /// <summary>A new picture, shown with the first position, as the player does once its first frame is in it.</summary>
+        Action<double> ShownFirst(Action<System.Windows.Media.Imaging.WriteableBitmap> show, Action<double> position)
+        {
+            var picture = new System.Windows.Media.Imaging.WriteableBitmap(2, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            Pictures.Add(picture);
+            bool shown = false;
+            return t =>
+            {
+                if (!shown)
+                {
+                    shown = true;
+                    show(picture);
+                }
+                position(t);
+            };
+        }
+
+        /// <summary>The playing part plays to its end: the part read ahead goes on, as the player does.</summary>
+        public void End()
+        {
+            var ended = _ended!;
+            if (_next is { } next)
+            {
+                Positions.Add(next.Position);
+                Filters.Add(next.Filter);
+                (Mix, Volume, _ended, _next) = (next.Mix, next.Volume, next.Ended, null);
+            }
+            else
+                Playing = false;
+            ended(null);
+        }
+
+        public void Stop()
+        {
+            Playing = false;
+            _next = null;
+        }
 
         public double Volume { get; set; }
     }
+
+    /// <summary>
+    /// A split clip plays straight through: the next part is read ahead while this one plays and goes on the moment it
+    /// ends (it was started only then, its picture blank while the clip was opened and read up to the cut: black between
+    /// the parts, 2026-10-22); and a part's picture shows only once its first frame is in it.
+    /// </summary>
+    [Test]
+    public static void A_split_clip_plays_straight_through_without_a_blank_picture() => OnSta(() =>
+    {
+        var vm = Video();
+        vm.Apply(vm.Project.SplitAt(10)); // two parts: 0..10 and 10..30
+        var session = new FakeSession();
+        var shown = new List<System.Windows.Media.Imaging.BitmapSource?>();
+        using var playback = new EditorPlayback(vm, shown.Add, _ => { }, session);
+        vm.KeyCommand("Space");
+        Assert.True(session.Playing && shown.Count == 0, "playing, its picture not shown blank: the one before stays");
+        session.Positions[0](0);
+        Assert.True(shown.Count == 1 && shown[0] == session.Pictures[0], "shown with its first frame");
+
+        session.Positions[0](7.9);
+        Assert.Equal(0, session.Queued.Count, "more than 2 s left: the next part is not read yet");
+        session.Positions[0](8.1);
+        Assert.Equal("10", string.Join(",", session.Queued), "2 s before the cut, the next part is read ahead");
+        session.Positions[0](9);
+        Assert.Equal(1, session.Queued.Count, "read ahead once");
+
+        vm.ClipTracks[0].Level = 0.5;
+        Assert.True(session.Queued.Count == 1 && session.Starts.Count == 1, "a sound level changed: both play on, nothing read again");
+
+        session.End();
+        Assert.True(session.Playing && session.Starts.Count == 1, "the next part goes on, not started again");
+        Assert.Equal(1, shown.Count, "its picture waits for its first frame");
+        session.Positions[^1](10);
+        Assert.True(shown.Count == 2 && shown[1] == session.Pictures[^1], "then shows");
+        Assert.Near(10, vm.PlayheadOutput, 1e-9, "the playhead goes on from the cut");
+        Assert.Near(0.5, session.Mix!.Gains[0], 1e-9, "at its sound level as it is now");
+
+        session.Positions[^1](29);
+        Assert.Equal(1, session.Queued.Count, "the last part: nothing to read ahead");
+        session.End();
+        Assert.True(!session.Playing, "stops at the end");
+    });
 
     /// <summary>
     /// Moving through the clip while it plays: a click plays on from there, a drag waits until the mouse is let go,
@@ -423,10 +523,11 @@ public static class EditorUiTests
         Assert.True(!pixels.AsSpan(row, w * 2).SequenceEqual(before.AsSpan(row, w * 2)), "the left half of the playing picture is blurred at once");
         Assert.True(pixels.AsSpan(row + w * 3, w).SequenceEqual(before.AsSpan(row + w * 3, w)), "the right half is not");
 
-        vm.GameLevel = 0.3;
-        vm.MicLevel = 0.3;
+        vm.ClipTracks[0].Level = 0.3;
+        vm.ClipTracks[1].Level = 0.3;
         Assert.True(session.Playing && session.Starts.Count == starts, "sound levels: still playing");
-        Assert.Near(0.3, session.Volume, 1e-9, "at the new level");
+        Assert.Equal("0.3,0.3", string.Join(",", session.Mix!.Gains), "game and mic at their new levels");
+        Assert.Near(1, session.Volume, 1e-9, "mixed at their own levels");
 
         vm.Apply(vm.Project.SplitAt(20).DeleteSegmentAt(25));
         Assert.True(session.Playing && session.Starts.Count == starts + 1, "a cut: plays on with the new parts");
@@ -486,8 +587,12 @@ public static class EditorUiTests
         string xaml = File.ReadAllText(Path.Combine(repo!.FullName, "src", "Kairos", "Ui", "Edit", "EditorView.xaml"));
         var sliders = System.Text.RegularExpressions.Regex.Matches(xaml, "<Slider[^>]*>");
         Assert.True(sliders.Count >= 6, "the editor's sliders");
+        // Its own step, or the sound tracks' style, which sets one.
+        var trackStyle = System.Text.RegularExpressions.Regex.Match(xaml, "<Style x:Key=\"TrackSlider\".*?</Style>", System.Text.RegularExpressions.RegexOptions.Singleline);
+        Assert.True(trackStyle.Value.Contains("Property=\"SmallChange\"", StringComparison.Ordinal), "the sound tracks' sliders step finely");
         foreach (System.Text.RegularExpressions.Match slider in sliders)
-            Assert.True(slider.Value.Contains("SmallChange=", StringComparison.Ordinal), "a fine arrow step: " + slider.Value[..Math.Min(90, slider.Value.Length)]);
+            Assert.True(slider.Value.Contains("SmallChange=", StringComparison.Ordinal) || slider.Value.Contains("{StaticResource TrackSlider}", StringComparison.Ordinal),
+                "a fine arrow step: " + slider.Value[..Math.Min(90, slider.Value.Length)]);
     });
 
     /// <summary>
@@ -565,6 +670,58 @@ public static class EditorUiTests
         Assert.True(panel.LeftOut.Count == 1 && panel.LeftOut.Contains(hint), "the hint goes first (the last optional line)");
         panel.Measure(new System.Windows.Size(200, 75));
         Assert.True(panel.LeftOut.Count == 2 && panel.DesiredSize.Height == 70, "then the label; the settings always stay");
+    });
+
+    /// <summary>A big block with a smaller stand-in (the look tiles): when room runs short the stand-in shows instead.</summary>
+    [Test]
+    public static void A_block_gives_way_to_its_smaller_stand_in() => OnSta(() =>
+    {
+        System.Windows.Controls.Border Line(double height) => new() { Height = height };
+        var panel = new FitPanel();
+        var speed = Line(100);
+        var bigLooks = Line(100);
+        var smallLooks = Line(40);
+        var sound = Line(50);
+        FitPanel.SetOptional(bigLooks, true);
+        FitPanel.SetStandIn(smallLooks, true);
+        foreach (var child in new[] { speed, bigLooks, smallLooks, sound })
+            panel.Children.Add(child);
+        panel.Measure(new System.Windows.Size(200, 1000));
+        Assert.True(panel.LeftOut.Count == 1 && panel.LeftOut.Contains(smallLooks) && panel.DesiredSize.Height == 250, "room: the big tiles, not the stand-in");
+        panel.Measure(new System.Windows.Size(200, 200));
+        Assert.True(panel.LeftOut.Count == 1 && panel.LeftOut.Contains(bigLooks) && panel.DesiredSize.Height == 190, "short: the small tiles instead");
+    });
+
+    /// <summary>
+    /// What goes first when room runs short: the lowest priority (a hint, a label), then the next (the sound rows give way
+    /// to two columns), and among equals the last first.
+    /// </summary>
+    [Test]
+    public static void Lines_are_left_out_in_their_priority() => OnSta(() =>
+    {
+        System.Windows.Controls.Border Line(double height, bool optional = false, int priority = 0)
+        {
+            var line = new System.Windows.Controls.Border { Height = height };
+            FitPanel.SetOptional(line, optional);
+            FitPanel.SetPriority(line, priority);
+            return line;
+        }
+        var panel = new FitPanel();
+        var speedTiles = Line(20, optional: true, priority: 2);
+        var slider = Line(40);
+        var sound = Line(60, optional: true, priority: 1);
+        var twoColumns = Line(30);
+        FitPanel.SetStandIn(twoColumns, true);
+        var hint = Line(20, optional: true);
+        foreach (var child in new[] { speedTiles, slider, sound, twoColumns, hint })
+            panel.Children.Add(child);
+        panel.Measure(new System.Windows.Size(200, 120));
+        Assert.True(panel.LeftOut.Count == 2 && panel.LeftOut.Contains(hint), "the hint first");
+        panel.Measure(new System.Windows.Size(200, 100));
+        Assert.True(panel.LeftOut.Contains(sound) && !panel.LeftOut.Contains(twoColumns) && !panel.LeftOut.Contains(speedTiles),
+            "then the sound rows give way to two columns, before the speed tiles go");
+        panel.Measure(new System.Windows.Size(200, 75));
+        Assert.True(panel.LeftOut.Contains(speedTiles) && panel.DesiredSize.Height == 70, "the speed tiles last");
     });
 
     /// <summary>Items at the same time in one row share it in thinner layers: each bar shows and can be pressed.</summary>
@@ -941,13 +1098,35 @@ public static class EditorUiTests
     [Test]
     public static void Muting_the_mic_sets_the_sound_levels()
     {
+        Text.Language = "en";
         var vm = Video();
         Assert.True(vm.HasSeparateTracks, "game and mic for a Kairos clip");
-        vm.MicMuted = true;
-        vm.GameLevel = 0.5;
-        Assert.True(vm.Project.Sound.MicMuted, "mic muted");
-        Assert.Near(0.5, vm.Project.Sound.Game, 1e-9, "game level");
-        Assert.True(!Video(audioStreams: 1).HasSeparateTracks, "one track: one All slider");
+        Assert.Equal("Game,Microphone", string.Join(",", vm.ClipTracks.Select(t => t.Name)), "a 1.0.1 clip: game and mic, as before");
+        vm.ClipTracks[1].On = false;
+        vm.ClipTracks[0].Level = 0.5;
+        Assert.True(vm.Project.Sound.Tracks.Muted(1), "mic muted");
+        Assert.Near(0.5, vm.Project.Sound.Tracks[0], 1e-9, "game level");
+        Assert.Equal("0%", vm.ClipTracks[1].Label, "a muted track reads 0%");
+        var one = Video(audioStreams: 1);
+        Assert.True(!one.HasSeparateTracks && one.ClipTracks.Count == 0, "one track: one All slider");
+        Assert.Equal("Sound", one.PartTracks.Single().Name, "and a part's whole sound");
+    }
+
+    /// <summary>A separate-sources clip: each of its own tracks by name, for the clip (level and switch) and for a part.</summary>
+    [Test]
+    public static void A_clip_with_its_own_tracks_lists_them_by_name()
+    {
+        Text.Language = "en";
+        var layout = TrackLayout.Of(["Mix", "Game", "Discord", "Microphone", "Spotify"], 5);
+        var vm = new EditorViewModel(EditProject.For(@"C:\Clips\a.mp4", 30), isPicture: false, EditorMode.Library, 16 / 9.0, 5, layout: layout);
+        Assert.Equal("Game,Discord,Microphone,Spotify", string.Join(",", vm.ClipTracks.Select(t => t.Name)), "the clip's tracks");
+        Assert.Equal("Game,Discord,Microphone,Spotify", string.Join(",", vm.PartTracks.Select(t => t.Name)), "the same for a part");
+        vm.ClipTracks[1].On = false;
+        Assert.True(vm.Project.Sound.Tracks.Muted(1), "Discord muted");
+        vm.SelectPart(0);
+        vm.PartTracks[3].Level = 0.5;
+        Assert.Equal(0.5, vm.Project.Kept[0].Levels[3], "Spotify quieter in the part");
+        Assert.Equal("50%", vm.PartTracks[3].Label, "shown as a percent");
     }
 
     [Test]
@@ -1023,12 +1202,12 @@ public static class EditorUiTests
         vm.Speeds.Single(s => s.Value == 2).IsSelected = true;
         Assert.Near(25, vm.Project.OutputDuration, 1e-9, "the first 10 s now take 5");
         Assert.True(vm.Speeds.Single(s => s.Value == 2).IsSelected, "the 2x button shows it");
-        vm.PartGame = 1.5;
-        vm.PartGame = 1.4; // a slider drag: one step
-        Assert.True(vm.Project.Kept[0].Game == 1.4 && vm.Project.Kept[1].Game == 1, "only the chosen part is louder");
-        Assert.Equal("140%", vm.PartGameLabel, "shown as a percent");
+        vm.PartTracks[0].Level = 1.5;
+        vm.PartTracks[0].Level = 1.4; // a slider drag: one step
+        Assert.True(vm.Project.Kept[0].Levels[0] == 1.4 && vm.Project.Kept[1].Levels[0] == 1, "only the chosen part is louder");
+        Assert.Equal("140%", vm.PartTracks[0].Label, "shown as a percent");
         vm.UndoCommand.Execute(null);
-        Assert.Equal(1.0, vm.Project.Kept[0].Game, "one undo for the drag");
+        Assert.Equal(1.0, vm.Project.Kept[0].Levels[0], "one undo for the drag");
         vm.PartSpeedSlider = 0.5;
         Assert.Near(1, vm.PartSpeed, 1e-9, "the middle is normal speed");
         vm.PartSpeedSlider = 1;
@@ -1249,18 +1428,37 @@ public static class EditorUiTests
         Assert.True(Math.Abs(px[2] - px[1]) < 12 && Math.Abs(px[1] - px[0]) < 12, $"grey: {px[2]},{px[1]},{px[0]}");
     }
 
+    /// <summary>What the preview plays, as "tracks gains" (0 is the mix).</summary>
+    static string Heard(SoundLevels s, ClipSpan part, TrackLayout layout)
+    {
+        var plan = EditorPlayback.PreviewSound(s, part, layout);
+        return $"{string.Join("+", plan.Tracks)} {string.Join("+", plan.Gains.Select(g => g.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)))}";
+    }
+
+    static readonly TrackLayout TwoTracks = TrackLayout.Of([], 3), OneTrack = TrackLayout.Of([], 1),
+        FiveTracks = TrackLayout.Of(["Mix", "Game", "Discord", "Microphone", "Other sounds"], 5);
+
     [Test]
     public static void The_preview_plays_the_sound_left_on()
     {
-        Assert.Equal((0, 1.0), EditorPlayback.PreviewSound(new SoundLevels(), Plain, separate: true), "the mix");
-        Assert.Equal((1, 0.5), EditorPlayback.PreviewSound(new SoundLevels(Game: 0.5, MicMuted: true), Plain, separate: true), "the game alone");
-        Assert.Equal((2, 0.8), EditorPlayback.PreviewSound(new SoundLevels(Mic: 0.8, GameMuted: true), Plain, separate: true), "the mic alone");
-        Assert.Equal((0, 0.0), EditorPlayback.PreviewSound(new SoundLevels(GameMuted: true, MicMuted: true), Plain, separate: true), "nothing");
-        Assert.Equal((0, 0.3), EditorPlayback.PreviewSound(new SoundLevels(All: 0.3), Plain, separate: false), "a one-track clip");
+        Assert.Equal("1+2 1+1", Heard(new SoundLevels(), Plain, TwoTracks), "game and mic, as recorded");
+        Assert.Equal("1+2 0.5+0", Heard(Sounds.Clip(game: 0.5, micMuted: true), Plain, TwoTracks), "the game alone");
+        Assert.Equal("1+2 0+0.8", Heard(Sounds.Clip(mic: 0.8, gameMuted: true), Plain, TwoTracks), "the mic alone");
+        Assert.Equal("1+2 0+0", Heard(Sounds.Clip(gameMuted: true, micMuted: true), Plain, TwoTracks), "nothing");
+        Assert.Equal("0 0.3", Heard(new SoundLevels(All: 0.3), Plain, OneTrack), "a one-track clip: its sound");
         // A part's own levels on top of the clip's.
-        Assert.Equal((0, 1.5), EditorPlayback.PreviewSound(new SoundLevels(), Plain with { Game = 1.5 }, separate: true), "a louder part");
-        Assert.Equal((1, 0.75), EditorPlayback.PreviewSound(new SoundLevels(Game: 0.5), Plain with { Game = 1.5, Mic = 0 }, separate: true), "the part's mic off");
-        Assert.Equal((0, 0.6), EditorPlayback.PreviewSound(new SoundLevels(All: 0.3), Plain with { Game = 2 }, separate: false), "a one-track part");
+        Assert.Equal("1+2 1.5+1", Heard(new SoundLevels(), Plain with { Levels = Sounds.Part(game: 1.5) }, TwoTracks), "a louder part");
+        Assert.Equal("1+2 0.75+0", Heard(Sounds.Clip(game: 0.5), Plain with { Levels = Sounds.Part(game: 1.5, mic: 0) }, TwoTracks), "the part's mic off");
+        Assert.Equal("0 0.6", Heard(new SoundLevels(All: 0.3), Plain with { Levels = Sounds.Part(game: 2) }, OneTrack), "a one-track part");
+    }
+
+    [Test]
+    public static void The_preview_mixes_the_clips_own_tracks()
+    {
+        var discordOff = new SoundLevels { Tracks = default(TrackLevels).WithMuted(1, true).With(2, 0.5) };
+        Assert.Equal("1+2+3+4 1+0+0.5+1", Heard(discordOff, Plain, FiveTracks), "Discord muted, the mic at half, the others as recorded");
+        Assert.Equal("1+2+3+4 1+0+1.5+1", Heard(discordOff, Plain with { Levels = default(TrackLevels).With(2, 3) }, FiveTracks),
+            "a part's own level on top");
     }
 
     static string JobFolder(out string original)
@@ -1429,4 +1627,29 @@ public static class EditorUiTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    /// <summary>
+    /// A new text, then a press on the inspector's words field: the text stays and the field keeps the keyboard (the
+    /// editor took it back and dropped the empty text, so what was typed went to its shortcuts). Left empty there, it goes.
+    /// </summary>
+    [Test]
+    public static void Typing_a_new_texts_words_in_the_inspector_keeps_the_text() => OnSta(() =>
+    {
+        var vm = Video();
+        var canvas = new EditCanvas(vm);
+        canvas.Measure(new System.Windows.Size(640, 360));
+        canvas.Arrange(new System.Windows.Rect(0, 0, 640, 360));
+        void Pump() => System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+        vm.AddTextCommand.Execute(null);
+        Pump();
+        Assert.True(canvas.Typing, "typing opens on the picture");
+        canvas.CloseEditor(movedOn: true); // the keyboard went to another field: the inspector's words
+        Assert.Equal(1, vm.Project.Items.Count, "the new text stays while its words are typed in the inspector");
+        vm.DropEmptyTexts();
+        Assert.Equal(0, vm.Project.Items.Count, "left without words there, it goes");
+        vm.AddTextCommand.Execute(null);
+        Pump();
+        canvas.CloseEditor();
+        Assert.Equal(0, vm.Project.Items.Count, "typing ended anywhere else: an empty text goes at once, as before");
+    });
 }

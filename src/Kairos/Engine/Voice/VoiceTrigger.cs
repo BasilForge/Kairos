@@ -44,6 +44,10 @@ public sealed class VoiceTrigger : IDisposable
     double? _lastScore, _lastThreshold;
     string? _lastPhrase;
     bool _lastMatch;
+    DateTime _lastMatchAt;
+
+    /// <summary>A match stays shown this long: a later start inside the same words (a pause in the phrase) does not hide it.</summary>
+    static readonly TimeSpan MatchShown = TimeSpan.FromSeconds(2);
     readonly Dictionary<VoiceAction, DateTime> _lastTrigger = new() { [VoiceAction.Clip] = DateTime.MinValue, [VoiceAction.Shot] = DateTime.MinValue };
     DateTime _testStarted;
     int _generation;                                    // bumps on every mode change so stale audio is ignored
@@ -201,6 +205,7 @@ public sealed class VoiceTrigger : IDisposable
     {
         var resampler = new Resampler48To16();
         var segmenter = new VoiceSegmenter();
+        bool headSet = false;
         VadState? vad = null;
         var pending = new List<float>();
         var chunk = new float[VoiceSegmenter.Chunk]; // filled for each chunk (the segmenter keeps its own copies)
@@ -222,8 +227,9 @@ public sealed class VoiceTrigger : IDisposable
                         generation = _generation;
                         resampler = new Resampler48To16();
                         segmenter = _mode == "enrolling"
-                            ? new VoiceSegmenter(VoiceSegmenter.EnrollHangoverChunks, withContext: false)
+                            ? new VoiceSegmenter(enrolling: true)
                             : new VoiceSegmenter();
+                        headSet = false;
                         vad = null;
                         pending.Clear();
                     }
@@ -234,6 +240,12 @@ public sealed class VoiceTrigger : IDisposable
                     if (models == null)
                         continue;
                     vad ??= models.NewVad();
+                    if (!headSet)
+                    {
+                        // Listening checks the start of what is said, as long as the longest recorded phrase.
+                        segmenter.HeadChunks = HeadChunks(models);
+                        headSet = true;
+                    }
                     pending.AddRange(resampler.Process(block));
                     int used = 0;
                     for (; used + VoiceSegmenter.Chunk <= pending.Count; used += VoiceSegmenter.Chunk)
@@ -272,7 +284,7 @@ public sealed class VoiceTrigger : IDisposable
 
         if (mode == "enrolling")
         {
-            List<float[]> earlier;
+            List<float[]> earlier, three;
             VoiceAction target;
             lock (_gate)
             {
@@ -301,8 +313,22 @@ public sealed class VoiceTrigger : IDisposable
                 _message = null;
                 if (_samples.Count < 3)
                     return;
+                three = [.. _samples];
+            }
+            var built = VoicePhrase.Build(models, three);
+            lock (_gate)
+            {
+                if (generation != _generation)
+                    return;
+                if (built.Spread > VoicePhrase.MaxSpread)
+                {
+                    // Three samples too unlike each other: the one furthest from the other two is said again.
+                    ObsLog.Info($"voice phrase: samples {built.Spread:F3} apart (most {VoicePhrase.MaxSpread:F3}): sample {built.WorstSample + 1} again");
+                    _samples.RemoveAt(built.WorstSample);
+                    _message = "voice.err.notAlike";
+                    return;
+                }
                 VoicePhrase.SaveSamples(_dataDir, _samples, target);
-                var built = VoicePhrase.Build(models, _samples);
                 if (target == VoiceAction.Shot)
                 {
                     _shotPhrase = built;
@@ -326,8 +352,8 @@ public sealed class VoiceTrigger : IDisposable
         var shotPhrase = PhraseFor(models, VoiceAction.Shot);
         if (clipPhrase == null && shotPhrase == null)
             return;
-        double? clipScore = clipPhrase?.Score(models, segment);
-        double? shotScore = shotPhrase?.Score(models, segment);
+        double? clipScore = clipPhrase?.ScoreAtStart(models, segment, VoiceSegmenter.PhraseStartsWithin);
+        double? shotScore = shotPhrase?.ScoreAtStart(models, segment, VoiceSegmenter.PhraseStartsWithin);
         VoiceAction? trigger = null;
         lock (_gate)
         {
@@ -335,15 +361,21 @@ public sealed class VoiceTrigger : IDisposable
                 return;
             double clipThreshold = Threshold(clipPhrase), shotThreshold = Threshold(shotPhrase);
             var heard = VoiceRouting.Pick(clipScore, clipThreshold, shotScore, shotThreshold);
-            // What the test shows: the phrase this came closest to.
+            // What the test shows: the phrase this came closest to; a match stays shown for a moment.
             bool shotCloser = shotScore is { } s && (clipScore is not { } c || s / shotThreshold < c / clipThreshold);
-            _lastScore = shotCloser ? shotScore : clipScore;
-            _lastThreshold = shotCloser ? shotThreshold : clipThreshold;
-            _lastPhrase = shotCloser ? "shot" : "clip";
-            _lastMatch = heard != null;
+            double score = (shotCloser ? shotScore : clipScore)!.Value, threshold = shotCloser ? shotThreshold : clipThreshold;
+            if (heard != null || !_lastMatch || DateTime.UtcNow - _lastMatchAt >= MatchShown)
+            {
+                _lastScore = score;
+                _lastThreshold = threshold;
+                _lastPhrase = shotCloser ? "shot" : "clip";
+                _lastMatch = heard != null;
+                if (heard != null)
+                    _lastMatchAt = DateTime.UtcNow;
+            }
             // Numbers only (no audio): lets the thresholds be tuned against real voices.
-            if (ShouldLog(mode, _lastScore!.Value, _lastThreshold.Value))
-                ObsLog.Info($"voice {mode}: {(shotCloser ? "screenshot" : "clip")} phrase score {_lastScore:F3} (threshold {_lastThreshold:F3}) " +
+            if (ShouldLog(mode, score, threshold))
+                ObsLog.Info($"voice {mode}: {(shotCloser ? "screenshot" : "clip")} phrase score {score:F3} (threshold {threshold:F3}) " +
                             $"over {segment.Length / (double)SpeechModels.SampleRate:F1} s");
             if (mode == "idle" && _enabled && heard is { } action && VoiceRouting.Ready(_lastTrigger[action], DateTime.UtcNow))
             {
@@ -356,6 +388,13 @@ public sealed class VoiceTrigger : IDisposable
     }
 
     static VoiceAction Other(VoiceAction action) => action == VoiceAction.Shot ? VoiceAction.Clip : VoiceAction.Shot;
+
+    /// <summary>How much of what is said listening checks: as long as the longest recorded phrase (none yet: the most).</summary>
+    int HeadChunks(SpeechModels models)
+    {
+        double seconds = Math.Max(PhraseFor(models, VoiceAction.Clip)?.Seconds ?? 0, PhraseFor(models, VoiceAction.Shot)?.Seconds ?? 0);
+        return seconds > 0 ? VoiceSegmenter.HeadFor(seconds) : VoiceSegmenter.MaxSpeechChunks;
+    }
 
     /// <summary>The phrase for <paramref name="action"/>, built from its samples on first use; null when it is not recorded.</summary>
     VoicePhrase? PhraseFor(SpeechModels models, VoiceAction action)

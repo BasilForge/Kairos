@@ -58,10 +58,21 @@ public static class SiteAccounts
     static string SessionCookie(SharePlatform platform) => platform == SharePlatform.X ? "auth_token" : "sessionid";
 
     /// <summary>The cookie domain is the site's (".x.com", "api.x.com"), not a lookalike ("max.com").</summary>
-    public static bool Owns(SharePlatform platform, string cookieDomain)
+    public static bool Owns(SharePlatform platform, string cookieDomain) => OnAny(cookieDomain, Domains(platform));
+
+    /// <summary>
+    /// The sign-in services the sites offer ("Continue with Google", Apple, Facebook, LINE, Kakao; Google's sign-in also
+    /// sets youtube.com). Left signed in, anyone at this PC could sign in to a site again with one click.
+    /// </summary>
+    static readonly string[] SignInServices = ["google.com", "youtube.com", "apple.com", "facebook.com", "line.me", "kakao.com"];
+
+    /// <summary>Signing out of <paramref name="platform"/> deletes this cookie: the site's own, or a sign-in service's (the other sites keep theirs).</summary>
+    public static bool SignOutRemoves(SharePlatform platform, string cookieDomain) => Owns(platform, cookieDomain) || OnAny(cookieDomain, SignInServices);
+
+    static bool OnAny(string cookieDomain, IEnumerable<string> domains)
     {
         string host = cookieDomain.TrimStart('.').ToLowerInvariant();
-        return Domains(platform).Any(d => host == d || host.EndsWith("." + d, StringComparison.Ordinal));
+        return domains.Any(d => host == d || host.EndsWith("." + d, StringComparison.Ordinal));
     }
 
     public static bool IsSignedIn(SharePlatform platform, IEnumerable<SiteCookie> cookies) =>

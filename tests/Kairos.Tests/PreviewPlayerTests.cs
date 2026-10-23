@@ -202,6 +202,46 @@ public static class PreviewPlayerTests
         });
     }
 
+    /// <summary>
+    /// The editor's next part, read ahead held: nothing shown, heard or ended while it waits, however long (a short part
+    /// is read to its end meanwhile); let go, its first picture shows on the very next refresh and it plays in real time.
+    /// </summary>
+    [Test]
+    public static void A_part_read_ahead_waits_then_shows_its_first_picture_at_once()
+    {
+        TestFfmpeg.Load();
+        OnUiThread(() =>
+        {
+            foreach (var (to, seconds) in new[] { (3.0, 1.0), (2.1, 0.1) })
+            {
+                string result = "running";
+                double? first = null;
+                using var player = new PreviewPlayer(Path.Combine(Fixtures, "clip-av1-2tracks.mp4"), 2.0, to, 320, 180, mute: true,
+                    t => first ??= t, failure => result = failure ?? "ended", held: true);
+                var waiting = Stopwatch.StartNew();
+                while (waiting.Elapsed.TotalSeconds < 1.5)
+                {
+                    player.Tick();
+                    Thread.Sleep(4);
+                }
+                Assert.True(player.Shown == 0 && first == null && result == "running", $"{seconds} s part held: nothing shown, no time, no end");
+                player.Release();
+                player.Tick();
+                Assert.Equal(1, player.Shown, $"{seconds} s part: its first picture at once");
+                Assert.Near(2.0, first ?? -1, 0.02, "from the part's start");
+                var watch = Stopwatch.StartNew();
+                while (result == "running" && watch.Elapsed.TotalSeconds < 5)
+                {
+                    player.Tick();
+                    Thread.Sleep(4);
+                }
+                Assert.Equal("ended", result, $"{seconds} s part played to its end");
+                Assert.True(watch.Elapsed.TotalSeconds > seconds - 0.1 && watch.Elapsed.TotalSeconds < seconds + 0.4,
+                    $"{seconds} s part in real time once let go: {watch.Elapsed.TotalSeconds:0.00} s");
+            }
+        });
+    }
+
     [Test]
     public static void A_clip_that_cannot_be_read_reports_why()
     {
@@ -218,5 +258,15 @@ public static class PreviewPlayerTests
             }
             Assert.True(failure != null && failure.Contains("not found"), failure ?? "no report");
         });
+    }
+
+    /// <summary>Pictures decoded ahead take the same memory at any size: 20 at 1280×720, fewer when larger, never under six.</summary>
+    [Test]
+    public static void The_pictures_kept_ahead_fit_one_memory_budget()
+    {
+        Assert.Equal(20, PreviewPlayer.PoolFor(1280, 720), "the editor's size: as before");
+        Assert.Equal(20, PreviewPlayer.PoolFor(640, 360), "smaller: no more than before");
+        Assert.Equal(7, PreviewPlayer.PoolFor(2078, 1168), "the Library player in a large window: about the same 74 MB, not 194");
+        Assert.Equal(6, PreviewPlayer.PoolFor(2560, 1440), "at least a tenth of a second");
     }
 }

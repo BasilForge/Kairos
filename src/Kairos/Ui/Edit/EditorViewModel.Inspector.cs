@@ -98,6 +98,7 @@ public sealed partial class EditorViewModel
     public string PageHint => Page switch
     {
         InspectorPage.Clip when HasTimeline => Text.Get("editor.hint.clip"),
+        InspectorPage.Part when _mode == EditMode.Zoom => Text.Get("editor.hint.zoom"),
         InspectorPage.Part => Text.Get("editor.hint.part"),
         InspectorPage.Text when SelectedItems is [TextItem] => Text.Get("editor.hint.allTexts"),
         InspectorPage.Line when _mode == EditMode.Draw => Text.Get("editor.hint.draw"),
@@ -107,7 +108,7 @@ public sealed partial class EditorViewModel
     };
 
     /// <summary>The brush page has a Done button (the line tools stay until it is pressed).</summary>
-    public bool ShowsModeDone => _mode is EditMode.Draw or EditMode.Crop;
+    public bool ShowsModeDone => _mode is EditMode.Draw or EditMode.Crop or EditMode.Zoom;
 
     string PartTimes(int index)
     {
@@ -123,10 +124,12 @@ public sealed partial class EditorViewModel
     {
         foreach (string name in new[] { nameof(Page), nameof(IsClipPage), nameof(IsPartPage), nameof(IsTextPage), nameof(IsLinePage),
                      nameof(IsShapePage), nameof(IsBlurPage), nameof(IsMixedPage), nameof(IsCropPage), nameof(PageTitle), nameof(PageNote), nameof(PageGlyph),
-                     nameof(PageHint), nameof(ShowsModeDone), nameof(HasWords), nameof(Words), nameof(TextPlace), nameof(PartSpeed),
-                     nameof(PartSpeedSlider), nameof(PartSpeedLabel), nameof(PartGame), nameof(PartMic), nameof(PartGameLabel),
-                     nameof(PartMicLabel), nameof(PartLookStrength), nameof(ClipSpeed), nameof(ClipSpeedSlider), nameof(ClipSpeedLabel) })
+                     nameof(PageHint), nameof(ShowsModeDone), nameof(PartZoomed), nameof(ZoomShown), nameof(HasWords), nameof(Words), nameof(TextPlace), nameof(PartSpeed),
+                     nameof(PartSpeedSlider), nameof(PartSpeedLabel), nameof(PartLookStrength), nameof(ClipSpeed), nameof(ClipSpeedSlider),
+                     nameof(ClipSpeedLabel) })
             Raise(name);
+        foreach (var track in PartTracks)
+            track.Refresh();
         RefreshChoices();
     }
 
@@ -135,16 +138,10 @@ public sealed partial class EditorViewModel
         Raise(nameof(Project));
         Raise(nameof(Look));
         Raise(nameof(LookStrength));
-        Raise(nameof(GameLevel));
-        Raise(nameof(MicLevel));
         Raise(nameof(AllLevel));
-        Raise(nameof(GameMuted));
-        Raise(nameof(MicMuted));
-        Raise(nameof(GameOn));
-        Raise(nameof(MicOn));
-        Raise(nameof(GameLabel));
-        Raise(nameof(MicLabel));
         Raise(nameof(AllLabel));
+        foreach (var track in ClipTracks)
+            track.Refresh();
         Raise(nameof(SelectedItem));
         Raise(nameof(SelectedItems));
         Raise(nameof(SelectedParts));
@@ -424,9 +421,12 @@ public sealed partial class EditorViewModel
     public string ClipSpeedLabel => double.IsNaN(ClipSpeed) ? Text.Get("editor.speed.varies") : ClipSpeed.ToString("0.0#", CultureInfo.InvariantCulture) + "×";
 
     public IReadOnlyList<SpeedChoice> ClipSpeeds { get; }
-    public double PartGame { get => FirstPart?.Game ?? 1; set => ChangeParts("game", k => k with { Game = value }); }
-    public double PartMic { get => FirstPart?.Mic ?? 1; set => ChangeParts("mic", k => k with { Mic = value }); }
-    public string PartGameLabel => Percent(PartGame);
+    /// <summary>The chosen parts' own sound tracks (a one-track clip: its whole sound), each a share of the clip's level.</summary>
+    public IReadOnlyList<SoundTrackView> PartTracks { get; }
+
+    internal double PartTrackLevel(int track) => FirstPart?.Levels[track] ?? 1;
+
+    internal void SetPartTrackLevel(int track, double level) => ChangeParts($"track{track}", k => k with { Levels = k.Levels.With(track, level) });
 
     /// <summary>The chosen parts' colour look (their own, or the clip's when they have none).</summary>
     public IReadOnlyList<LookChoice> PartLooks { get; }
@@ -436,7 +436,6 @@ public sealed partial class EditorViewModel
         get => FirstPart is { Look: not null } part ? part.LookStrength : Project.LookStrength;
         set => ChangeParts("look", k => k with { Look = k.Look ?? Project.Look, LookStrength = Math.Clamp(value, 0, 1) });
     }
-    public string PartMicLabel => Percent(PartMic);
 
     void ChangeParts(string what, Func<ClipSpan, ClipSpan> change)
     {
@@ -445,7 +444,7 @@ public sealed partial class EditorViewModel
             Amend($"part:{what}:{string.Join(",", _parts)}", next);
     }
 
-    static string Percent(double level) => Math.Round(level * 100).ToString(CultureInfo.InvariantCulture) + "%";
+    internal static string Percent(double level) => Math.Round(level * 100).ToString(CultureInfo.InvariantCulture) + "%";
 
     // ---------------------------------------------------------------- the whole clip: colours and sound (sliders amend one step)
 
@@ -457,16 +456,21 @@ public sealed partial class EditorViewModel
         set => Amend("look", Project with { LookStrength = Math.Clamp(value, 0, 1) });
     }
 
-    public double GameLevel { get => Project.Sound.Game; set => Amend("game", Project with { Sound = Project.Sound with { Game = Level(value) } }); }
-    public double MicLevel { get => Project.Sound.Mic; set => Amend("mic", Project with { Sound = Project.Sound with { Mic = Level(value) } }); }
+    /// <summary>The clip's own sound tracks (none for a one-track clip): the level and switch of each.</summary>
+    public IReadOnlyList<SoundTrackView> ClipTracks { get; }
+
+    internal double TrackLevel(int track) => Project.Sound.Tracks[track];
+
+    internal void SetTrackLevel(int track, double level) =>
+        Amend($"track{track}", Project with { Sound = Project.Sound with { Tracks = Project.Sound.Tracks.With(track, Level(level)) } });
+
+    internal bool TrackMuted(int track) => Project.Sound.Tracks.Muted(track);
+
+    internal void SetTrackMuted(int track, bool muted) =>
+        Apply(Project with { Sound = Project.Sound with { Tracks = Project.Sound.Tracks.WithMuted(track, muted) } });
+
+    /// <summary>A one-track clip's level.</summary>
     public double AllLevel { get => Project.Sound.All; set => Amend("all", Project with { Sound = Project.Sound with { All = Level(value) } }); }
-    public bool GameMuted { get => Project.Sound.GameMuted; set => Apply(Project with { Sound = Project.Sound with { GameMuted = value } }); }
-    public bool MicMuted { get => Project.Sound.MicMuted; set => Apply(Project with { Sound = Project.Sound with { MicMuted = value } }); }
-    /// <summary>The switches read "on" (heard), the opposite of muted.</summary>
-    public bool GameOn { get => !GameMuted; set => GameMuted = !value; }
-    public bool MicOn { get => !MicMuted; set => MicMuted = !value; }
-    public string GameLabel => GameMuted ? "0%" : Percent(GameLevel);
-    public string MicLabel => MicMuted ? "0%" : Percent(MicLevel);
     public string AllLabel => Percent(AllLevel);
 
     static double Level(double value) => Math.Clamp(value, 0, ClipSpan.MaxLevel);

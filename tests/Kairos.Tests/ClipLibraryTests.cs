@@ -392,4 +392,21 @@ public static class ClipLibraryTests
         Clean(root);
         Assert.True(error == null, error ?? "");
     }
+
+    [Test]
+    public static void A_clips_camera_file_is_part_of_the_clip()
+    {
+        string root = TempRoot();
+        string clip = Path.Combine(root, "Valorant 2026-10-20 03-00-00.mp4");
+        File.WriteAllText(clip, "x");
+        File.WriteAllText(Path.ChangeExtension(clip, null) + ".camera.mp4", "x");
+        File.WriteAllText(Path.Combine(root, "Valorant 2026-10-20 03-05-00.mp4"), "x");
+        var found = ClipLibrary.Scan(root);
+        Assert.Equal(2, found.Count, "the camera file is not a card of its own");
+        Assert.Equal(Path.ChangeExtension(clip, null) + ".camera.mp4", found.Single(c => c.Path == clip).Camera, "it goes with its clip");
+        Assert.Equal(null, found.Single(c => c.Path != clip).Camera, "a clip without one");
+        var recycled = new List<string>();
+        ClipDeleter.Delete([clip], permanent: false, recycled.Add);
+        Assert.Equal(2, recycled.Count, "deleting the clip takes its camera file too");
+    }
 }

@@ -7,14 +7,7 @@ public static class VideoMath
     /// <summary>Output size for a target height, keeping aspect, even dimensions, never upscaling.</summary>
     public static (int W, int H) OutputSize(int baseW, int baseH, OutputResolution resolution)
     {
-        int targetH = resolution switch
-        {
-            OutputResolution.P2160 => 2160,
-            OutputResolution.P1440 => 1440,
-            OutputResolution.P1080 => 1080,
-            OutputResolution.P720 => 720,
-            _ => baseH,
-        };
+        int targetH = ResolutionOptions.Height(resolution, baseH);
         if (targetH >= baseH)
             return (baseW, baseH);
 

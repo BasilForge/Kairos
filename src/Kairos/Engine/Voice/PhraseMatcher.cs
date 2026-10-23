@@ -6,9 +6,10 @@ public static class PhraseMatcher
     /// <summary>
     /// Cheapest cosine-distance alignment of the whole <paramref name="template"/> to any stretch of
     /// <paramref name="query"/>, divided by the template length. Steps (1,1), (1,2) and (2,1) allow speaking
-    /// up to twice as fast or slow without letting one frame absorb many.
+    /// up to twice as fast or slow without letting one frame absorb many. <paramref name="maxStart"/>: the stretch starts
+    /// within the query's first frames (the phrase said first, not further in among words).
     /// </summary>
-    public static double Cost(float[][] template, float[][] query)
+    public static double Cost(float[][] template, float[][] query, int maxStart = int.MaxValue)
     {
         int n = template.Length, m = query.Length;
         if (n == 0 || m < n / 2)
@@ -18,7 +19,7 @@ public static class PhraseMatcher
 
         var d = new double[n, m];
         for (int j = 0; j < m; j++)
-            d[0, j] = Distance(t[0], q[j]);
+            d[0, j] = j < maxStart ? Distance(t[0], q[j]) : double.PositiveInfinity;
         for (int i = 1; i < n; i++)
         {
             for (int j = 0; j < m; j++)
@@ -43,12 +44,12 @@ public static class PhraseMatcher
     }
 
     /// <summary>Mean cost of the two templates that fit best (one template: its cost).</summary>
-    public static double Score(IReadOnlyList<float[][]> templates, float[][] query)
+    public static double Score(IReadOnlyList<float[][]> templates, float[][] query, int maxStart = int.MaxValue)
     {
         double first = double.PositiveInfinity, second = double.PositiveInfinity;
         foreach (var t in templates)
         {
-            double c = Cost(t, query);
+            double c = Cost(t, query, maxStart);
             if (c < first)
             {
                 second = first;

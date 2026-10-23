@@ -39,13 +39,60 @@
         </Style>
     </UserControl.Resources>
     <StackPanel>
-        <TextBlock Style="{StaticResource Title}" Text="{l:T nav.status}"/>
+        <Grid>
+            <TextBlock Style="{StaticResource Title}" Text="{l:T nav.status}"/>
+            <!-- The camera is on (its light too): said where the recording is -->
+            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,12,0" Padding="10,5" CornerRadius="12"
+                    Background="{DynamicResource AccentSoft}" Visibility="{Binding CameraOn, Converter={StaticResource Vis}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE714;" FontSize="12" Foreground="{DynamicResource Accent}" Margin="0,0,7,0"/>
+                    <TextBlock Text="{l:T status.cameraOn}" FontSize="12.5" Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- An important update: what it brings, Update now and What's new; it goes in by itself at the next start -->
+        <Border Style="{StaticResource Card}" BorderBrush="{DynamicResource Accent}" BorderThickness="1.5" Background="{DynamicResource AccentSoft}"
+                Visibility="{Binding UpdateCardVisible, Converter={StaticResource Vis}}">
+            <StackPanel>
+                <DockPanel>
+                    <Border Width="32" Height="32" CornerRadius="16" Background="{DynamicResource Accent}" Margin="0,0,12,0">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" FontSize="15" Foreground="{DynamicResource OnAccent}" HorizontalAlignment="Center"/>
+                    </Border>
+                    <Border DockPanel.Dock="Right" Background="{DynamicResource Accent}" CornerRadius="10" Padding="10,2" VerticalAlignment="Center">
+                        <TextBlock Text="{l:T update.important}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource OnAccent}"/>
+                    </Border>
+                    <TextBlock Text="{Binding UpdateCardTitle}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding UpdateSummary}" Margin="44,8,0,0" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Style="{StaticResource Caption}" Text="{Binding StringFormat='•  {0}'}" FontSize="13.5"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel Orientation="Horizontal" Margin="44,14,0,0" Visibility="{Binding UpdateActionVisible, Converter={StaticResource Vis}}">
+                    <Button Style="{StaticResource Primary}" Content="{Binding UpdateActionText}" Command="{Binding UpdateCommand}" Padding="16,8"/>
+                    <Button Style="{StaticResource Ghost}" Content="{l:T update.notes}" Command="{Binding UpdateNotesCommand}" Padding="14,8" Margin="8,0,0,0"
+                            Visibility="{Binding UpdateNotesVisible, Converter={StaticResource Vis}}"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Label}" Text="{Binding UpdateText}" Margin="44,14,0,0"
+                           Visibility="{Binding UpdateCardStatusVisible, Converter={StaticResource Vis}}"/>
+                <TextBlock Style="{StaticResource Caption}" Text="{l:T update.nextStart}" Margin="44,10,0,0"/>
+            </StackPanel>
+        </Border>
 
         <!-- Only when something needs attention -->
         <Border Style="{StaticResource Notice}" Visibility="{Binding FolderWarning, Converter={StaticResource Vis}}">
             <DockPanel>
                 <TextBlock Style="{StaticResource NoticeIcon}" DockPanel.Dock="Left"/>
                 <TextBlock Style="{StaticResource NoticeText}" Text="{Binding FolderWarning}"/>
+            </DockPanel>
+        </Border>
+        <Border Style="{StaticResource Notice}" Visibility="{Binding CaptureWarning, Converter={StaticResource Vis}}">
+            <DockPanel>
+                <TextBlock Style="{StaticResource NoticeIcon}" DockPanel.Dock="Left"/>
+                <TextBlock Style="{StaticResource NoticeText}" Text="{Binding CaptureWarning}"/>
             </DockPanel>
         </Border>
 
@@ -108,7 +155,7 @@
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE74E;" Margin="0,0,8,0" FontSize="13" Foreground="{DynamicResource Accent}"/>
                             <TextBlock Text="{l:T status.saveNow}"/>
                             <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkSave, Converter={StaticResource Vis}}">
-                                <TextBlock Text="{Binding HkSave}" FontSize="9.5"/>
+                                <TextBlock Text="{Binding HkSave}" FontSize="11"/>
                             </Border>
                             <!-- Another app holds the save key: said here too, not only on the Hotkeys page -->
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
@@ -191,7 +238,7 @@
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE7C8;" FontSize="14" Margin="0,0,8,0"/>
                                 <TextBlock Text="{l:T status.record}"/>
                                 <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkRecord, Converter={StaticResource Vis}}">
-                                    <TextBlock Text="{Binding HkRecord}" FontSize="9.5"/>
+                                    <TextBlock Text="{Binding HkRecord}" FontSize="11"/>
                                 </Border>
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
                                            VerticalAlignment="Center" ToolTip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
@@ -204,7 +251,7 @@
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE7C8;" FontSize="13" Margin="0,0,8,0" Foreground="{DynamicResource Accent}"/>
                                 <TextBlock Text="{l:T status.record}"/>
                                 <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkRecord, Converter={StaticResource Vis}}">
-                                    <TextBlock Text="{Binding HkRecord}" FontSize="9.5"/>
+                                    <TextBlock Text="{Binding HkRecord}" FontSize="11"/>
                                 </Border>
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
                                            VerticalAlignment="Center" ToolTip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
@@ -217,7 +264,7 @@
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE71A;" FontSize="13" Margin="0,0,8,0"/>
                                 <TextBlock Text="{l:T status.stopRecord}"/>
                                 <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkRecord, Converter={StaticResource Vis}}">
-                                    <TextBlock Text="{Binding HkRecord}" FontSize="9.5"/>
+                                    <TextBlock Text="{Binding HkRecord}" FontSize="11"/>
                                 </Border>
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
                                            VerticalAlignment="Center" ToolTip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
@@ -239,7 +286,7 @@
                                 </TextBlock>
                                 <TextBlock Text="{Binding RecordPauseLabel}"/>
                                 <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkPauseRecord, Converter={StaticResource Vis}}">
-                                    <TextBlock Text="{Binding HkPauseRecord}" FontSize="9.5"/>
+                                    <TextBlock Text="{Binding HkPauseRecord}" FontSize="11"/>
                                 </Border>
                             </StackPanel>
                         </Button>
@@ -268,7 +315,7 @@
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE722;" FontSize="13" Margin="0,0,8,0" Foreground="{DynamicResource Accent}"/>
                             <TextBlock Text="{l:T status.shot}"/>
                             <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkScreenshot, Converter={StaticResource Vis}}">
-                                <TextBlock Text="{Binding HkScreenshot}" FontSize="9.5"/>
+                                <TextBlock Text="{Binding HkScreenshot}" FontSize="11"/>
                             </Border>
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
                                        VerticalAlignment="Center" ToolTip="{Binding ScreenshotKey.TakenText}" AutomationProperties.Name="{Binding ScreenshotKey.TakenText}"

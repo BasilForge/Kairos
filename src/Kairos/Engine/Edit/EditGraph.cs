@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Kairos.Engine.Audio;
 
 namespace Kairos.Engine.Edit;
 
@@ -9,8 +10,8 @@ public sealed record Overlay(string Path, int X, int Y);
 /// <summary>
 /// An edit as FFmpeg filter-graph text for the export. Video (<c>[vin]</c> → <c>[vout]</c>): the colour look, blurred
 /// boxes and drawn items (transparent PNGs read by <c>movie</c>) laid over in their source times, then the kept pieces
-/// trimmed, re-timed for their speed and joined, at the clip's frame rate. Audio (<c>[aN]</c> → <c>[aout]</c>): game and
-/// mic at their levels (or the mix of a one-track clip), cut and re-timed the same way (tempo, not pitch).
+/// trimmed, re-timed for their speed and joined, at the clip's frame rate. Audio (<c>[aN]</c> → <c>[aout]</c>): each of
+/// the clip's own tracks at its level (or the mix of a one-track clip), cut and re-timed the same way (tempo, not pitch).
 /// </summary>
 /// <param name="AudioStreams">The audio streams (0-based) the graph reads, as inputs <c>[aN]</c>.</param>
 public sealed record EditGraph(string Video, string Audio, IReadOnlyList<int> AudioStreams)
@@ -22,24 +23,37 @@ public sealed record EditGraph(string Video, string Audio, IReadOnlyList<int> Au
     public double To { get; init; } = double.PositiveInfinity;
 
     /// <summary>
-    /// The sound tracks the graph gives, in the MP4's order: <c>[aout]</c> (the mix), and for Kairos's clips also
-    /// <c>[agame]</c> and <c>[amic]</c>, so an edited clip keeps the clip's layout and can be edited again.
+    /// The sound tracks the graph gives, in the MP4's order: <c>[aout]</c> (the mix), and for Kairos's clips also each
+    /// of the clip's own tracks, so an edited clip keeps the clip's layout and can be edited again.
     /// </summary>
     public IReadOnlyList<string> AudioOutputs { get; init; } = ["aout"];
+
+    /// <summary>The names the saved tracks carry (as the recorder writes them), one per <see cref="AudioOutputs"/>.</summary>
+    public IReadOnlyList<string> AudioNames { get; init; } = ["Mix"];
+
+    /// <summary>
+    /// The area shown at each source moment, for the graph's <c>crop@zoom</c> (the export sets it on every picture); null
+    /// when no part zooms (the graph then has no crop).
+    /// </summary>
+    public Func<double, System.Windows.Rect>? ZoomAt { get; init; }
 
     /// <summary>The preview's blur (radius 20 on a 720-line picture), kept at the clip's size.</summary>
     const double BlurPerLine = 20 / 720.0;
 
+    /// <param name="layout">The clip's sound tracks (none: read from <paramref name="audioStreams"/> as a clip without names).</param>
     public static EditGraph Build(EditProject p, int width, int height, double fps, int audioStreams,
-        IReadOnlyDictionary<Guid, Overlay> overlayPngs)
+        IReadOnlyDictionary<Guid, Overlay> overlayPngs, TrackLayout? layout = null)
     {
         var pieces = p.Pieces();
-        string audio = AudioGraph(p, pieces, audioStreams, out var streams, out var outputs);
+        layout ??= TrackLayout.Of([], audioStreams);
+        string audio = AudioGraph(p, pieces, audioStreams, layout, out var streams, out var outputs);
         return new EditGraph(VideoGraph(p, pieces, width, height, fps, overlayPngs), audio, streams)
         {
             From = pieces.Min(piece => piece.Span.Start),
             To = pieces.Max(piece => piece.Span.End),
             AudioOutputs = outputs,
+            AudioNames = outputs.Count <= 1 ? ["Mix"] : ["Mix", .. layout.PartitionTracks.Select(t => layout.Labels[t])],
+            ZoomAt = p.HasZoom ? p.ZoomAt : null,
         };
     }
 
@@ -75,8 +89,13 @@ public sealed record EditGraph(string Video, string Audio, IReadOnlyList<int> Au
             }
         }
 
-        foreach (var item in p.Items)
+        // A zoom takes the picture with its blurred boxes, never the texts and drawings over it (as the editor shows it).
+        var items = p.HasZoom ? p.Items.OrderBy(item => item is BlurItem ? 0 : 1).ToList() : p.Items;
+        bool zoomed = false;
+        foreach (var item in items)
         {
+            if (p.HasZoom && !zoomed && item is not BlurItem)
+                Zoom();
             string? enable = Enable(p.Visible(item));
             if (enable == null)
                 continue; // all of it is cut out
@@ -104,6 +123,18 @@ public sealed record EditGraph(string Video, string Audio, IReadOnlyList<int> Au
             }
         }
 
+        if (p.HasZoom && !zoomed)
+            Zoom();
+
+        // Its area is set on every picture by the export (avfilter_graph_send_command); the size stays the clip's.
+        void Zoom()
+        {
+            string next = Next();
+            g.Append($"[{current}]crop@zoom=w=iw:h=ih:x=0:y=0,scale={width}:{height}[{next}];");
+            current = next;
+            zoomed = true;
+        }
+
         string Piece((ClipSpan Span, double Factor) piece) =>
             $"trim=start={N(piece.Span.Start)}:end={N(piece.Span.End)},setpts=(PTS-STARTPTS)/{N(piece.Factor)}";
 
@@ -125,8 +156,8 @@ public sealed record EditGraph(string Video, string Audio, IReadOnlyList<int> Au
         return g.ToString();
     }
 
-    static string AudioGraph(EditProject p, IReadOnlyList<(ClipSpan Span, double Factor)> pieces, int audioStreams, out IReadOnlyList<int> streams,
-        out IReadOnlyList<string> outputs)
+    static string AudioGraph(EditProject p, IReadOnlyList<(ClipSpan Span, double Factor)> pieces, int audioStreams, TrackLayout layout,
+        out IReadOnlyList<int> streams, out IReadOnlyList<string> outputs)
     {
         outputs = ["aout"];
         if (audioStreams <= 0)
@@ -151,49 +182,71 @@ public sealed record EditGraph(string Video, string Audio, IReadOnlyList<int> Au
         string Tempo(double factor) => Math.Abs(factor - 1) < 1e-9 ? "" : "," + TempoChain(factor);
         var outs = Enumerable.Range(0, n).Select(i => n == 1 ? "aout" : $"ap{i}").ToList();
 
-        if (audioStreams >= 3)
+        var tracks = layout.PartitionTracks;
+        if (tracks.Count > 0 && s.Tracks.IsPlain && pieces.All(piece => piece.Span.Levels.IsPlain))
         {
-            // Kairos's clips: track 1 is the mix, 2 the game, 3 the mic; each piece at the clip's level times its own.
-            // The edit keeps that layout: the mix, and the game and the mic on their own, cut and set the same way.
-            streams = [1, 2];
-            outputs = ["aout", "agame", "amic"];
-            var game = Copies("a1", "g");
-            var mic = Copies("a2", "m");
-            var gameOuts = Enumerable.Range(0, n).Select(i => n == 1 ? "agame" : $"gq{i}").ToList();
-            var micOuts = Enumerable.Range(0, n).Select(i => n == 1 ? "amic" : $"mq{i}").ToList();
-            for (int i = 0; i < n; i++)
+            // Nothing changed in the sound: every track, the mix first, cut and retimed as it was recorded (no mixing).
+            streams = [0, .. tracks];
+            int k = tracks.Count;
+            outputs = ["aout", .. Enumerable.Range(0, k).Select(Output)];
+            var all = streams.Select((t, j) => (Copies($"a{t}", j == 0 ? "s" : Prefix(j - 1)), j == 0 ? "aout" : Output(j - 1), j == 0 ? "s" : Prefix(j - 1))).ToList();
+            foreach (var (copies, output, prefix) in all)
             {
-                var span = pieces[i].Span;
-                double gameLevel = s.GameMuted ? 0 : s.Game * span.Game, micLevel = s.MicMuted ? 0 : s.Mic * span.Mic;
-                string tempo = Tempo(pieces[i].Factor);
-                g.Append($"[{game[i]}]{Trim(span)},volume={N(gameLevel)},asplit=2[gp{i}][go{i}];");
-                g.Append($"[{mic[i]}]{Trim(span)},volume={N(micLevel)},asplit=2[mp{i}][mo{i}];");
-                g.Append($"[gp{i}][mp{i}]amix=inputs=2:normalize=0{tempo}[{outs[i]}];");
-                g.Append($"[go{i}]anull{tempo}[{gameOuts[i]}];");
-                g.Append($"[mo{i}]anull{tempo}[{micOuts[i]}];");
+                var pieceOuts = Enumerable.Range(0, n).Select(i => n == 1 ? output : $"{prefix}q{i}").ToList();
+                for (int i = 0; i < n; i++)
+                    g.Append($"[{copies[i]}]{Trim(pieces[i].Span)}{Tempo(pieces[i].Factor)}[{pieceOuts[i]}];");
+                if (n > 1)
+                    g.Append($"{string.Concat(pieceOuts.Select(o => $"[{o}]"))}concat=n={n}:v=0:a=1[{output}];");
             }
-            if (n == 1)
-                return g.ToString().TrimEnd(';');
-            g.Append($"{string.Concat(outs.Select(o => $"[{o}]"))}concat=n={n}:v=0:a=1[aout];");
-            g.Append($"{string.Concat(gameOuts.Select(o => $"[{o}]"))}concat=n={n}:v=0:a=1[agame];");
-            g.Append($"{string.Concat(micOuts.Select(o => $"[{o}]"))}concat=n={n}:v=0:a=1[amic]");
-            return g.ToString();
+            return g.ToString().TrimEnd(';');
         }
-        else
+        if (tracks.Count > 0)
         {
-            streams = [0];
-            var mix = Copies("a0", "s");
+            // Kairos's clips: track 1 is the mix, the others add up to it (1.0.1: the game and the mic); each piece at
+            // the clip's level of each track times its own. The edit keeps that layout: the mix, and each track on its
+            // own, cut and set the same way.
+            streams = tracks;
+            int k = tracks.Count;
+            outputs = ["aout", .. Enumerable.Range(0, k).Select(Output)];
+            var copies = tracks.Select((t, j) => Copies($"a{t}", Prefix(j))).ToList();
+            var trackOuts = Enumerable.Range(0, k).Select(j => Enumerable.Range(0, n).Select(i => n == 1 ? Output(j) : $"{Prefix(j)}q{i}").ToList()).ToList();
             for (int i = 0; i < n; i++)
             {
                 var span = pieces[i].Span;
-                g.Append($"[{mix[i]}]{Trim(span)},volume={N(s.All * span.Game)}{Tempo(pieces[i].Factor)}[{outs[i]}];");
+                string tempo = Tempo(pieces[i].Factor);
+                for (int j = 0; j < k; j++)
+                    g.Append($"[{copies[j][i]}]{Trim(span)},volume={N(s.Tracks.Heard(j) * span.Levels[j])},asplit=2[{Prefix(j)}p{i}][{Prefix(j)}o{i}];");
+                g.Append($"{string.Concat(Enumerable.Range(0, k).Select(j => $"[{Prefix(j)}p{i}]"))}amix=inputs={k}:normalize=0{tempo}[{outs[i]}];");
+                for (int j = 0; j < k; j++)
+                    g.Append($"[{Prefix(j)}o{i}]anull{tempo}[{trackOuts[j][i]}];");
             }
+            if (n > 1)
+            {
+                g.Append($"{string.Concat(outs.Select(o => $"[{o}]"))}concat=n={n}:v=0:a=1[aout];");
+                for (int j = 0; j < k; j++)
+                    g.Append($"{string.Concat(trackOuts[j].Select(o => $"[{o}]"))}concat=n={n}:v=0:a=1[{Output(j)}];");
+            }
+            return g.ToString().TrimEnd(';');
+        }
+
+        // One track (or a mix and one more): the mix, at the one-track level.
+        streams = [0];
+        var mix = Copies("a0", "s");
+        for (int i = 0; i < n; i++)
+        {
+            var span = pieces[i].Span;
+            g.Append($"[{mix[i]}]{Trim(span)},volume={N(s.All * span.Levels[0])}{Tempo(pieces[i].Factor)}[{outs[i]}];");
         }
         if (n == 1)
             return g.ToString().TrimEnd(';');
         g.Append($"{string.Concat(outs.Select(o => $"[{o}]"))}concat=n={n}:v=0:a=1[aout]");
         return g.ToString();
     }
+
+    /// <summary>A track's labels in the graph: its pieces', and its output's.</summary>
+    static string Prefix(int track) => $"t{track}";
+
+    static string Output(int track) => $"at{track}";
 
     /// <summary>atempo takes 0.5..100 per filter: slower than half speed is a chain of halves.</summary>
     internal static string TempoChain(double factor)

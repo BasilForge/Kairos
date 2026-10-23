@@ -22,6 +22,15 @@ public static class SaveWatchTests
     }
 
     [Test]
+    public static void A_replay_that_could_not_start_says_so_not_off()
+    {
+        Assert.Equal("toast.notSaved.failed", SaveWatch.OffReason(enabled: true, paused: false, waiting: false, failed: true), "encoder busy");
+        Assert.Equal("toast.notSaved.off", SaveWatch.OffReason(enabled: false, paused: false, waiting: false, failed: true), "turned off says off");
+        Assert.Equal("toast.notSaved.paused", SaveWatch.OffReason(enabled: true, paused: true, waiting: false, failed: true), "paused says paused");
+        Assert.Equal("toast.notSaved.waiting", SaveWatch.OffReason(enabled: true, paused: false, waiting: true, failed: true), "waiting says waiting");
+    }
+
+    [Test]
     public static void A_save_never_written_is_said_once_after_a_generous_wait()
     {
         var watch = new SaveWatch();

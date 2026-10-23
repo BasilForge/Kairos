@@ -39,4 +39,31 @@ public static class InstallChoicesTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Test]
+    public static void The_wizard_names_match_the_installers_languages()
+    {
+        Assert.Equal("zhHans", WizardLanguage.InnoName("zh-Hans"), "chinese");
+        Assert.Equal("ptBR", WizardLanguage.InnoName("pt-BR"), "portuguese");
+        Assert.Equal("ar", WizardLanguage.InnoName("ar"), "arabic");
+    }
+
+    [Test]
+    public static void The_app_remembers_its_language_for_the_next_wizard()
+    {
+        string key = @"Software\Kairos-tests\" + Guid.NewGuid().ToString("N");
+        try
+        {
+            WizardLanguage.Remember("pt-BR", key);
+            using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(key))
+                Assert.Equal("ptBR", k?.GetValue(WizardLanguage.ValueName) as string, "written");
+            WizardLanguage.Forget(key);
+            Assert.True(Microsoft.Win32.Registry.CurrentUser.OpenSubKey(key) == null, "gone on uninstall");
+            WizardLanguage.Forget(key); // twice: no throw
+        }
+        finally
+        {
+            Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(@"Software\Kairos-tests", throwOnMissingSubKey: false);
+        }
+    }
 }

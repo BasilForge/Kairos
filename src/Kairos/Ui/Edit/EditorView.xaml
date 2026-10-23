@@ -223,11 +223,6 @@
             </Setter>
         </Style>
         <!-- A square icon button of the play bar and the top bar -->
-        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource Ghost}">
-            <Setter Property="Width" Value="34"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Padding" Value="0"/>
-        </Style>
         <!-- The main button, low enough for the title row -->
         <Style x:Key="TopPrimary" TargetType="Button" BasedOn="{StaticResource Primary}">
             <Setter Property="FontSize" Value="13.5"/>
@@ -256,6 +251,65 @@
         <Style x:Key="EditSlider" TargetType="Slider" BasedOn="{StaticResource {x:Type Slider}}">
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Margin" Value="8,0"/>
+        </Style>
+        <Style x:Key="TrackSlider" TargetType="Slider" BasedOn="{StaticResource EditSlider}">
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="2"/>
+            <Setter Property="SmallChange" Value="0.05"/>
+            <Setter Property="LargeChange" Value="0.1"/>
+        </Style>
+        <!-- A sound track: the whole clip's switch (with its icon) or a part's icon, then its level and percent -->
+        <DataTemplate x:Key="TrackRow">
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ToggleButton x:Name="Switch" Style="{StaticResource MuteIcon}" IsChecked="{Binding On}" ToolTip="{Binding Name}"
+                              AutomationProperties.Name="{Binding Name}">
+                    <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="14"/>
+                </ToggleButton>
+                <TextBlock x:Name="Glyph" Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="14" Width="28" TextAlignment="Center"
+                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}" ToolTip="{Binding Name}" Visibility="Collapsed"/>
+                <Slider Grid.Column="1" Style="{StaticResource TrackSlider}" Value="{Binding Level}" IsEnabled="{Binding Enabled}" ToolTip="{Binding Name}"
+                        AutomationProperties.Name="{Binding Name}"/>
+                <TextBlock Grid.Column="2" Style="{StaticResource ValueText}" Text="{Binding Label}"/>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding HasSwitch}" Value="False">
+                    <Setter TargetName="Switch" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="Glyph" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+        <!-- Short of room, in two columns: no percent (the name and level are in the tooltip) -->
+        <DataTemplate x:Key="TrackCell">
+            <Grid Margin="0,0,0,4" ToolTip="{Binding Tip}" Background="Transparent">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <ToggleButton x:Name="Switch" Style="{StaticResource MuteIcon}" IsChecked="{Binding On}" AutomationProperties.Name="{Binding Name}">
+                    <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="14"/>
+                </ToggleButton>
+                <TextBlock x:Name="Glyph" Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="14" Width="28" TextAlignment="Center"
+                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}" Visibility="Collapsed"/>
+                <Slider Grid.Column="1" Style="{StaticResource TrackSlider}" Value="{Binding Level}" IsEnabled="{Binding Enabled}"
+                        AutomationProperties.Name="{Binding Name}"/>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding HasSwitch}" Value="False">
+                    <Setter TargetName="Switch" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="Glyph" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+        <ItemsPanelTemplate x:Key="TwoColumns">
+            <UniformGrid Columns="2"/>
+        </ItemsPanelTemplate>
+        <Style x:Key="TwoColumnCell" TargetType="ContentPresenter">
+            <Setter Property="Margin" Value="0,0,8,0"/>
         </Style>
     </UserControl.Resources>
 
@@ -359,6 +413,10 @@
                             <ToggleButton Style="{StaticResource AddButton}" Tag="&#xE7A8;" Content="{l:T editor.add.crop}" Command="{Binding CropCommand}"
                                           IsChecked="{Binding IsCropMode, Mode=OneWay}" ToolTip="{l:T editor.add.crop}" AutomationProperties.Name="{l:T editor.add.crop}"
                                           Visibility="{Binding CanCrop, Converter={StaticResource Vis}}"/>
+                            <!-- Zoom (videos): the chosen parts zoom into an area drawn on the picture -->
+                            <ToggleButton Style="{StaticResource AddButton}" Tag="&#xE71E;" Content="{l:T editor.add.zoom}" Command="{Binding ZoomCommand}"
+                                          IsChecked="{Binding IsZoomMode, Mode=OneWay}" ToolTip="{l:T editor.zoomTip}" AutomationProperties.Name="{l:T editor.add.zoom}"
+                                          Visibility="{Binding CanZoom, Converter={StaticResource Vis}}"/>
                             <Button Style="{StaticResource AddButton}" Tag="&#xE7F0;" Content="{l:T editor.add.captions}" Command="{Binding CaptionsCommand}"
                                     ToolTip="{l:T editor.captionsTip}" AutomationProperties.Name="{l:T editor.captions}"
                                     Visibility="{Binding ShowsCaptionsButton, Converter={StaticResource Vis}}"/>
@@ -433,33 +491,34 @@
                     <Grid Grid.Row="1">
                         <!-- The whole clip (or picture): colour look and sound -->
                         <e:FitPanel x:Name="ClipPage" Visibility="{Binding IsClipPage, Converter={StaticResource Vis}}">
-                            <StackPanel Visibility="{Binding HasTimeline, Converter={StaticResource Vis}}">
-                                <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.speed}"/>
-                                <ItemsControl ItemsSource="{Binding ClipSpeeds}" Focusable="False" Margin="0,0,-5,0" FlowDirection="LeftToRight">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <UniformGrid Columns="6"/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <RadioButton Style="{StaticResource Tile}" GroupName="clipSpeed" Content="{Binding Label}" FontSize="11.5"
-                                                         IsChecked="{Binding IsSelected, Mode=TwoWay}" AutomationProperties.Name="{Binding Label}"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <Grid Margin="0,6,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Slider Style="{StaticResource EditSlider}" Margin="0,0,8,0" Minimum="0" Maximum="1" Value="{Binding ClipSpeedSlider}"
-                                            SmallChange="0.0125" LargeChange="0.0625" FlowDirection="LeftToRight" AutomationProperties.Name="{l:T editor.speed}"/>
-                                    <TextBlock Grid.Column="1" Style="{StaticResource ValueText}" Text="{Binding ClipSpeedLabel}"/>
-                                </Grid>
-                            </StackPanel>
+                            <!-- The speed's label and tiles go last when room runs short; the slider stays -->
+                            <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.speed}" e:FitPanel.Optional="True" e:FitPanel.Priority="2"
+                                       Visibility="{Binding HasTimeline, Converter={StaticResource Vis}}"/>
+                            <ItemsControl ItemsSource="{Binding ClipSpeeds}" Focusable="False" Margin="0,0,-5,0" FlowDirection="LeftToRight"
+                                          e:FitPanel.Optional="True" e:FitPanel.Priority="2" Visibility="{Binding HasTimeline, Converter={StaticResource Vis}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="6"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <RadioButton Style="{StaticResource Tile}" GroupName="clipSpeed" Content="{Binding Label}" FontSize="11.5"
+                                                     IsChecked="{Binding IsSelected, Mode=TwoWay}" AutomationProperties.Name="{Binding Label}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Grid Margin="0,6,0,0" Visibility="{Binding HasTimeline, Converter={StaticResource Vis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Slider Style="{StaticResource EditSlider}" Margin="0,0,8,0" Minimum="0" Maximum="1" Value="{Binding ClipSpeedSlider}"
+                                        SmallChange="0.0125" LargeChange="0.0625" FlowDirection="LeftToRight" AutomationProperties.Name="{l:T editor.speed}"/>
+                                <TextBlock Grid.Column="1" Style="{StaticResource ValueText}" Text="{Binding ClipSpeedLabel}"/>
+                            </Grid>
                             <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.look}" e:FitPanel.Optional="True"/>
-                            <ItemsControl ItemsSource="{Binding Looks}" Focusable="False" Margin="0,4,-4,0">
+                            <ItemsControl ItemsSource="{Binding Looks}" Focusable="False" Margin="0,4,-4,0" e:FitPanel.Optional="True">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <UniformGrid Columns="5"/>
@@ -468,6 +527,20 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <RadioButton Style="{StaticResource LookTile}" GroupName="look" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                     ToolTip="{Binding Label}" AutomationProperties.Name="{Binding Label}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <!-- Short of room (a clip with many sound tracks): the part page's small tiles instead -->
+                            <ItemsControl ItemsSource="{Binding Looks}" Focusable="False" Margin="0,4,-4,0" e:FitPanel.StandIn="True">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="7"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <RadioButton Style="{StaticResource SmallLookTile}" GroupName="smallLook" IsChecked="{Binding IsSelected, Mode=TwoWay}"
                                                      ToolTip="{Binding Label}" AutomationProperties.Name="{Binding Label}"/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -481,57 +554,39 @@
                                 <Slider Grid.Column="1" Style="{StaticResource EditSlider}" Minimum="0" Maximum="1" Value="{Binding LookStrength}" SmallChange="0.05"
                                         LargeChange="0.1" AutomationProperties.Name="{l:T editor.strength}" Margin="10,0,0,0"/>
                             </Grid>
-                            <StackPanel Visibility="{Binding HasSound, Converter={StaticResource Vis}}">
-                                <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.clipSound}"/>
-                                <Grid Visibility="{Binding HasSeparateTracks, Converter={StaticResource Vis}}" Margin="0,0,0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ToggleButton Style="{StaticResource MuteIcon}" IsChecked="{Binding GameOn}" ToolTip="{l:T editor.game}"
-                                                  AutomationProperties.Name="{l:T editor.game}">
-                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE7FC;" FontSize="14"/>
-                                    </ToggleButton>
-                                    <Slider Grid.Column="1" Style="{StaticResource EditSlider}" Minimum="0" Maximum="2" Value="{Binding GameLevel}" SmallChange="0.05"
-                                            LargeChange="0.1" IsEnabled="{Binding GameOn}" AutomationProperties.Name="{l:T editor.game}"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource ValueText}" Text="{Binding GameLabel}"/>
-                                </Grid>
-                                <Grid Visibility="{Binding HasSeparateTracks, Converter={StaticResource Vis}}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ToggleButton Style="{StaticResource MuteIcon}" IsChecked="{Binding MicOn}" ToolTip="{l:T editor.mic}"
-                                                  AutomationProperties.Name="{l:T editor.mic}">
-                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE720;" FontSize="14"/>
-                                    </ToggleButton>
-                                    <Slider Grid.Column="1" Style="{StaticResource EditSlider}" Minimum="0" Maximum="2" Value="{Binding MicLevel}" SmallChange="0.05"
-                                            LargeChange="0.1" IsEnabled="{Binding MicOn}" AutomationProperties.Name="{l:T editor.mic}"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource ValueText}" Text="{Binding MicLabel}"/>
-                                </Grid>
-                                <Grid Visibility="{Binding HasOneTrack, Converter={StaticResource Vis}}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE767;" FontSize="14" Width="28" TextAlignment="Center" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondary}"/>
-                                    <Slider Grid.Column="1" Style="{StaticResource EditSlider}" Minimum="0" Maximum="2" Value="{Binding AllLevel}" SmallChange="0.05"
-                                            LargeChange="0.1" AutomationProperties.Name="{l:T editor.allSound}"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource ValueText}" Text="{Binding AllLabel}"/>
-                                </Grid>
-                            </StackPanel>
+                            <!-- The clip's own tracks (two columns when room runs short), or a one-track clip's level -->
+                            <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.clipSound}" Visibility="{Binding HasSound, Converter={StaticResource Vis}}"/>
+                            <ItemsControl ItemsSource="{Binding ClipTracks}" ItemTemplate="{StaticResource TrackRow}" Focusable="False"
+                                          e:FitPanel.Optional="True" e:FitPanel.Priority="1"/>
+                            <ItemsControl ItemsSource="{Binding ClipTracks}" ItemTemplate="{StaticResource TrackCell}" Focusable="False" Margin="0,0,-8,0"
+                                          ItemsPanel="{StaticResource TwoColumns}" ItemContainerStyle="{StaticResource TwoColumnCell}" e:FitPanel.StandIn="True"/>
+                            <Grid Visibility="{Binding HasOneTrack, Converter={StaticResource Vis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE767;" FontSize="14" Width="28" TextAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondary}"/>
+                                <Slider Grid.Column="1" Style="{StaticResource EditSlider}" Minimum="0" Maximum="2" Value="{Binding AllLevel}" SmallChange="0.05"
+                                        LargeChange="0.1" AutomationProperties.Name="{l:T editor.allSound}"/>
+                                <TextBlock Grid.Column="2" Style="{StaticResource ValueText}" Text="{Binding AllLabel}"/>
+                            </Grid>
                             <TextBlock Style="{StaticResource Hint}" Text="{Binding PageHint}" e:FitPanel.Optional="True"
                                        Visibility="{Binding PageHint, Converter={StaticResource Vis}}"/>
                         </e:FitPanel>
 
                         <!-- The chosen parts: speed and sound of their own -->
                         <e:FitPanel Visibility="{Binding IsPartPage, Converter={StaticResource Vis}}">
-                            <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.speed}"/>
-                            <ItemsControl ItemsSource="{Binding Speeds}" Focusable="False" Margin="0,0,-5,0" FlowDirection="LeftToRight">
+                            <!-- A zoomed part: its zoom can go -->
+                            <DockPanel Margin="0,4,0,6" Visibility="{Binding PartZoomed, Converter={StaticResource Vis}}">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource Ghost}" Padding="10,4" FontSize="12.5"
+                                        Command="{Binding RemoveZoomCommand}" Content="{l:T editor.zoomRemove}"/>
+                                <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.zoomPart}" Margin="0" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.speed}" e:FitPanel.Optional="True" e:FitPanel.Priority="2"/>
+                            <ItemsControl ItemsSource="{Binding Speeds}" Focusable="False" Margin="0,0,-5,0" FlowDirection="LeftToRight"
+                                          e:FitPanel.Optional="True" e:FitPanel.Priority="2">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <UniformGrid Columns="6"/>
@@ -569,33 +624,12 @@
                             </ItemsControl>
                             <Slider Style="{StaticResource EditSlider}" Margin="0,6,0,0" Minimum="0" Maximum="1" Value="{Binding PartLookStrength}" SmallChange="0.05"
                                     LargeChange="0.1" ToolTip="{l:T editor.strength}" AutomationProperties.Name="{l:T editor.strength}"/>
-                            <StackPanel Visibility="{Binding HasSound, Converter={StaticResource Vis}}">
-                                <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.partSound}"/>
-                                <Grid Margin="0,0,0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="PartGameIcon" Style="{StaticResource Icon}" Text="&#xE7FC;" FontSize="14" Width="28" TextAlignment="Center"
-                                               VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
-                                    <Slider Grid.Column="1" Style="{StaticResource EditSlider}" Minimum="0" Maximum="2" Value="{Binding PartGame}" SmallChange="0.05"
-                                            LargeChange="0.1" AutomationProperties.Name="{l:T editor.game}"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource ValueText}" Text="{Binding PartGameLabel}"/>
-                                </Grid>
-                                <Grid Visibility="{Binding HasSeparateTracks, Converter={StaticResource Vis}}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE720;" FontSize="14" Width="28" TextAlignment="Center" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondary}"/>
-                                    <Slider Grid.Column="1" Style="{StaticResource EditSlider}" Minimum="0" Maximum="2" Value="{Binding PartMic}" SmallChange="0.05"
-                                            LargeChange="0.1" AutomationProperties.Name="{l:T editor.mic}"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource ValueText}" Text="{Binding PartMicLabel}"/>
-                                </Grid>
-                            </StackPanel>
+                            <TextBlock Style="{StaticResource Sec}" Text="{l:T editor.partSound}" Visibility="{Binding HasSound, Converter={StaticResource Vis}}"/>
+                            <ItemsControl ItemsSource="{Binding PartTracks}" ItemTemplate="{StaticResource TrackRow}" Focusable="False"
+                                          Visibility="{Binding HasSound, Converter={StaticResource Vis}}" e:FitPanel.Optional="True" e:FitPanel.Priority="1"/>
+                            <ItemsControl ItemsSource="{Binding PartTracks}" ItemTemplate="{StaticResource TrackCell}" Focusable="False" Margin="0,0,-8,0"
+                                          ItemsPanel="{StaticResource TwoColumns}" ItemContainerStyle="{StaticResource TwoColumnCell}"
+                                          Visibility="{Binding HasSound, Converter={StaticResource Vis}}" e:FitPanel.StandIn="True"/>
                             <TextBlock Style="{StaticResource Hint}" Text="{Binding PageHint}" e:FitPanel.Optional="True"/>
                         </e:FitPanel>
 
@@ -619,7 +653,7 @@
                                              IsChecked="{Binding TextEffect, Converter={StaticResource Eq}, ConverterParameter={x:Static ed:TextEffect.Plain}}">
                                     <StackPanel>
                                         <Grid Height="22"><TextBlock Style="{StaticResource Sample}"/></Grid>
-                                        <TextBlock Text="{l:T editor.effect.plain}" FontSize="9.5" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{l:T editor.effect.plain}" FontSize="11" HorizontalAlignment="Center" Margin="0,1,0,0"/>
                                     </StackPanel>
                                 </RadioButton>
                                 <RadioButton Style="{StaticResource Tile}" Height="46" GroupName="effect" AutomationProperties.Name="{l:T editor.effect.box}"
@@ -630,7 +664,7 @@
                                                 <TextBlock Style="{StaticResource Sample}"/>
                                             </Border>
                                         </Grid>
-                                        <TextBlock Text="{l:T editor.effect.box}" FontSize="9.5" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{l:T editor.effect.box}" FontSize="11" HorizontalAlignment="Center" Margin="0,1,0,0"/>
                                     </StackPanel>
                                 </RadioButton>
                                 <RadioButton Style="{StaticResource Tile}" Height="46" GroupName="effect" AutomationProperties.Name="{l:T editor.effect.shadow}"
@@ -643,7 +677,7 @@
                                                 </TextBlock.Effect>
                                             </TextBlock>
                                         </Grid>
-                                        <TextBlock Text="{l:T editor.effect.shadow}" FontSize="9.5" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{l:T editor.effect.shadow}" FontSize="11" HorizontalAlignment="Center" Margin="0,1,0,0"/>
                                     </StackPanel>
                                 </RadioButton>
                                 <RadioButton Style="{StaticResource Tile}" Height="46" GroupName="effect" AutomationProperties.Name="{l:T editor.effect.outline}"
@@ -656,7 +690,7 @@
                                             <TextBlock Style="{StaticResource Sample}" Foreground="Black" Margin="0,1.5,0,-1.5"/>
                                             <TextBlock Style="{StaticResource Sample}"/>
                                         </Grid>
-                                        <TextBlock Text="{l:T editor.effect.outline}" FontSize="9.5" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{l:T editor.effect.outline}" FontSize="11" HorizontalAlignment="Center" Margin="0,1,0,0"/>
                                     </StackPanel>
                                 </RadioButton>
                                 <RadioButton Style="{StaticResource Tile}" Height="46" GroupName="effect" AutomationProperties.Name="{l:T editor.effect.glow}"
@@ -669,7 +703,7 @@
                                                 </TextBlock.Effect>
                                             </TextBlock>
                                         </Grid>
-                                        <TextBlock Text="{l:T editor.effect.glow}" FontSize="9.5" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{l:T editor.effect.glow}" FontSize="11" HorizontalAlignment="Center" Margin="0,1,0,0"/>
                                     </StackPanel>
                                 </RadioButton>
                                 <RadioButton Style="{StaticResource Tile}" Height="46" GroupName="effect" AutomationProperties.Name="{l:T editor.effect.neon}"
@@ -682,7 +716,7 @@
                                                 </TextBlock.Effect>
                                             </TextBlock>
                                         </Grid>
-                                        <TextBlock Text="{l:T editor.effect.neon}" FontSize="9.5" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{l:T editor.effect.neon}" FontSize="11" HorizontalAlignment="Center" Margin="0,1,0,0"/>
                                     </StackPanel>
                                 </RadioButton>
                                 <RadioButton Style="{StaticResource Tile}" Height="46" GroupName="effect" AutomationProperties.Name="{l:T editor.effect.pill}"
@@ -693,7 +727,7 @@
                                                 <TextBlock Style="{StaticResource Sample}"/>
                                             </Border>
                                         </Grid>
-                                        <TextBlock Text="{l:T editor.effect.pill}" FontSize="9.5" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{l:T editor.effect.pill}" FontSize="11" HorizontalAlignment="Center" Margin="0,1,0,0"/>
                                     </StackPanel>
                                 </RadioButton>
                             </UniformGrid>

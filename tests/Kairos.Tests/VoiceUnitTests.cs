@@ -76,6 +76,18 @@ public static class VoiceUnitTests
     }
 
     [Test]
+    public static void Matcher_can_ask_the_phrase_to_start_near_the_beginning()
+    {
+        // Listening checks the start of what was said: words, then the phrase further in, are talk, not the phrase said first.
+        var phrase = RandomSeq(15, 1);
+        var first = phrase.Concat(RandomSeq(20, 2)).ToArray();
+        var later = RandomSeq(40, 3).Concat(phrase).ToArray();
+        Assert.Near(0, PhraseMatcher.Cost(phrase, first, maxStart: 5), 1e-6, "the phrase first: found");
+        Assert.True(PhraseMatcher.Cost(phrase, later, maxStart: 5) > 0.3, "the phrase after 40 frames of words: out of reach (unrelated)");
+        Assert.Near(0, PhraseMatcher.Cost(phrase, later), 1e-6, "anywhere, as before, when no start is asked");
+    }
+
+    [Test]
     public static void Matcher_tolerates_speaking_faster_or_slower()
     {
         var phrase = RandomSeq(16, 5);
@@ -111,59 +123,105 @@ public static class VoiceUnitTests
         return found;
     }
 
+    // Say the phrase and keep talking, and it saves; Medal-like listening to all talk saved clips
+    // mid-conversation (a user, 1.0.1), so only the start of what someone says (after a silence or a breath) is checked,
+    // as long as the phrase: the phrase inside a sentence never is.
+    const int Hangover = VoiceSegmenter.HangoverChunks;
+
     [Test]
-    public static void Segmenter_checks_the_last_three_seconds_when_the_speaker_pauses()
+    public static void Segmenter_checks_a_phrase_said_on_its_own()
     {
         var seg = new VoiceSegmenter();
-        Assert.Equal(0, Feed(seg, 30, 0.05f).Count + Feed(seg, 30, 0.9f).Count, "nothing until the speaker pauses");
-        var found = Feed(seg, 30, 0.05f);
+        Assert.Equal(0, Feed(seg, 10, 0.05f).Count + Feed(seg, 30, 0.9f).Count, "nothing until the speaker pauses");
+        Assert.Equal(0, Feed(seg, Hangover - 1, 0.05f).Count, "a short breath is not the end yet");
+        var found = Feed(seg, 1, 0.05f);
         Assert.Equal(1, found.Count, "one segment");
-        Assert.Equal((30 + 30 + VoiceSegmenter.HangoverChunks) * VoiceSegmenter.Chunk, found[0].Length, "all audio so far, up to 3 s");
+        Assert.Equal((VoiceSegmenter.PreRollChunks + 30 + Hangover) * VoiceSegmenter.Chunk, found[0].Length,
+            "the utterance alone: pre-roll + phrase + pause, no words from before");
     }
 
     [Test]
-    public static void Segmenter_includes_the_words_before_a_pause()
+    public static void Segmenter_keeps_a_phrase_with_a_comma_pause_together()
     {
         var seg = new VoiceSegmenter();
+        var found = Feed(seg, 10, 0.05f).Concat(Feed(seg, 15, 0.9f)).Concat(Feed(seg, 18, 0.05f))
+            .Concat(Feed(seg, 15, 0.9f)).Concat(Feed(seg, 40, 0.05f)).ToList();
+        Assert.Equal((VoiceSegmenter.PreRollChunks + 15 + 18 + 15 + Hangover) * VoiceSegmenter.Chunk, found[0].Length,
+            "“Kairos, ... clip it” arrives whole in the first segment");
+        Assert.Equal(2, found.Count, "and the part after the pause is checked on its own too (it could be a breath)");
+    }
+
+    [Test]
+    public static void Segmenter_checks_the_start_of_talk_so_the_phrase_said_first_counts()
+    {
+        var seg = new VoiceSegmenter { HeadChunks = 60 };
         Feed(seg, 10, 0.05f);
-        Feed(seg, 15, 0.9f);
-        Assert.Equal(1, Feed(seg, 18, 0.05f).Count, "the first word alone is checked");
-        Feed(seg, 15, 0.9f);
-        var found = Feed(seg, 30, 0.05f);
-        Assert.Equal(1, found.Count, "then the whole phrase");
-        Assert.True(found[0].Length >= (15 + 18 + 15) * VoiceSegmenter.Chunk, "both words and the pause");
+        var head = Feed(seg, 200, 0.9f);
+        Assert.Equal(1, head.Count, "the phrase then talk at once: its start is checked, while the talk goes on");
+        Assert.Equal((VoiceSegmenter.PreRollChunks + 60) * VoiceSegmenter.Chunk, head[0].Length, "pre-roll + as long as the phrase");
+        Assert.Equal(0, Feed(seg, 100, 0.9f).Count, "nothing more while the talk goes on");
+    }
+
+    [Test]
+    public static void Segmenter_starts_again_after_a_breath_but_not_inside_a_sentence()
+    {
+        var seg = new VoiceSegmenter { HeadChunks = 60 };
+        Feed(seg, 10, 0.05f);
+        Feed(seg, 120, 0.9f);
+        Assert.Equal(0, Feed(seg, VoiceSegmenter.BreathChunks - 1, 0.05f).Count + Feed(seg, 80, 0.9f).Count,
+            "a gap shorter than a breath (inside a sentence): not a new start");
+        Feed(seg, VoiceSegmenter.BreathChunks, 0.05f);
+        var after = Feed(seg, 80, 0.9f);
+        Assert.Equal(1, after.Count, "after a breath (“guys… Kairos clip it”): the phrase is checked");
+        Assert.Equal((VoiceSegmenter.BreathChunks + 60) * VoiceSegmenter.Chunk, after[0].Length, "from the breath on, no words before it");
+        Assert.Equal(0, Feed(seg, 40, 0.05f).Count, "the talk ends: already checked, nothing more");
+    }
+
+    [Test]
+    public static void Segmenter_keeps_a_breath_when_a_doubtful_chunk_comes_before_the_next_words()
+    {
+        // Silero gives ~0.4 to a chunk as speech starts again: between quiet (0.35) and speech (0.5), it is no new talk.
+        var seg = new VoiceSegmenter { HeadChunks = 60 };
+        Feed(seg, 10, 0.05f);
+        Feed(seg, 120, 0.9f);
+        Feed(seg, VoiceSegmenter.BreathChunks + 2, 0.05f);
+        Feed(seg, 1, 0.4f);
+        var after = Feed(seg, 80, 0.9f);
+        Assert.Equal(1, after.Count, "still a breath: the words after it are checked");
+        Assert.Equal((VoiceSegmenter.PreRollChunks + 60) * VoiceSegmenter.Chunk, after[0].Length, "the doubtful chunk in its pre-roll");
+    }
+
+    [Test]
+    public static void Enrollment_segmenter_hands_over_a_long_sample_so_the_page_can_say_it_is_too_long()
+    {
+        var seg = new VoiceSegmenter(enrolling: true);
+        Feed(seg, 10, 0.05f);
+        int during = Feed(seg, 150, 0.9f).Count;
+        var found = Feed(seg, 40, 0.05f);
+        Assert.Equal(0, during, "nothing while speaking");
+        Assert.Equal(1, found.Count, "the long sample comes out at the pause");
     }
 
     [Test]
     public static void Enrollment_segmenter_keeps_a_comma_pause_inside_one_sample()
     {
-        var seg = new VoiceSegmenter(VoiceSegmenter.EnrollHangoverChunks, withContext: false);
+        var seg = new VoiceSegmenter(enrolling: true);
         int count = Feed(seg, 10, 0.05f).Count + Feed(seg, 15, 0.9f).Count + Feed(seg, 18, 0.05f).Count + Feed(seg, 15, 0.9f).Count;
         var found = Feed(seg, 40, 0.05f);
         Assert.Equal(0, count, "no cut at the pause");
         Assert.Equal(1, found.Count, "one sample");
-        int expected = (VoiceSegmenter.PreRollChunks + 15 + 18 + 15 + VoiceSegmenter.EnrollHangoverChunks) * VoiceSegmenter.Chunk;
+        int expected = (VoiceSegmenter.PreRollChunks + 15 + 18 + 15 + Hangover) * VoiceSegmenter.Chunk;
         Assert.Equal(expected, found[0].Length, "pre-roll + phrase + hangover");
     }
 
     [Test]
-    public static void Segmenter_keeps_a_phrase_with_a_short_pause_together()
+    public static void An_accepted_phrase_always_keeps_strict_below_the_cap()
     {
-        var seg = new VoiceSegmenter();
-        int count = Feed(seg, 10, 0.05f).Count + Feed(seg, 10, 0.9f).Count + Feed(seg, 4, 0.05f).Count
-                    + Feed(seg, 10, 0.9f).Count + Feed(seg, 30, 0.05f).Count;
-        Assert.Equal(1, count, "one segment");
-    }
-
-    [Test]
-    public static void Segmenter_checks_long_speech_in_three_second_windows()
-    {
-        var seg = new VoiceSegmenter();
-        Feed(seg, 10, 0.05f);
-        var during = Feed(seg, 200, 0.9f);
-        Assert.Equal(4, during.Count, "a window at 3 s, then one every second");
-        Assert.True(during.All(w => w.Length == VoiceSegmenter.WindowChunks * VoiceSegmenter.Chunk), "each window is 3 s");
-        Assert.Equal(1, Feed(seg, 30, 0.05f).Count, "the end of speech is checked too");
+        // A user's samples were 0.074 apart: every sensitivity became 0.100, so Strict did nothing.
+        Assert.True(VoiceSettings.Threshold(VoiceSensitivity.Strict, VoicePhrase.MaxSpread) < VoiceSettings.MaxThreshold,
+            "the most a kept phrase may vary still leaves Strict stricter");
+        Assert.True(VoicePhrase.MaxSpread >= 0.064, "the real voices measured (0.045-0.064) are kept");
+        Assert.True(VoicePhrase.MaxSpread < 0.074, "a user's loose samples are not");
     }
 
     [Test]

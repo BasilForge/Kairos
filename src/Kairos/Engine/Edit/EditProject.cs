@@ -4,18 +4,70 @@ namespace Kairos.Engine.Edit;
 
 /// <summary>A kept part of the source clip, in seconds, with its own speed and sound.</summary>
 /// <param name="Speed">How fast it plays (0.25..4; 1 is normal).</param>
-/// <param name="Game">Its game sound (track 2) as a share of the clip's level, 0..2; a one-track clip's whole sound.</param>
-/// <param name="Mic">Its mic sound (track 3) as a share of the clip's level, 0..2.</param>
 /// <param name="Look">Its own colour look (null: the clip's), at <paramref name="LookStrength"/>.</param>
-public sealed record ClipSpan(double Start, double End, double Speed = 1, double Game = 1, double Mic = 1, ColourLook? Look = null,
-    double LookStrength = 1)
+public sealed record ClipSpan(double Start, double End, double Speed = 1, ColourLook? Look = null, double LookStrength = 1)
 {
     public const double MinSpeed = 0.25, MaxSpeed = 4, MaxLevel = 2;
 
+    /// <summary>Its own sound tracks as shares of the clip's levels, 0..2 (a one-track clip: its whole sound in the first).</summary>
+    public TrackLevels Levels { get; init; }
+
+    /// <summary>The area of the picture it zooms into (0..1 of the frame, the video's shape); null: the whole picture.</summary>
+    public Rect? Zoom { get; init; }
+
     /// <summary>Plays as it was recorded.</summary>
-    public bool IsPlain => Speed == 1 && Game == 1 && Mic == 1 && Look == null;
+    public bool IsPlain => Speed == 1 && Levels.IsPlain && Look == null && Zoom == null;
 
     public double Length => End - Start;
+}
+
+/// <summary>
+/// The levels (0..2) of a clip's own sound tracks, the ones after the mix, in their order (a 1.0.1 clip: the game,
+/// then the mic; a one-track clip: its whole sound in the first), and which are muted. Default: all as recorded.
+/// </summary>
+public readonly record struct TrackLevels
+{
+    /// <summary>Kairos records at most six tracks: the mix and five of its own.</summary>
+    public const int Count = 5;
+
+    // A level is kept only while it is not 1 (its bit in _set), so the same levels are always the same value.
+    readonly double _l0, _l1, _l2, _l3, _l4;
+    readonly int _set, _muted;
+
+    TrackLevels(double l0, double l1, double l2, double l3, double l4, int set, int muted) =>
+        (_l0, _l1, _l2, _l3, _l4, _set, _muted) = (l0, l1, l2, l3, l4, set, muted);
+
+    public double this[int track] => (uint)track >= Count || (_set & (1 << track)) == 0 ? 1
+        : track switch { 0 => _l0, 1 => _l1, 2 => _l2, 3 => _l3, _ => _l4 };
+
+    public bool Muted(int track) => (uint)track < Count && (_muted & (1 << track)) != 0;
+
+    /// <summary>How loud the track is heard: its level, or 0 while muted.</summary>
+    public double Heard(int track) => Muted(track) ? 0 : this[track];
+
+    public bool IsPlain => _set == 0 && _muted == 0;
+
+    public TrackLevels With(int track, double level)
+    {
+        if ((uint)track >= Count)
+            return this;
+        Span<double> l = [_l0, _l1, _l2, _l3, _l4];
+        bool plain = level == 1;
+        l[track] = plain ? 0 : level;
+        return new(l[0], l[1], l[2], l[3], l[4], plain ? _set & ~(1 << track) : _set | (1 << track), _muted);
+    }
+
+    public TrackLevels WithMuted(int track, bool muted) => (uint)track >= Count ? this
+        : new(_l0, _l1, _l2, _l3, _l4, _set, muted ? _muted | (1 << track) : _muted & ~(1 << track));
+
+    /// <summary>Every level within 0..<paramref name="max"/>.</summary>
+    public TrackLevels Limited(double max)
+    {
+        var limited = this;
+        for (int i = 0; i < Count; i++)
+            limited = limited.With(i, Math.Clamp(this[i], 0, max));
+        return limited;
+    }
 }
 
 public enum ShapeKind { Arrow, Ellipse, Rectangle }
@@ -53,8 +105,15 @@ public sealed record ShapeItem(Guid Id, double Start, double End, ShapeKind Kind
 /// <summary>A box whose content is blurred (names, chat...).</summary>
 public sealed record BlurItem(Guid Id, double Start, double End, Rect Box) : EditItem(Id, Start, End);
 
-/// <summary>The whole clip's sound levels (0..2): game (track 2) and mic (track 3), or the mix of a one-track clip.</summary>
-public sealed record SoundLevels(double Game = 1, double Mic = 1, double All = 1, bool GameMuted = false, bool MicMuted = false);
+/// <summary>
+/// The whole clip's sound levels (0..2): each of its own tracks (a 1.0.1 clip: game and mic), or <paramref name="All"/>,
+/// a one-track clip's.
+/// </summary>
+public sealed record SoundLevels(double All = 1)
+{
+    /// <summary>The clip's own tracks after the mix: their levels and mutes.</summary>
+    public TrackLevels Tracks { get; init; }
+}
 
 /// <summary>
 /// Everything an edit changes, as one immutable value: the kept parts (each with its speed and sound), what is drawn
@@ -134,6 +193,26 @@ public sealed record EditProject(string Source, double Duration, IReadOnlyList<C
         return this with { Kept = kept };
     }
 
+    /// <summary>Some part zooms into the picture.</summary>
+    public bool HasZoom => Kept.Any(k => k.Zoom != null);
+
+    /// <summary>
+    /// The area shown at a source moment (0..1 of the frame): a zoomed part's own, eased from the part before (the
+    /// whole picture when it has no zoom) over its first <see cref="VideoZoom.EaseSeconds"/> as seen, and back to the
+    /// whole picture over its last ones when the part after has no zoom; the whole picture elsewhere.
+    /// </summary>
+    public Rect ZoomAt(double source)
+    {
+        int i = IndexAt(source);
+        if (i < 0 || Kept[i].Zoom is not { } zoom)
+            return VideoZoom.Full;
+        var span = Kept[i];
+        Rect before = i > 0 ? Kept[i - 1].Zoom ?? VideoZoom.Full : VideoZoom.Full;
+        bool outToFull = i == Kept.Count - 1 || Kept[i + 1].Zoom == null;
+        Rect shown = before == zoom ? zoom : VideoZoom.Lerp(before, zoom, VideoZoom.Ease((source - span.Start) / span.Speed));
+        return outToFull ? VideoZoom.Lerp(VideoZoom.Full, shown, VideoZoom.Ease((span.End - source) / span.Speed)) : shown;
+    }
+
     /// <summary>The colour look at a source moment: its part's own, or the clip's.</summary>
     public (ColourLook Look, double Strength) LookAt(double source)
     {
@@ -188,8 +267,7 @@ public sealed record EditProject(string Source, double Duration, IReadOnlyList<C
     static ClipSpan Limit(ClipSpan k) => k with
     {
         Speed = Math.Clamp(k.Speed, ClipSpan.MinSpeed, ClipSpan.MaxSpeed),
-        Game = Math.Clamp(k.Game, 0, ClipSpan.MaxLevel),
-        Mic = Math.Clamp(k.Mic, 0, ClipSpan.MaxLevel),
+        Levels = k.Levels.Limited(ClipSpan.MaxLevel),
     };
 
     /// <summary>Removes the kept part playing at <paramref name="output"/>; the last one stays.</summary>

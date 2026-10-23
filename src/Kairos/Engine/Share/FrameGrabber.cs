@@ -12,17 +12,12 @@ public sealed record GrabbedFrame(int Width, int Height, byte[] Bgra);
 /// </summary>
 public sealed unsafe class FrameGrabber : IDisposable
 {
-    const int SwsArea = 0x20;      // SWS_AREA: clean downscaling
-    const int SwsBilinear = 0x2;
-
     AVFormatContext* _format;
     AVCodecContext* _decoder;
     AVBufferRef* _device;
     AVFrame* _frame;
-    AVFrame* _transfer;
     AVPacket* _packet;
-    SwsContext* _sws;
-    (int W, int H, AVPixelFormat Fmt, int OutW, int OutH) _swsKey;
+    readonly BgraConverter _converter = new();
     readonly int _video;
     readonly AVRational _timeBase;
     readonly long _startPts;
@@ -54,7 +49,6 @@ public sealed unsafe class FrameGrabber : IDisposable
             _startPts = stream->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : stream->start_time;
             _decoder = HardwareDecoding.OpenVideo(stream, hardwareDecode: true, out _device);
             _frame = ffmpeg.av_frame_alloc();
-            _transfer = ffmpeg.av_frame_alloc();
             _packet = ffmpeg.av_packet_alloc();
         }
         catch
@@ -74,7 +68,7 @@ public sealed unsafe class FrameGrabber : IDisposable
         long target = _startPts + (long)(Math.Max(0, seconds) / ffmpeg.av_q2d(_timeBase));
         // The same moment again (an edit while the playhead stays): the picture is still here, only converted again.
         if (exact && _at == target)
-            return ConvertKept(width, SwsBilinear);
+            return Convert(width, SwsFlags.SWS_BILINEAR);
         // A little ahead of the last picture (stepping, a short drag): decoding on from it costs less than going back to
         // the key frame and decoding up to here again, and gives the very same picture. Anything else seeks as before.
         long ahead = (long)(AheadSeconds / ffmpeg.av_q2d(_timeBase));
@@ -134,53 +128,20 @@ public sealed unsafe class FrameGrabber : IDisposable
             return null;
         // The picture stays decoded in _frame for the next grab (the same moment, or a step on from it).
         _at = exact ? (best->best_effort_timestamp == ffmpeg.AV_NOPTS_VALUE ? best->pts : best->best_effort_timestamp) : long.MinValue;
-        return ConvertKept(width, exact ? SwsBilinear : SwsArea);
+        return Convert(width, exact ? SwsFlags.SWS_BILINEAR : SwsFlags.SWS_AREA); // area: clean downscaling
     }
 
     /// <summary>How far ahead of the last picture a grab decodes on instead of seeking (about half a key frame interval).</summary>
     const double AheadSeconds = 0.5;
 
-    GrabbedFrame ConvertKept(int width, int flags)
+    /// <summary>The picture kept in <c>_frame</c>, <paramref name="width"/> wide.</summary>
+    GrabbedFrame Convert(int width, SwsFlags flags)
     {
-        try
-        {
-            return Convert(_frame, width, flags);
-        }
-        finally
-        {
-            ffmpeg.av_frame_unref(_transfer);
-        }
-    }
-
-    GrabbedFrame Convert(AVFrame* frame, int width, int flags)
-    {
-        AVFrame* picture = frame;
-        if (frame->hw_frames_ctx != null)
-        {
-            ClipTranscoder.Check(ffmpeg.av_hwframe_transfer_data(_transfer, frame, 0), "Reading the decoded picture");
-            picture = _transfer;
-        }
         int outW = Math.Max(2, width & ~1);
-        int outH = Math.Max(2, (int)Math.Round((double)outW * picture->height / picture->width) & ~1);
-        var key = (picture->width, picture->height, (AVPixelFormat)picture->format, outW, outH);
-        if (_sws == null || _swsKey != key)
-        {
-            ffmpeg.sws_freeContext(_sws);
-            _sws = ffmpeg.sws_getContext(picture->width, picture->height, (AVPixelFormat)picture->format, outW, outH,
-                AVPixelFormat.AV_PIX_FMT_BGRA, flags, null, null, null);
-            _swsKey = key;
-            if (_sws == null)
-                throw new ShareException("Cannot convert the picture.");
-        }
+        int outH = Math.Max(2, (int)Math.Round((double)outW * _frame->height / _frame->width) & ~1);
         var bgra = new byte[outW * outH * 4];
         fixed (byte* dst = bgra)
-        {
-            byte*[] dstData = [dst, null, null, null];
-            int[] dstStride = [outW * 4, 0, 0, 0];
-            byte*[] srcData = [picture->data[0], picture->data[1], picture->data[2], picture->data[3]];
-            int[] srcStride = [picture->linesize[0], picture->linesize[1], picture->linesize[2], picture->linesize[3]];
-            ffmpeg.sws_scale(_sws, srcData, srcStride, 0, picture->height, dstData, dstStride);
-        }
+            _converter.Convert(_frame, outW, outH, flags, dst, outW * 4);
         // The picture has no alpha; make it opaque for display.
         for (int i = 3; i < bgra.Length; i += 4)
             bgra[i] = 255;
@@ -189,13 +150,10 @@ public sealed unsafe class FrameGrabber : IDisposable
 
     public void Dispose()
     {
-        ffmpeg.sws_freeContext(_sws);
-        _sws = null;
+        _converter.Dispose();
         AVFrame* f = _frame;
         ffmpeg.av_frame_free(&f);
-        f = _transfer;
-        ffmpeg.av_frame_free(&f);
-        _frame = _transfer = null;
+        _frame = null;
         AVPacket* p = _packet;
         ffmpeg.av_packet_free(&p);
         _packet = null;

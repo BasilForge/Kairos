@@ -15,7 +15,7 @@ public static class AudioLevelTests
         system.Add(-0.5f); // a loud moment while the Audio page was closed
         mic.Add(-1f);
         string name = "kairos-test-" + Guid.NewGuid().ToString("N");
-        using var server = new Kairos.App.PipeServer(_ => "", () => (system.Take(), mic.Take()), name);
+        using var server = new Kairos.App.PipeServer(_ => "", () => [("system", system.Take()), ("mic", mic.Take())], name);
         using var client = new System.IO.Pipes.NamedPipeClientStream(".", name, System.IO.Pipes.PipeDirection.InOut,
             System.IO.Pipes.PipeOptions.CurrentUserOnly);
         client.Connect(2000);
@@ -23,10 +23,21 @@ public static class AudioLevelTests
         using var reader = new StreamReader(client, leaveOpen: true);
         writer.WriteLine("levels");
 
-        Assert.Equal("-100.0 -100.0", reader.ReadLine(), "silence now: the old peak is not shown");
+        Assert.Equal("system:-100.0|mic:-100.0", reader.ReadLine(), "silence now: the old peak is not shown");
         system.Add(-20f);
         var live = Enumerable.Range(0, 5).Select(_ => reader.ReadLine()).ToList();
-        Assert.True(live.Contains("-20.0 -100.0"), $"sound from now on still shows ({string.Join(" | ", live)})");
+        Assert.True(live.Contains("system:-20.0|mic:-100.0"), $"sound from now on still shows ({string.Join(" | ", live)})");
+    }
+
+    [Test]
+    public static void Every_row_has_its_level_on_the_line()
+    {
+        var levels = Kairos.App.LevelStream.Parse("game:-12.0|app:spotify:-30.5|other:-100.0");
+        Assert.Equal("game=-12,app:spotify=-30.5,other=-100", string.Join(",", levels.Select(l => FormattableString.Invariant($"{l.Id}={l.Db}"))), "ids may hold a colon");
+        var stream = new Kairos.App.LevelStream(connect: false);
+        stream.Push(levels);
+        Assert.Near(-30.5, stream.Level("app:spotify"), 0.001, "a row's level");
+        Assert.Near(LevelMeter.Silent, stream.Level("discord"), 0.001, "a row that sent nothing is silent");
     }
 
     [Test]
@@ -74,5 +85,12 @@ public static class AudioLevelTests
         a.SelectMic("{0.0.1.00000000}.{eb3f2fdf}");
         Assert.Equal(true, a.Mic, "on");
         Assert.Equal("{0.0.1.00000000}.{eb3f2fdf}", a.MicDevice, "device");
+    }
+
+    [Test]
+    public static void An_app_with_a_space_in_its_name_has_a_level()
+    {
+        var levels = Kairos.App.LevelStream.Parse("app:riot client:-12.0|mic:-50.0");
+        Assert.Equal("app:riot client=-12,mic=-50", string.Join(",", levels.Select(l => $"{l.Id}={l.Db}")), "ids keep their spaces");
     }
 }

@@ -36,7 +36,7 @@
         </Grid>
 
         <!-- Never mirrored: a clip plays the same in Arabic -->
-        <Border Grid.Row="1" Margin="28,0" CornerRadius="10" ClipToBounds="True" HorizontalAlignment="Center" VerticalAlignment="Center"
+        <Border x:Name="Frame" Grid.Row="1" Margin="28,0" CornerRadius="10" ClipToBounds="True" HorizontalAlignment="Center" VerticalAlignment="Center"
                 BorderBrush="{StaticResource Stroke}" BorderThickness="1" Background="Black" MouseLeftButtonDown="OnVideoClick" Cursor="Hand">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.5" Color="Black"/>
@@ -66,7 +66,7 @@
             <TextBlock x:Name="Time" Grid.Column="1" Style="{StaticResource Caption}" Margin="12,0" VerticalAlignment="Center" FlowDirection="LeftToRight"/>
             <Slider x:Name="Seek" Grid.Column="2" VerticalAlignment="Center" Minimum="0" IsMoveToPointEnabled="True" FlowDirection="LeftToRight"
                     AutomationProperties.Name="{Binding Text, ElementName=Time}"
-                    ValueChanged="OnSeekChanged" PreviewMouseLeftButtonDown="OnSeekStart" PreviewMouseLeftButtonUp="OnSeekEnd"/>
+                    ValueChanged="OnSeekChanged" Thumb.DragStarted="OnSeekDragStarted" Thumb.DragCompleted="OnSeekDragCompleted"/>
             <Button x:Name="MuteButton" Grid.Column="3" Style="{StaticResource Ghost}" Padding="11,9" Margin="12,0,0,0" Click="OnMute" VerticalAlignment="Center">
                 <TextBlock x:Name="MuteIcon" Style="{StaticResource Icon}" Text="&#xE767;" FontSize="13"/>
             </Button>

@@ -1,0 +1,9 @@
+<Project>
+  <!--
+    `dotnet test` runs Kairos's own test runner: the project has no test adapter, so the VSTest target is replaced (this
+    file is read after the SDK's own) with running the built tests; a failed test fails the command.
+  -->
+  <Target Name="VSTest" DependsOnTargets="Build">
+    <Exec Command="&quot;$(TargetDir)$(AssemblyName).exe&quot;" WorkingDirectory="$(TargetDir)" />
+  </Target>
+</Project>

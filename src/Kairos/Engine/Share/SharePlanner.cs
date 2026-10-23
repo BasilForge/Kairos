@@ -19,7 +19,9 @@ public sealed record ShareSpec(SharePlatform Platform, long MaxBytes, double Max
     long QualityCap = SharePlanner.QualityCapBitrate);
 
 /// <summary>Everything the transcoder needs: which part of the clip, the picture and the video bitrate.</summary>
-public sealed record SharePlan(double Start, double Duration, int Width, int Height, CropRect? Crop, double Fps, long VideoBitrate);
+/// <param name="AudioBitrate">The sound re-encoded at this bitrate to fit a size; 0: copied as it is.</param>
+public sealed record SharePlan(double Start, double Duration, int Width, int Height, CropRect? Crop, double Fps, long VideoBitrate,
+    long AudioBitrate = 0);
 
 /// <summary>One stop on the quality slider: the picture's short side in pixels; Original = the clip's own size.</summary>
 public sealed record SizeStep(int ShortSide, bool Original);
@@ -33,7 +35,7 @@ public static partial class SharePlanner
     const double FullHdPixels = 1920 * 1080;
 
     /// <summary>Share of the size limit the estimate may use: leaves room for MP4 overhead and encoder overshoot.</summary>
-    const double SizeMargin = 0.92;
+    public const double SizeMargin = 0.92;
 
     /// <summary>Below this many bits per pixel H.264 turns to blocks in fast games, so a smaller picture wins.</summary>
     const double MinBitsPerPixel = 0.035;
@@ -72,6 +74,66 @@ public static partial class SharePlanner
         SharePlatform.All => Strictest(platform, SiteAccounts.Sites.Select(p => Spec(p, xPremium)).ToList()),
         _ => throw new ArgumentOutOfRangeException(nameof(platform), "the file option shares the clip as it is"),
     };
+
+    /// <summary>
+    /// Whether a clip in <paramref name="videoCodec"/> (FFmpeg's name) is handed on as it is when copied or dragged out:
+    /// HEVC plays neither in Discord nor on many phones or a Windows without its extension, so it goes as H.264 (the
+    /// owner, 2026-10-21). AV1 plays in Discord and on today's phones.
+    /// </summary>
+    public static bool PlaysEverywhere(string videoCodec) => videoCodec != "hevc";
+
+    /// <summary>The sound's bitrate a plan starts from: the clip's own, 192 kbps when it does not say, none without sound.</summary>
+    public static long AudioBitrateOf(MediaInfo info) => info.AudioCodec == null ? 0 : info.AudioBitrate > 0 ? info.AudioBitrate : 192_000;
+
+    /// <summary>A copy of <paramref name="info"/>'s <paramref name="start"/>..+<paramref name="duration"/> at Copy's size (0: its own).</summary>
+    public static SharePlan CopyPlan(int mb, MediaInfo info, double start, double duration)
+    {
+        var spec = CopySpec(mb);
+        long audio = AudioBitrateOf(info);
+        var size = DefaultSize(spec, duration, info.Width, info.Height, info.Fps, audio, false);
+        return Plan(spec, start, duration, info.Width, info.Height, info.Fps, audio, false, 0.5, size.ShortSide);
+    }
+
+    /// <summary>Copy's sizes in MB, each with what it is for: the clip's own (0), and what Discord takes free, with Nitro Basic and with Nitro.</summary>
+    public static IReadOnlyList<(int Mb, string For)> CopyTiers { get; } = [(0, ""), (10, "Discord"), (50, "Nitro Basic"), (500, "Nitro")];
+
+    public static IReadOnlyList<int> CopySizes { get; } = [.. CopyTiers.Select(t => t.Mb)];
+
+    /// <summary>Copy made to fit <paramref name="mb"/> MB (0: no limit, the quality cap sets the size).</summary>
+    public static ShareSpec CopySpec(int mb) =>
+        mb > 0 ? Spec(SharePlatform.Copy) with { MaxBytes = mb * 1_000_000L } : Spec(SharePlatform.Copy);
+
+    /// <summary>The sound's bitrates when a size makes it smaller, biggest first.</summary>
+    static readonly long[] AudioSteps = [192_000, 128_000, 96_000, 64_000];
+
+    /// <summary>
+    /// The sound's bitrate for a size: 0 (copied as it is) when the source takes no more than a tenth of what the size
+    /// leaves each second; otherwise the biggest step that does, never below 64 kb/s.
+    /// </summary>
+    public static long AudioFor(ShareSpec spec, double duration, long sourceBitrate)
+    {
+        if (spec.MaxBytes == long.MaxValue || duration <= 0)
+            return 0;
+        double share = spec.MaxBytes * SizeMargin * 8 / duration * 0.10;
+        if (sourceBitrate > 0 && sourceBitrate <= share)
+            return 0;
+        long step = AudioSteps.FirstOrDefault(s => s <= share, AudioSteps[^1]);
+        return sourceBitrate > 0 && step >= sourceBitrate ? 0 : step;
+    }
+
+    /// <summary>
+    /// The longest part that fits the size at all: the smallest picture at 30 fps and the lowest sound
+    /// (+∞ with no size limit).
+    /// </summary>
+    public static double SecondsThatFit(ShareSpec spec, int srcWidth, int srcHeight, bool vertical)
+    {
+        if (spec.MaxBytes == long.MaxValue)
+            return double.PositiveInfinity;
+        var smallest = SizeSteps(SourceShortSide(srcWidth, srcHeight, vertical), spec.MaxShortSide)[0];
+        var frame = Frame(srcWidth, srcHeight, vertical, 0.5, smallest.ShortSide);
+        double minVideo = (double)frame.Width * frame.Height * 30 * MinBitsPerPixel;
+        return spec.MaxBytes * SizeMargin * 8 / (minVideo + AudioSteps[^1]);
+    }
 
     static ShareSpec Strictest(SharePlatform platform, List<ShareSpec> specs) => new(platform, specs.Min(s => s.MaxBytes),
         specs.Min(s => s.MaxSeconds), specs.Min(s => s.MaxShortSide), specs.Min(s => s.MaxFps));
@@ -188,17 +250,18 @@ public static partial class SharePlanner
         ShareFrame frame = Frame(srcWidth, srcHeight, vertical, cropPosition, shortSide);
         double pixels = (double)frame.Width * frame.Height;
         long videoBitrate = (long)(spec.QualityCap * (pixels / FullHdPixels));
+        long audio = AudioFor(spec, duration, audioBitrate);
         if (spec.MaxBytes != long.MaxValue && duration > 0)
         {
             double totalBits = spec.MaxBytes * SizeMargin * 8;
-            videoBitrate = Math.Min(videoBitrate, (long)(totalBits / duration) - audioBitrate);
+            videoBitrate = Math.Min(videoBitrate, (long)(totalBits / duration) - (audio > 0 ? audio : audioBitrate));
         }
         videoBitrate = Math.Max(videoBitrate, 100_000);
 
         // Full frame rate while the picture stays clean, else 30 fps so each frame gets more bits.
         double fast = FastFps(spec, srcFps);
         double fps = videoBitrate / (pixels * fast) >= MinBitsPerPixel ? fast : Math.Min(fast, 30);
-        return new SharePlan(start, duration, frame.Width, frame.Height, frame.Crop, fps, videoBitrate);
+        return new SharePlan(start, duration, frame.Width, frame.Height, frame.Crop, fps, videoBitrate, audio);
     }
 
     /// <summary>The app name Kairos put in front of the date, or the whole name for a renamed file.</summary>

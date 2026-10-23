@@ -6,7 +6,8 @@ namespace Kairos.Engine;
 public enum ClipKind { Video, Picture }
 
 /// <summary>A video or picture on the Clips page: where it is, the group it is listed under, when it was written and its size.</summary>
-public sealed record LibraryClip(string Path, string Group, DateTime Time, long Size, ClipKind Kind = ClipKind.Video);
+/// <param name="Camera">The clip's own camera file ("….camera.mp4" beside it), or null.</param>
+public sealed record LibraryClip(string Path, string Group, DateTime Time, long Size, ClipKind Kind = ClipKind.Video, string? Camera = null);
 
 /// <summary>
 /// Every video and picture in the clips folder, whatever made it (Kairos, NVIDIA, Game Bar, OBS...) and however deep:
@@ -38,10 +39,29 @@ public static partial class ClipLibrary
         var found = new List<FileInfo>();
         if (Directory.Exists(root))
             Walk(new DirectoryInfo(root), found, 0);
+        // A clip's camera file is part of that clip: no card of its own.
+        var cameras = found.Where(f => IsCameraFile(f.Name)).Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return found
+            .Where(f => !IsCameraFile(f.Name))
             .OrderByDescending(f => f.LastWriteTime)
-            .Select(f => new LibraryClip(f.FullName, GroupOf(root, f.FullName), f.LastWriteTime, f.Length, KindOf(f.Name)!.Value))
+            .Select(f => new LibraryClip(f.FullName, GroupOf(root, f.FullName), f.LastWriteTime, f.Length, KindOf(f.Name)!.Value,
+                cameras.Count > 0 && CameraOf(f.FullName) is var camera && cameras.Contains(camera) ? camera : null))
             .ToList();
+    }
+
+    /// <summary>"….camera.mp4": a clip's own camera file.</summary>
+    public static bool IsCameraFile(string name) => name.EndsWith(".camera.mp4", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Where a clip's camera file is (whether it is there or not).</summary>
+    public static string CameraOf(string clip) => System.IO.Path.ChangeExtension(clip, null) + ".camera.mp4";
+
+    /// <summary>A clip's files: the clip, then its camera file when there is one (they are deleted or freed together).</summary>
+    public static IEnumerable<string> FilesOf(string clip)
+    {
+        yield return clip;
+        string camera = CameraOf(clip);
+        if (File.Exists(camera))
+            yield return camera;
     }
 
     /// <summary>The newest picture under <paramref name="root"/>, or null.</summary>

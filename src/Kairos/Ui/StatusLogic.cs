@@ -23,10 +23,36 @@ public static class StatusLogic
         return status.WaitingForGame ? "waiting" : "active";
     }
 
-    /// <summary>The line under the instant replay title: only what is wrong, or how to turn it on (the hotkeys sit in the buttons).</summary>
-    public static string ReplayDetail(string state, string? error) => state switch
+    /// <summary>Why the full screen is recorded instead of the chosen capture, or "" (the Status page's notice).</summary>
+    /// <summary>The Quality page's line under Automatic: what it records with, and why not AV1 or a graphics card.</summary>
+    public static string AutoLine(Engine.AutoPick auto)
     {
-        "error" => error ?? "",
+        var choice = Engine.EncoderCatalog.ById(auto.Encoder);
+        string why = choice.Vendor == Engine.EncoderVendor.Software ? " " + Text.Get("quality.autoCpu")
+            : choice.Codec != Settings.VideoCodec.Av1 ? " " + Text.Get("quality.autoNoAv1") : "";
+        return Text.Format("quality.autoNow", Text.Ltr(Engine.EncoderCatalog.Describe(choice)), Text.Ltr(auto.Device), $"{auto.Height}p", auto.Fps,
+            Text.Get($"quality.{auto.Quality.ToString().ToLowerInvariant()}")) + why;
+    }
+
+    public static string CaptureWarning(Engine.EngineStatus? engine) => engine switch
+    {
+        { CaptureNotice: { } key } => Text.Get(key),
+        { NvidiaNote: { } nvidia } => Text.Get(nvidia),
+        { DiskFellBack: true } => Text.Get("status.diskReplayFailed"),
+        { EncoderFallback: { } wanted, Encoder: { } id } => Text.Format("status.encoderFallback", Text.Ltr(Engine.EncoderCatalog.Describe(Engine.EncoderCatalog.ById(id))), Text.Ltr(wanted)),
+        { AudioDeviceTrouble: { } device } => Text.Format("status.audioDevice", device),
+        { Behind: true } => Text.Get("status.behind"),
+        { Relief: > 0 } lighter => Text.Get(Engine.LagRelief.TextKey(lighter.Relief)),
+        _ => "",
+    };
+
+    /// <summary>
+    /// The line under the instant replay title: what to try when it could not start (in the user's language; libobs's own
+    /// words go to the log), or how to turn it on (the hotkeys sit in the buttons).
+    /// </summary>
+    public static string ReplayDetail(string state) => state switch
+    {
+        "error" => Text.Get("fix.closeRecorders"),
         "off" => Text.Get("status.offHint"),
         _ => "",
     };

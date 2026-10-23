@@ -180,13 +180,45 @@ public sealed partial class ShareViewModel
         RequestPreview();
     }
 
-    void RequestPreview()
+    /// <summary>
+    /// The playhead or a handle is being dragged: each picture comes from the nearest key frame (a decode of up to a
+    /// second of frames per move was slow on CPU decoding and high frame rates); the exact one 150 ms after the drag
+    /// pauses, and when it ends.
+    /// </summary>
+    public bool Scrubbing
+    {
+        get => _scrubbing;
+        set
+        {
+            if (_scrubbing == value)
+                return;
+            _scrubbing = value;
+            if (!value)
+                RequestPreview();
+        }
+    }
+
+    bool _scrubbing;
+    int _settle;
+
+    void RequestPreview() => RequestPreview(exact: !_scrubbing);
+
+    void RequestPreview(bool exact)
     {
         if (_info == null)
             return;
+        if (!exact)
+        {
+            int settle = ++_settle;
+            _host.After(TimeSpan.FromMilliseconds(150), () =>
+            {
+                if (settle == _settle && _scrubbing)
+                    RequestPreview(exact: true);
+            });
+        }
         string clip = _clip;
         double at = Math.Min(_previewTime, Math.Max(0, _info.Duration - 0.05));
-        _host.GrabFrames(clip, [at], PreviewPixels, exact: true, (_, frame) =>
+        _host.GrabFrames(clip, [at], PreviewPixels, exact, (_, frame) =>
         {
             if (clip != _clip || frame == null || _playing)
                 return;
@@ -195,17 +227,19 @@ public sealed partial class ShareViewModel
         });
     }
 
-    long AudioBitrate => _info?.AudioCodec == null ? 0 : _info.AudioBitrate > 0 ? _info.AudioBitrate : 192_000;
+    long AudioBitrate => _info == null ? 0 : SharePlanner.AudioBitrateOf(_info);
 
     SharePlan CurrentPlan() => SharePlanner.Plan(CurrentSpec, _trimStart, _trimEnd - _trimStart, _info!.Width, _info.Height, _info.Fps,
         AudioBitrate, Vertical, _crop, CurrentSize.ShortSide);
 
     /// <summary>Everywhere: what one site gets of the shared cut (its own picture size, the shared 9:16 choice).</summary>
-    SharePlan PlanFor(SharePlatform site)
+    SharePlan PlanFor(SharePlatform site) => PlanFor(SharePlanner.Spec(site, _xPremium == true), Vertical, _crop);
+
+    /// <summary>The cut for <paramref name="spec"/> at the biggest picture that stays clean in its size.</summary>
+    SharePlan PlanFor(ShareSpec spec, bool vertical, double crop)
     {
-        var spec = SharePlanner.Spec(site, _xPremium == true);
-        var size = SharePlanner.DefaultSize(spec, _trimEnd - _trimStart, _info!.Width, _info.Height, _info.Fps, AudioBitrate, Vertical);
+        var size = SharePlanner.DefaultSize(spec, _trimEnd - _trimStart, _info!.Width, _info.Height, _info.Fps, AudioBitrate, vertical);
         return SharePlanner.Plan(spec, _trimStart, _trimEnd - _trimStart, _info.Width, _info.Height, _info.Fps, AudioBitrate,
-            Vertical, _crop, size.ShortSide);
+            vertical, crop, size.ShortSide);
     }
 }

@@ -1,5 +1,6 @@
 using FFmpeg.AutoGen;
 using Kairos.Engine;
+using Kairos.Engine.Audio;
 using Kairos.Engine.Edit;
 using Kairos.Engine.Share;
 using Kairos.Settings;
@@ -13,6 +14,11 @@ public static unsafe class EditExportTests
     static readonly string Fixtures = Path.Combine(AppContext.BaseDirectory, "Fixtures", "Share");
     static string Av1 => Path.Combine(Fixtures, "clip-av1-2tracks.mp4");
     static string H264 => Path.Combine(Fixtures, "clip-h264.mp4");
+    /// <summary>
+    /// A separate-sources clip: Mix, Game (440 Hz from 1 s), Discord (660 Hz before 1 s), Microphone (880 Hz from 1 s) and
+    /// Other sounds (1100 Hz from 2 s), 3 seconds.
+    /// </summary>
+    static string Five => Path.Combine(Fixtures, "clip-h264-5tracks.mp4");
 
     static string Folder()
     {
@@ -28,8 +34,42 @@ public static unsafe class EditExportTests
         IProgress<double>? progress = null, CancellationToken ct = default)
     {
         var info = ClipTranscoder.Probe(source);
-        var graph = EditGraph.Build(p, info.Width, info.Height, info.Fps, info.AudioStreams, pngs ?? new Dictionary<Guid, Overlay>());
+        var graph = EditGraph.Build(p, info.Width, info.Height, info.Fps, info.AudioStreams, pngs ?? new Dictionary<Guid, Overlay>(),
+            TrackLayout.Of(info));
         return EditExporter.Export(source, target, graph, Plan(info), progress, ct);
+    }
+
+    /// <summary>The loudest sample of a sound track between two moments, 0..1.</summary>
+    static double Peak(string clip, int track, double from, double to)
+    {
+        using var playback = new ClipPlayback(clip, 64, 36, track);
+        playback.Seek(from);
+        int peak = 0;
+        while (playback.NextSound() && playback.SoundTime < to)
+        {
+            var bytes = playback.Sound;
+            for (int i = 0; i + 1 < bytes.Length; i += 2)
+                peak = Math.Max(peak, Math.Abs((int)(short)(bytes[i] | bytes[i + 1] << 8)));
+        }
+        return peak / 32768.0;
+    }
+
+    [Test]
+    public static void An_edit_keeps_the_clips_own_tracks_with_their_names()
+    {
+        TestFfmpeg.Load();
+        string dir = Folder();
+        var info = ClipTranscoder.Probe(Five);
+        Assert.Equal("Mix,Game,Discord,Microphone,Other sounds", string.Join(",", TrackLayout.Of(info).Labels), "the fixture's names");
+        var p = EditProject.For(Five, info.Duration) with { Sound = new SoundLevels { Tracks = default(TrackLevels).WithMuted(1, true) } };
+        string saved = Export(Five, p, Path.Combine(dir, "five.mp4")).Path;
+        Assert.Equal(5, ClipTranscoder.Probe(saved).AudioStreams, "the mix and the four tracks");
+        Assert.Equal("Mix,Game,Discord,Microphone,Other sounds", string.Join(",", TrackLayout.Of(ClipTranscoder.Probe(saved)).Labels), "saved with their names");
+        Assert.True(Peak(saved, 0, 0.1, 0.9) < 0.01, "Discord muted: the mix is silent while only Discord spoke");
+        Assert.True(Peak(saved, 2, 0.1, 0.9) < 0.01, "and its own track");
+        Assert.True(Peak(saved, 1, 1.2, 2.5) > 0.1, "the game plays");
+        Assert.True(Peak(saved, 0, 1.2, 2.5) > 0.1, "in the mix too");
+        Assert.True(Peak(Five, 0, 0.1, 0.9) > 0.1, "(the clip's mix has Discord there)");
     }
 
     [Test]
@@ -343,7 +383,7 @@ public static unsafe class EditExportTests
         var info = ClipTranscoder.Probe(threeTracks);
         Assert.Equal(3, info.AudioStreams, "fixture: mix, game, mic");
         var p = EditProject.For(threeTracks, info.Duration).SplitAt(2).SplitAt(4).DeleteSegmentAt(3)
-            with { Sound = new SoundLevels(Game: 0.6, MicMuted: true) };
+            with { Sound = Sounds.Clip(game: 0.6, micMuted: true) };
         string path = Export(threeTracks, p, Path.Combine(dir, "mixed.mp4")).Path;
         var output = ClipTranscoder.Probe(path);
         Assert.Equal(3, output.AudioStreams, "mix, game and mic, like the clip");
@@ -425,5 +465,54 @@ public static unsafe class EditExportTests
     sealed class SyncProgress(Action<double> report) : IProgress<double>
     {
         public void Report(double value) => report(value);
+    }
+
+    [Test]
+    public static void A_zoomed_part_shows_its_area_at_the_clips_size()
+    {
+        TestFfmpeg.Load();
+        string dir = Folder();
+        var info = ClipTranscoder.Probe(H264);
+        var p = EditProject.For(H264, info.Duration).SplitAt(2).SplitAt(4)
+            .WithParts([1], k => k with { Zoom = new System.Windows.Rect(0, 0, 0.5, 0.5) });
+        var result = Export(H264, p, Path.Combine(dir, "zoom.mp4"));
+        var o = ClipTranscoder.Probe(result.Path);
+        Assert.Equal((info.Width, info.Height), (o.Width, o.Height), "the clip's size");
+        using var output = new FrameGrabber(result.Path);
+        using var source = new FrameGrabber(H264);
+        var zoomed = output.Grab(3.0, info.Width / 2, exact: true)!;
+        var whole = source.Grab(3.0, info.Width / 2, exact: true)!;
+        var big = source.Grab(3.0, info.Width, exact: true)!;
+        // The source's top-left quarter at full size is the zoomed picture at half size.
+        var quarter = new byte[zoomed.Bgra.Length];
+        int row = zoomed.Width * 4;
+        for (int y = 0; y < zoomed.Height; y++)
+            Array.Copy(big.Bgra, y * big.Width * 4, quarter, y * row, row);
+        double toQuarter = Difference(zoomed.Bgra, quarter), toWhole = Difference(zoomed.Bgra, whole.Bgra);
+        Assert.True(toQuarter < toWhole / 2, $"zoomed into the quarter ({toQuarter:0.0} vs {toWhole:0.0})");
+        var before = output.Grab(1.0, info.Width / 2, exact: true)!;
+        Assert.True(Difference(before.Bgra, source.Grab(1.0, info.Width / 2, exact: true)!.Bgra) < 12, "the part before is not zoomed");
+    }
+
+    static double Difference(byte[] a, byte[] b)
+    {
+        long sum = 0;
+        int n = Math.Min(a.Length, b.Length);
+        for (int i = 0; i < n; i++)
+            sum += Math.Abs(a[i] - b[i]);
+        return (double)sum / n;
+    }
+
+    [Test]
+    public static void A_vertical_clip_exports_vertical()
+    {
+        // The camera's 9:16 layout saves clips like this one.
+        TestFfmpeg.Load();
+        string vertical = Path.Combine(Fixtures, "clip-vertical.mp4");
+        var info = ClipTranscoder.Probe(vertical);
+        var p = EditProject.For(vertical, info.Duration).SplitAt(1).WithParts([1], k => k with { Zoom = new System.Windows.Rect(0, 0, 0.5, 0.5) });
+        var result = Export(vertical, p, Path.Combine(Folder(), "vertical.mp4"));
+        var o = ClipTranscoder.Probe(result.Path);
+        Assert.Equal((360, 640), (o.Width, o.Height), "still 9:16, zoomed part and all");
     }
 }

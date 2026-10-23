@@ -12,6 +12,15 @@ public static class SettingsStore
 
     public static string DefaultPath { get; } = Path.Combine(AppDataDir, "settings.json");
 
+    /// <summary>
+    /// A run with a data folder of its own (KAIROS_DATA: a test or development run): it never touches what belongs to the
+    /// installed Kairos outside that folder (Windows's start-up entry, the installer's language).
+    /// </summary>
+    public static bool OwnDataFolder { get; } = !WritesSystemSettings(Environment.GetEnvironmentVariable("KAIROS_DATA"));
+
+    /// <summary>Whether a run may write Windows's start-up entry and the installer's language (<see cref="OwnDataFolder"/>: no).</summary>
+    public static bool WritesSystemSettings(string? dataFolderVariable) => string.IsNullOrEmpty(dataFolderVariable);
+
     static readonly JsonSerializerOptions Options = CreateOptions();
 
     static JsonSerializerOptions CreateOptions()
@@ -35,13 +44,21 @@ public static class SettingsStore
         {
             settings = new AppSettings();
             settings.General.Language = AppSettings.DefaultLanguage(System.Globalization.CultureInfo.CurrentUICulture);
+            settings.Audio.Layout = AudioLayout.Separate; // a new install: every source on its own row and track
+            settings.Video.Auto = true; // and what the hardware records best with
+            settings.Output.FreeLocalCopies = true; // in a cloud folder, the disk keeps only what is not uploaded yet
         }
         else
         {
             string json = ReadShared(path);
             try
             {
-                settings = JsonSerializer.Deserialize<AppSettings>(json, Options) ?? new AppSettings();
+                settings = Deserialize(json); // with what an older Kairos's file needs (its one app)
+                // 1.0.1 wrote no version: its file is version 1 (the property starts at the current one for settings made
+                // here, so a 1.0.1 file read as current was never brought up to date).
+                if (!Holds(json, "Version"))
+                    settings.Version = 1;
+                settings.Upgrade(autoInFile: Holds(json, "Video", "Auto"));
             }
             catch (JsonException)
             {
@@ -52,6 +69,26 @@ public static class SettingsStore
 
         settings.Normalize();
         return settings;
+    }
+
+    /// <summary>
+    /// Whether a settings file says <paramref name="path"/> at all, any case ("Version"; "Video", "Auto"): 1.0.1's says
+    /// neither.
+    /// </summary>
+    static bool Holds(string json, params string[] path)
+    {
+        using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+        var at = doc.RootElement;
+        foreach (string name in path)
+        {
+            if (at.ValueKind != JsonValueKind.Object)
+                return false;
+            var found = at.EnumerateObject().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (found.Value.ValueKind == JsonValueKind.Undefined)
+                return false;
+            at = found.Value;
+        }
+        return true;
     }
 
     /// <summary>
@@ -86,9 +123,15 @@ public static class SettingsStore
 
     public static string Serialize(AppSettings settings) => JsonSerializer.Serialize(settings, Options);
 
+    /// <summary>A deep copy, as saved and read back.</summary>
+    public static AppSettings Copy(AppSettings settings) => Deserialize(Serialize(settings));
+
     public static AppSettings Deserialize(string json)
     {
         var s = JsonSerializer.Deserialize<AppSettings>(json, Options) ?? new AppSettings();
+        // A file from before 1.1: its one app becomes the first of the apps.
+        if (s.Capture is { Apps: null or [], Window.Length: > 0 } c)
+            c.Apps = [c.Window];
         s.Normalize();
         return s;
     }

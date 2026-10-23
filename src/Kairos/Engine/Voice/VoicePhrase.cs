@@ -11,37 +11,71 @@ public sealed class VoicePhrase
     /// <summary>Enrollment samples must agree at least this well (1.6 × the Easy threshold).</summary>
     static readonly double MaxEnrollCost = 1.6 * VoiceSettings.Threshold(VoiceSensitivity.Easy);
 
+    /// <summary>
+    /// The most the three samples may differ (<see cref="Spread"/>) for the phrase to be kept: beyond it every sensitivity
+    /// reaches <see cref="VoiceSettings.MaxThreshold"/> and ordinary words come close (a user's 0.074 saved clips while he
+    /// talked). Real voices measured 0.045-0.064.
+    /// </summary>
+    public const double MaxSpread = 0.066;
+
     public IReadOnlyList<float[][]> Templates { get; }
 
     /// <summary>How far each sample scores against the other samples' templates (the worst one): the user's own variation.</summary>
     public double Spread { get; }
 
-    VoicePhrase(List<float[][]> templates, double spread)
+    /// <summary>The sample furthest from the other two (the one that sets <see cref="Spread"/>): the one to say again.</summary>
+    public int WorstSample { get; }
+
+    /// <summary>The longest sample, in seconds: how much of what is said listening checks (<see cref="VoiceSegmenter.HeadFor"/>).</summary>
+    public double Seconds { get; }
+
+    VoicePhrase(List<float[][]> templates, double spread, int worst, double seconds)
     {
         Templates = templates;
         Spread = spread;
+        WorstSample = worst;
+        Seconds = seconds;
     }
 
     public static VoicePhrase Build(SpeechModels models, IReadOnlyList<float[]> samples)
     {
         var perSample = new List<List<float[][]>>();
         var plain = new List<float[][]>();
+        double seconds = 0;
         foreach (var raw in samples)
         {
             var s = Trim(raw);
+            seconds = Math.Max(seconds, s.Length / (double)SpeechModels.SampleRate);
             var e = models.Embed(s);
             plain.Add(e);
             perSample.Add([e, models.Embed(Wsola.Stretch(s, 0.9)), models.Embed(Wsola.Stretch(s, 1.1))]);
         }
         double spread = 0;
+        int worst = -1;
         if (samples.Count > 1)
             for (int i = 0; i < samples.Count; i++)
-                spread = Math.Max(spread, PhraseMatcher.Score([.. perSample.Where((_, j) => j != i).SelectMany(t => t)], plain[i]));
-        return new VoicePhrase([.. perSample.SelectMany(t => t)], spread);
+            {
+                double score = PhraseMatcher.Score([.. perSample.Where((_, j) => j != i).SelectMany(t => t)], plain[i]);
+                if (score > spread)
+                    (spread, worst) = (score, i);
+            }
+        return new VoicePhrase([.. perSample.SelectMany(t => t)], spread, worst, seconds);
     }
 
     /// <summary>Matching cost of <paramref name="audio"/>; below the sensitivity threshold means the phrase was said.</summary>
     public double Score(SpeechModels models, ReadOnlySpan<float> audio) => PhraseMatcher.Score(Templates, models.Embed(audio));
+
+    /// <summary>
+    /// Matching cost of the phrase said at the start of <paramref name="audio"/>: beginning within its first
+    /// <paramref name="startWithinSeconds"/> (listening: what someone says first, <see cref="VoiceSegmenter.PhraseStartsWithin"/>).
+    /// </summary>
+    public double ScoreAtStart(SpeechModels models, ReadOnlySpan<float> audio, double startWithinSeconds)
+    {
+        var query = models.Embed(audio);
+        double seconds = Math.Max(1e-3, audio.Length / (double)SpeechModels.SampleRate);
+        int maxStart = Math.Max(1, (int)Math.Ceiling(query.Length * startWithinSeconds / seconds));
+        return PhraseMatcher.Score(Templates, query, maxStart);
+    }
 
     /// <summary>Whether <paramref name="sample"/> can join the enrollment: the right length and like the earlier samples.</summary>
     public static EnrollProblem Check(SpeechModels models, float[] sample, IReadOnlyList<float[]> earlier)

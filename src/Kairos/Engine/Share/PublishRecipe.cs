@@ -69,6 +69,19 @@ public sealed record PublishRecipe(SharePlatform Platform, string StartUrl, IRea
 
     public static string Wrap(string expression) => $"(() => {{ {Helpers} return ({expression}); }})()";
 
+    /// <summary>
+    /// The post's address read from the page, when it is an https page of that site itself; null otherwise (the site's
+    /// home opens instead). Windows opens whatever it is given, so a file, a network folder or another app's link is
+    /// never passed on.
+    /// </summary>
+    public static string? PostAddress(SharePlatform platform, string? url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort
+               && uri.UserInfo.Length == 0 && SiteAccounts.Owns(platform, uri.Host)
+            ? url
+            : null;
+    }
+
     /// <param name="picture">A screenshot: X waits for an attached picture, TikTok uses its Photos tab.</param>
     public static PublishRecipe For(SharePlatform platform, string caption, bool picture = false) => platform switch
     {
