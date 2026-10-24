@@ -14,7 +14,7 @@ public static class RecordingTests
         bool bufferActive = true, bool pausedByUser = false) =>
         new(new EngineStatus(bufferActive, recording, 60, 0, 0, 0, 300, 300, "obs_nvenc_av1_tex", 2560, 1440, 700, 600,
                 @"D:\Clips", false, null, recordingPaused, seconds, bytes),
-            [], null, null, pausedByUser, false, "1.17.0");
+            null, null, pausedByUser, false, "1.17.0");
 
     [Test]
     public static void The_recording_time_leaves_out_the_pauses()
@@ -36,7 +36,7 @@ public static class RecordingTests
     {
         var fresh = new AppSettings();
         fresh.Normalize();
-        Assert.Equal("Alt+Shift+F9", fresh.Hotkeys.PauseRecord, "default, next to Alt+F9");
+        Assert.Equal("Alt+Shift+F7", fresh.Hotkeys.PauseRecord, "default, next to Alt+F7");
         var mine = SettingsStore.Deserialize("""{"hotkeys":{"save":"Ctrl+F8","toggleBuffer":"Ctrl+Shift+F8","record":"Ctrl+F7"}}""");
         Assert.Equal("Ctrl+Shift+F7", mine.Hotkeys.PauseRecord, "settings from before: next to the user's Ctrl+F7");
         var cleared = SettingsStore.Deserialize("""{"hotkeys":{"record":"Ctrl+F7","pauseRecord":""}}""");

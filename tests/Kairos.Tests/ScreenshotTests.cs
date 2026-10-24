@@ -199,8 +199,8 @@ public static class ScreenshotTests
         Assert.True(error == null, error ?? "");
     }
 
-    static StatusDto Status(Kairos.Engine.Voice.VoiceStatus? voice = null, string? lastShot = null, bool shotKeyFree = true) =>
-        new(null, new Dictionary<string, bool> { ["screenshot"] = shotKeyFree }, null, null, false, false, "1.24.0", voice, lastShot);
+    static StatusDto Status(Kairos.Engine.Voice.VoiceStatus? voice = null, string? lastShot = null) =>
+        new(null, null, null, false, false, "1.24.0", voice, lastShot);
 
     [Test]
     public static void The_settings_window_shows_the_screenshot_key_and_the_last_screenshot() => OnSta(() =>
@@ -211,7 +211,7 @@ public static class ScreenshotTests
         Assert.True(key.Length > 0, "a screenshot key (Alt+F12 unless changed)");
         var raised = new List<string?>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
-        vm.SeedStatus(Status(lastShot: @"C:\Videos\Game\Game 2026-10-15 21-30-00.png", shotKeyFree: false));
+        vm.SeedStatus(Status(lastShot: @"C:\Videos\Game\Game 2026-10-15 21-30-00.png"));
         Assert.Equal(@"C:\Videos\Game\Game 2026-10-15 21-30-00.png", vm.LastShotPath, "the newest screenshot");
         Assert.True(raised.Contains(nameof(Kairos.Ui.SettingsViewModel.LastShotPath)), "the Clips page hears of it");
     });

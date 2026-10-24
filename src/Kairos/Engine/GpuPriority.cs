@@ -30,8 +30,9 @@ static unsafe class GpuPriority
     static extern int D3DKMTGetProcessSchedulingPriorityClass(IntPtr process, out int priority);
 
     /// <summary>
-    /// The process's GPU scheduling class: REALTIME for <see cref="LagRelief.Realtime"/> (any process may take it on
-    /// Windows 11, measured 2026-10-22), else the one libobs set; what changed, for the log, or null when nothing did.
+    /// The process's GPU scheduling class: REALTIME from the start (any process may take it on Windows 11, measured
+    /// 2026-10-22; Sunshine's default), so a game that fills the graphics card leaves the recording its turn; else the one
+    /// libobs set. What changed, for the log, or null when nothing did.
     /// </summary>
     public static string? SetClass(bool realtime)
     {
@@ -48,9 +49,12 @@ static unsafe class GpuPriority
         int status = D3DKMTSetProcessSchedulingPriorityClass(self, wanted);
         D3DKMTGetProcessSchedulingPriorityClass(self, out int now);
         _class = now;
-        string name = now switch { ClassRealtime => "REALTIME (the recording fell behind a game)", ClassHigh => "HIGH", _ => now.ToString() };
+        string name = now switch { ClassRealtime => "REALTIME", ClassHigh => "HIGH", _ => now.ToString() };
         return status != 0 ? $"class {wanted} refused (0x{status:X8}), now {name}" : $"class {name}";
     }
+    /// <summary>Kairos raised the class to REALTIME itself (libobs had set another, and Windows took it).</summary>
+    public static bool RaisedToRealtime => _class == ClassRealtime && _libobs != ClassRealtime;
+
     static readonly Guid DxgiDevice = new("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
 
     /// <summary>Raises it on libobs's device (after the first video reset made it); what happened, for the log.</summary>

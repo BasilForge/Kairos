@@ -1,8 +1,9 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Kairos.Engine;
 
-public static class ClipOrganizer
+public static partial class ClipOrganizer
 {
     const int MaxNameLength = 60;
     const string Desktop = "Desktop";
@@ -22,6 +23,10 @@ public static class ClipOrganizer
 
     static readonly HashSet<char> InvalidChars = [.. Path.GetInvalidFileNameChars()];
 
+    /// <summary>The build words Unreal Engine adds to a game's exe ("VALORANT-Win64-Shipping").</summary>
+    [GeneratedRegex(@"-(Win64|Win32|WinGDK)-(Shipping|Test|Development|DebugGame)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex UnrealBuild();
+
     /// <summary>
     /// The folder a saved clip goes to: the app in front, unless that is the desktop or Kairos's own window (a save from a
     /// macro, the tray or Kairos's Save button) while a game was in front within the clip's length: that game's (a user's
@@ -40,7 +45,12 @@ public static class ClipOrganizer
             productName.Contains("Windows", StringComparison.OrdinalIgnoreCase) &&
             productName.Contains("Operating System", StringComparison.OrdinalIgnoreCase);
 
-        foreach (string? candidate in new[] { genericProduct ? null : productName, processName, windowTitle })
+        // An Unreal Engine game with no product name in its file: its window's title names it (VALORANT's exe is
+        // "VALORANT-Win64-Shipping", Wuthering Waves's "Client-Win64-Shipping"), else its exe without the build words.
+        string? product = genericProduct ? null : productName;
+        string project = UnrealBuild().Replace(processName, "");
+        string?[] candidates = project != processName ? [product, windowTitle, project] : [product, processName, windowTitle];
+        foreach (string? candidate in candidates)
         {
             string name = Sanitize(candidate);
             if (name.Length > 0)

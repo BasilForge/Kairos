@@ -70,7 +70,7 @@ if ($SelfTests) {
     $null = Check 'selftest-host' @('--selftest-host') 'encoder|exit='
     $null = Check 'selftest-record' @('--selftest-record') 'record|pause|exit='
     $null = Check 'selftest-screenshot' @('--selftest-screenshot') 'shot|png|exit='
-    foreach ($scene in 'window', 'window-empty', 'screen-game', 'game-guard') { $null = Check "selftest-scene-$scene" @('--selftest-scene', $scene) }
+    foreach ($scene in 'window', 'window-empty', 'screen-game', 'game-guard', 'games-unhookable') { $null = Check "selftest-scene-$scene" @('--selftest-scene', $scene) }
     $null = Check 'selftest-process-audio' @('--selftest-process-audio') 'tone|audio|exit='
     $null = Check 'selftest-reload' @('--selftest-reload') 'reload|exit=' -OwnDesktop -Prepare { param($d) Set-Content (Join-Path $d 'settings.json') '{}' }
     $null = Check 'selftest-toast' @('--selftest-toast') 'toast|exit=' -OwnDesktop

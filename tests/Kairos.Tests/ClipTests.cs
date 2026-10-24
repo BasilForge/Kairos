@@ -13,7 +13,7 @@ public static class ClipTests
     {
         Assert.Equal("Genshin Impact", ForegroundApp.Unopened("GenshinImpact", "Genshin Impact"), "its window's title");
         Assert.Equal("Honkai Star Rail", ForegroundApp.Unopened("StarRail", "Honkai: Star Rail"), "':' is no file name's");
-        Assert.Equal("Client-Win64-Shipping", ForegroundApp.Unopened("Client-Win64-Shipping", " "), "no title: its exe");
+        Assert.Equal("Client", ForegroundApp.Unopened("Client-Win64-Shipping", " "), "no title: its exe without the engine's build words");
         Assert.Equal("Desktop", ForegroundApp.Unopened(null, null), "gone: as before");
         Assert.Equal("Desktop", ForegroundApp.Unopened("explorer", "Program Manager"), "the shell stays the desktop");
     }
@@ -46,6 +46,22 @@ public static class ClipTests
     public static void Product_name_is_preferred_over_process_name()
     {
         Assert.Equal("ELDEN RING™", ClipOrganizer.AppFolderName("eldenring", "ELDEN RING™", "ELDEN RING™"), "name");
+    }
+
+    /// <summary>
+    /// Unreal Engine games without a product name in their file name the exe "Project-Win64-Shipping" (VALORANT's clips
+    /// went to "VALORANT-Win64-Shipping", Wuthering Waves's exe is "Client-Win64-Shipping"): the window's title names the
+    /// game; with no title (a game seen earlier), the exe without the engine's build words.
+    /// </summary>
+    [Test]
+    public static void Unreal_shipping_builds_are_named_after_the_game()
+    {
+        Assert.Equal("VALORANT", ClipOrganizer.AppFolderName("VALORANT-Win64-Shipping", null, "VALORANT  "), "VALORANT: its window");
+        Assert.Equal("Wuthering Waves", ClipOrganizer.AppFolderName("Client-Win64-Shipping", "", "Wuthering Waves"), "Wuthering Waves: its window");
+        Assert.Equal("VALORANT", ClipOrganizer.AppFolderName("VALORANT-Win64-Shipping", null, null), "no window: the exe without -Win64-Shipping");
+        Assert.Equal("Palia", ClipOrganizer.AppFolderName("Palia-WinGDK-Shipping", null, null), "the Microsoft Store's build words too");
+        Assert.Equal("ARC Raiders", ClipOrganizer.AppFolderName("PioneerGame", "ARC Raiders", "ARC Raiders"), "a product name still comes first");
+        Assert.Equal("notepad", ClipOrganizer.AppFolderName("notepad", null, "Untitled - Notepad"), "other apps: their exe, as before");
     }
 
     [Test]

@@ -16,7 +16,7 @@ public sealed class EngineApp : ApplicationContext
 
     readonly Control _ui = new();
     readonly TrayController _tray = new();
-    readonly HotkeyManager _hotkeys = new();
+    readonly HotkeyWatcher _hotkeys;
     readonly SaveToast _toast = new();
     readonly ClipIndex _clipIndex = new(ClipIndex.DefaultPath);
     readonly VoiceTrigger _voice = new(SpeechModels.DefaultDirectory, Path.Combine(SettingsStore.AppDataDir, "voice"));
@@ -25,7 +25,7 @@ public sealed class EngineApp : ApplicationContext
     /// <summary>The newest clip saved in this session, until it is deleted from the tray.</summary>
     string? _undoClip;
     readonly System.Windows.Forms.Timer _trayTimer = new() { Interval = 5000 };
-    readonly BorderlessTips _tips;
+    readonly BorderlessTips _tips = new();
     /// <summary>One app and Games modes only: the pipeline's once-a-second look at its scene.</summary>
     System.Windows.Forms.Timer? _sceneTimer;
     /// <summary>Separate sources only: which processes each sound row captures, every 2 s.</summary>
@@ -65,14 +65,14 @@ public sealed class EngineApp : ApplicationContext
     readonly SaveWatch _saveWatch = new();
     bool _retried;
     bool _stopped;
-    /// <summary>The screen check saw a picture this session (<see cref="CheckScreenPicture"/>).</summary>
+    /// <summary>The screen check is done this session: a picture seen (<see cref="CheckScreenPicture"/>).</summary>
     bool _screenSeen;
+    /// <summary>
+    /// The screen was black with Automatic and shows with Windows Graphics Capture (<see cref="CheckScreenPicture"/>): for
+    /// this run only. Kept for the PC, one black look (a screen asleep) left a user's 280 Hz screen copied 280 times a second.
+    /// </summary>
+    bool _screenWgc;
     bool _starting = true;
-    /// <summary>Keys taken this time settings were applied (two actions on the same keys: the second is not another app's fault).</summary>
-    readonly HashSet<Hotkey> _keysInUse = [];
-    readonly TakenKeyNotice _takenNotice = new(TakenKeyNotice.DefaultPath);
-    /// <summary>Keys found taken while applying settings, not told about before: one message for all of them.</summary>
-    readonly List<string> _newlyTaken = [];
     readonly UpdateService _updates = UpdateService.ForThisInstall(SettingsStore.AppDataDir);
     /// <summary>When the replay buffer first ran (the first update check waits a minute after it).</summary>
     DateTime? _bufferActiveSince;
@@ -83,23 +83,19 @@ public sealed class EngineApp : ApplicationContext
     public EngineApp(bool openSettings, bool background)
     {
         _ui.CreateControl();
+        _hotkeys = new HotkeyWatcher(action => _ui.BeginInvoke(action));
         PowerThrottling.OptOut();
-        // The log first: the start's own messages (the keys picked, "Updated to …") are in it too.
+        // The log first: the start's own messages ("Updated to …") are in it too.
         ObsLog.Open(Path.Combine(SettingsStore.AppDataDir, "logs"));
         ObsLog.Info($"kairos {AppInfo.Version}{(_updates.Available ? "" : " (not installed: a development run)")}");
 
         bool firstRun = !File.Exists(SettingsStore.DefaultPath);
         _settings = SettingsStore.Load(SettingsStore.DefaultPath);
-        _tips = new BorderlessTips(() => _settings.Capture.BorderlessTips);
         // The install wizard's language and start-with-Windows choice, once after it ran.
         bool chosen = InstallChoices.ConsumeInto(_settings, SettingsStore.AppDataDir);
-        // A first install takes the usual keys, or for each one another app holds (NVIDIA's are the same), a free one.
-        bool pickedKeys = firstRun && HotkeyDefaults.PickFree(_settings.Hotkeys, HotkeyManager.IsFree);
         if (firstRun || chosen)
             SettingsStore.Save(SettingsStore.DefaultPath, _settings);
         Text.Language = _settings.General.Language;
-        if (pickedKeys)
-            _toast.Show(Text.Get("toast.keysPicked"), Text.Format("toast.keysPickedSave", _settings.Hotkeys.Save), Text.IsRightToLeft);
 
         _tray.SaveClicked += FromTray("save", () => SaveClip(quick: false));
         _tray.QuickClicked += FromTray("quick", () => SaveClip(quick: true));
@@ -134,14 +130,15 @@ public sealed class EngineApp : ApplicationContext
             // saved from elsewhere; any game, windowed too, keeps the replay from a lighter step's rebuild.
             var (front, frontExe) = GameWatcher.FrontApp();
             if (front != null && GameWatcher.IsGame(front.Exe))
-                _lastGame = (front.Pid, front.Exe, now);
+                _lastGame = (front.Pid, front.Exe, WindowTarget.Title(front.Window), now);
             if (frontExe != null && GameWatcher.IsGame(frontExe))
                 _lastPlayed = now;
             StepDownWhenSkipping(now, frames);
             RelieveWhenBehind(now, frames, GameInReplay(now));
+            RestartWhenPicturesStop(now);
             if (_saveWatch.Tick(now, _lag.Behind) is { } never)
                 NotSaved(never);
-            WatchUnenteredGame();
+            WatchUnenteredGame(front);
             if (UpdateRules.ShouldCheck(_settings.General.CheckUpdates && _updates.Available, _bufferActiveSince, _updates.LastCheck, DateTime.UtcNow))
                 CheckForUpdate();
             RemindUpdate();
@@ -219,22 +216,7 @@ public sealed class EngineApp : ApplicationContext
     {
         Text.Language = _settings.General.Language;
         _voice.Configure(_settings.Voice.Enabled, _settings.Voice.Sensitivity);
-        _hotkeys.UnregisterAll();
-        _keysInUse.Clear();
-        _newlyTaken.Clear();
-        Register("save", _settings.Hotkeys.Save);
-        if (_settings.Replay.QuickEnabled)
-            Register("quick", _settings.Hotkeys.Quick);
-        Register("toggle", _settings.Hotkeys.ToggleBuffer);
-        Register("record", _settings.Hotkeys.Record);
-        Register("pauseRecord", _settings.Hotkeys.PauseRecord ?? "");
-        Register("screenshot", _settings.Hotkeys.Screenshot);
-        LogHotkeys();
-        // Once per key, ever: one small message that goes away by itself (the pages carry no notes).
-        if (_newlyTaken.Count > 0)
-        {
-            Warn(TakenToast(_newlyTaken));
-        }
+        WatchHotkeys();
 
         // A test run (its own data folder) leaves the installed Kairos's start-up entry and language alone.
         if (!SettingsStore.OwnDataFolder)
@@ -278,21 +260,28 @@ public sealed class EngineApp : ApplicationContext
         }
     }
 
-    void Register(string id, string hotkey)
+    /// <summary>The hotkeys of the settings, heard (<see cref="HotkeyWatcher"/>); a key two actions share goes to the first.</summary>
+    void WatchHotkeys()
     {
-        if (!HotkeyParser.TryParse(hotkey, out var h))
-            return;
-        if (!_keysInUse.Add(h))
+        var keys = new Dictionary<string, Hotkey>();
+        foreach (var (id, key) in HotkeyList())
         {
-            ObsLog.Warn($"hotkey {id} ({hotkey}) is already another Kairos action's");
-            return;
+            if (!HotkeyParser.TryParse(key, out var h))
+                continue;
+            if (keys.ContainsValue(h))
+                ObsLog.Warn($"hotkey {id} ({key}) is already another Kairos action's");
+            else
+                keys[id] = h;
         }
-        if (_hotkeys.Register(id, h))
-            return;
-        ObsLog.Warn($"hotkey {id} ({hotkey}) is taken by another app");
-        if (_takenNotice.ShouldTell(hotkey))
-            _newlyTaken.Add(hotkey);
+        var held = _hotkeys.Set(keys);
+        LogHotkeys(keys);
+        if (held.Count > 0)
+            ObsLog.Info($"hotkeys another app holds in Windows (heard by looking at the keys): {string.Join(", ", held)}");
     }
+
+    /// <summary>Each action's key in the settings ("" for none; the quick clip's only while it is on).</summary>
+    (string Id, string Key)[] HotkeyList() =>
+        [.. _settings.Hotkeys.ByAction().Select(k => k.Id == "quick" && !_settings.Replay.QuickEnabled ? (k.Id, "") : k)];
 
     /// <summary>A recording that could not start: what to try, in the user's language (OBS's own error goes to the log).</summary>
     public static (string Title, string Detail) RecordFailedToast() => (Text.Get("toast.recordFailed"), Text.Get("fix.closeRecorders"));
@@ -307,11 +296,6 @@ public sealed class EngineApp : ApplicationContext
         // the same widened the space before it).
         (Text.Get("toast.borderless"), Text.Format("toast.borderlessDetail", Text.IsRightToLeft ? Text.Ltr(game.Replace(' ', ' ')) : game));
 
-    /// <summary>The message about keys another app holds: one key and what to do, or how many and which.</summary>
-    public static (string Title, string Detail) TakenToast(IReadOnlyList<string> keys) => keys.Count == 1
-        ? (Text.Format("toast.keyTaken", keys[0]), Text.Get("toast.keyTakenFix"))
-        : (Text.Format("toast.keysTaken", Text.Count("count.hotkeys", keys.Count)), string.Join(Text.Get("list.separator"), keys));
-
     bool _builtOnce;
 
     void RebuildPipeline()
@@ -319,6 +303,7 @@ public sealed class EngineApp : ApplicationContext
         SetUpMixers();
         _stepPending = false; // any rebuild takes Automatic's step (and the lighter recording, kept in _hardwareState)
         _lag.Reset();
+        _pictures.Reset();
         if (_saveWatch.Pending)
         {
             _saveWatch.Cancel(); // the clip being written goes with the old pipeline: not said later as "could not write"
@@ -348,7 +333,10 @@ public sealed class EngineApp : ApplicationContext
                 bool eased = _hardwareState.EaseIfQuiet(DateTime.UtcNow);
                 if (eased)
                     ObsLog.Info($"lighter recording: a week without falling behind: one step back (relief {_hardwareState.Relief})");
-                if (stepped || eased)
+                bool retried = _hardwareState.RetryRealtimeIfQuiet(DateTime.UtcNow);
+                if (retried)
+                    ObsLog.Info("gpu priority: a week since the encoder stopped at REALTIME: REALTIME again");
+                if (stepped || eased || retried)
                     _hardwareState.Save(HardwarePath);
                 _encoders = new EncoderFallback(_hardwareState.Failed, _hardwareState.NoBFrames);
                 ObsLog.Info($"hardware: {_hardware.CaptureGpu} | {_hardware.Cpu} ({_hardware.CpuThreads} threads) | {_hardware.ScreenWidth}x{_hardware.ScreenHeight}@{_hardware.RefreshHz} " +
@@ -358,12 +346,13 @@ public sealed class EngineApp : ApplicationContext
             _nvidiaNote = ObsLog.NvencOutdated ? _hardwareState.NvidiaNote(_hardware.NvidiaDriver) : null;
             if (_hardwareState.NvidiaOutdatedDriver != noted)
                 _hardwareState.Save(HardwarePath); // kept, so a driver update without a restart says "restart the PC"
-            p = new CapturePipeline(_settings, voice: _voice, encoders: _encoders, screenWgc: _hardwareState.ScreenWgc)
+            p = new CapturePipeline(_settings, voice: _voice, encoders: _encoders, screenWgc: _screenWgc)
             {
                 DiskOff = _diskOff,
                 Hardware = _hardware,
                 AutoStep = _hardwareState.AutoStep,
                 Relief = _hardwareState.Relief,
+                Realtime = _hardwareState.RealtimeFroze == null,
             };
             _skipping.Reset();
             p.ReplaySaved += (path, quick, names) => _ui.BeginInvoke(() => OnClipSaved(path, names, quick));
@@ -385,22 +374,21 @@ public sealed class EngineApp : ApplicationContext
             p.RecordingStopped += (path, seconds, names) => _ui.BeginInvoke(() => OnRecordingStopped(path, seconds, names));
             p.Build();
             _pipeline = p;
-            if (!_hardwareState.ScreenWgc && !_screenSeen && p.ShowsScreen)
+            if (!_screenSeen && p.ShowsScreen)
                 _ = CheckScreenPicture(p);
             // Screen and One app: the app in front, each second (a game filling the screen is captured from the game). Games:
-            // whether the game is hooked, each second (the screen under it goes off), and the process list every 2 s when
-            // Riot's games are left to the screen (one snapshot, no process opened).
+            // whether the game is hooked, each second (the screen under it goes off; a game Kairos cannot open is recorded
+            // from the screen while in front, games only too), and the process list every 2 s when Riot's games are left to
+            // the screen (one snapshot, no process opened).
             bool guard = _settings.Capture.ScreenForRiotGames, odd = false;
-            EventHandler? look = p.BuiltMode switch
+            EventHandler look = p.BuiltMode switch
             {
-                // Games with no screen under the game (no fallback, no guard): nothing to look at, no timer.
-                CaptureMode.Game when guard || _settings.Capture.GameFallbackToScreen => (_, _) =>
+                CaptureMode.Game => (_, _) =>
                 {
                     if (guard && (odd = !odd))
                         _pipeline?.SetGuard(AntiCheatGuard.AnyProtectedRunning());
                     _pipeline?.WatchGame(GameWatcher.FullscreenForeground());
                 },
-                CaptureMode.Game => null,
                 CaptureMode.Window => (_, _) =>
                 {
                     var (fullscreen, exe) = GameWatcher.FrontApp();
@@ -408,12 +396,9 @@ public sealed class EngineApp : ApplicationContext
                 },
                 _ => (_, _) => _pipeline?.WatchScreenGame(GameWatcher.FullscreenForeground()),
             };
-            if (look != null)
-            {
-                _sceneTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-                _sceneTimer.Tick += look;
-                _sceneTimer.Start();
-            }
+            _sceneTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            _sceneTimer.Tick += look;
+            _sceneTimer.Start();
             if (_settings.Audio.Layout == AudioLayout.Separate)
             {
                 _audioWatcher = new AudioWatcher(() => _settings, (assignment, heardOn) => _pipeline?.UpdateAudioTargets(assignment, heardOn), () => ChosenWindow);
@@ -511,9 +496,10 @@ public sealed class EngineApp : ApplicationContext
     /// <summary>
     /// Each 5 s, for everyone (the user's own settings or Automatic): when over 10 % of the frames lagged or were skipped
     /// in each 20 s for a minute, a game holds the graphics card and the clips stutter and come late, so recording gets
-    /// one step lighter (<see cref="LagRelief"/>), kept for this PC and said once. The REALTIME step is set as the recording
-    /// runs; any other builds the pipeline again, which starts the replay empty, so with a game in front it waits for the
-    /// next saved clip (<see cref="LagRelief.RebuildNow"/>), and never comes during a recording or while a clip is written.
+    /// one step lighter (<see cref="LagRelief"/>), kept for this PC and never shown to the user (Kairos solves, it does not
+    /// explain what it does inside). A step builds the pipeline again, which starts the replay empty, so with a game in
+    /// front it waits for the next saved clip (<see cref="LagRelief.RebuildNow"/>), and never comes during a recording or
+    /// while a clip is written.
     /// </summary>
     void RelieveWhenBehind(DateTime now, FrameCount frames, bool gameInReplay)
     {
@@ -546,16 +532,59 @@ public sealed class EngineApp : ApplicationContext
         _hardwareState.Relieve(now, p.NextRelief);
         _hardwareState.Save(HardwarePath);
         _savedSinceStep = false;
-        bool live = p.StepLive(_hardwareState.Relief);
-        bool rebuild = !live && RebuildNow(p, gameInReplay);
+        bool rebuild = RebuildNow(p, gameInReplay);
         ObsLog.Warn($"recording falls behind: {share:P0} of the frames lagged or skipped for a minute: lighter (relief {_hardwareState.Relief})"
-                    + (live ? ", taken as it runs: the replay is kept" : rebuild ? "" : ", built once a clip is saved or the game is left: the replay is kept"));
+                    + (rebuild ? "" : ", built once a clip is saved or the game is left: the replay is kept"));
         LogGpuMemory();
-        Warn((Text.Get("toast.relief"), Text.Get(LagRelief.TextKey(_hardwareState.Relief))));
-        if (live)
-            _lag.Reset(); // a minute behind again before the next step
-        else if (rebuild)
+        if (rebuild)
             RebuildPipeline();
+    }
+
+    /// <summary>Whether pictures still reach the replay (<see cref="PictureWatch"/>), on the tray's tick.</summary>
+    readonly PictureWatch _pictures = new();
+
+    /// <summary>Restarts after pictures stopped, this run: a stop that comes back each time is not restarted for ever.</summary>
+    int _pictureRestarts;
+    const int MaxPictureRestarts = 3;
+
+    /// <summary>Why the stopped pictures are left as they are was logged (once a stop).</summary>
+    bool _saidPicturesLeft;
+
+    /// <summary>
+    /// A recorder's watchdog: no picture reached the replay for 10 s while it runs, so every clip would hold one
+    /// picture over the sound. The pipeline is built again (the replay has nothing worth keeping); at REALTIME, where
+    /// NVIDIA's encoder can freeze (hardware scheduling, a full graphics card memory), libobs's own class from then on for
+    /// this PC. Never during a recording or while a clip is written: looked at again on the next tick.
+    /// </summary>
+    void RestartWhenPicturesStop(DateTime now)
+    {
+        if (!_pictures.Stopped(now, _pipeline?.PicturesTaken) || _pipeline is not { } p)
+        {
+            _saidPicturesLeft = false;
+            return;
+        }
+        string stopped = $"replay: no picture came for {PictureWatch.StopAfter.TotalSeconds:F0} s (the sound goes on)";
+        string? held = p.Recording ? "not built again during a recording"
+            : _saveWatch.Pending ? "a clip is being written"
+            : _pictureRestarts >= MaxPictureRestarts ? $"built again {MaxPictureRestarts} times already" : null;
+        if (held != null)
+        {
+            if (!_saidPicturesLeft)
+                ObsLog.Warn($"{stopped}: {held}");
+            _saidPicturesLeft = true;
+            return;
+        }
+        _pictureRestarts++;
+        ObsLog.Warn($"{stopped}: built again");
+        LogGpuMemory();
+        if (GpuPriority.RaisedToRealtime)
+        {
+            _hardwareState.RealtimeFroze = now;
+            _hardwareState.Save(HardwarePath);
+            // At once, before the pipeline lets go of the encoder: a stuck one gets its best chance to finish.
+            ObsLog.Warn($"gpu priority: the encoder stopped at REALTIME: {GpuPriority.SetClass(realtime: false)} for this PC for a week (or until a new driver)");
+        }
+        RebuildPipeline();
     }
 
     bool WantBuffer => _settings.Replay.Enabled && !_pausedByUser && (_watcher == null || _watcher.GameActive);
@@ -641,13 +670,10 @@ public sealed class EngineApp : ApplicationContext
         action();
     };
 
-    /// <summary>The hotkeys and whether Kairos holds each, when that changed since the log last said it.</summary>
-    void LogHotkeys()
+    /// <summary>The hotkeys watched (<paramref name="watched"/>), when that changed since the log last said it.</summary>
+    void LogHotkeys(Dictionary<string, Hotkey> watched)
     {
-        var k = _settings.Hotkeys;
-        var keys = new[] { ("save", k.Save), ("quick", _settings.Replay.QuickEnabled ? k.Quick : ""), ("toggle", k.ToggleBuffer),
-            ("record", k.Record), ("pauseRecord", k.PauseRecord ?? ""), ("screenshot", k.Screenshot) };
-        string line = LogLines.Hotkeys(keys.Select(key => (key.Item1, key.Item2, _hotkeys.Status.TryGetValue(key.Item1, out bool held) && held)));
+        string line = LogLines.Hotkeys(HotkeyList().Select(k => (k.Id, watched.ContainsKey(k.Id) ? k.Key : "")));
         if (line == _hotkeysLogged)
             return;
         _hotkeysLogged = line;
@@ -659,7 +685,7 @@ public sealed class EngineApp : ApplicationContext
         if (!_hotkeys.Suspended)
             return;
         _hotkeys.Resume();
-        ObsLog.Info($"hotkeys: taken again ({why})");
+        ObsLog.Info($"hotkeys: watched again ({why})");
     }
 
     /// <summary>The health line (<see cref="LogLines.Health"/>); <paramref name="quiet"/>: only the starting point.</summary>
@@ -694,10 +720,12 @@ public sealed class EngineApp : ApplicationContext
 
     // ---------------------------------------------------------------- actions
 
-    void OnHotkey(string id)
+    void OnHotkey(string id, bool byWindows)
     {
+        if (_stopped)
+            return; // fired as Kairos stopped: its pipeline is gone
         _hotkeyPresses++;
-        ObsLog.Info("hotkey: " + id);
+        ObsLog.Info($"hotkey: {id} ({(byWindows ? "Windows" : "keys")})");
         switch (id)
         {
             case "save": SaveClip(quick: false); break;
@@ -767,15 +795,15 @@ public sealed class EngineApp : ApplicationContext
     string? CapturedApp(double? clipSeconds = null)
     {
         if (SceneRules.RecordsChosenWindow(_settings.Capture, _pipeline?.CaptureNotice) && WindowTarget.ExeName(ChosenWindow) is { } exe)
-            return ForegroundApp.ForExe(exe);
+            return ForegroundApp.ForExe(exe, WindowTarget.Title(ChosenWindow));
         if (clipSeconds is not { } seconds || _lastGame is not { } last)
             return ForegroundApp.Current();
-        return ClipOrganizer.SaveFolderName(ForegroundApp.Current(), ForegroundApp.IsKairos, () => ForegroundApp.ForProcess(last.Pid, last.Exe),
+        return ClipOrganizer.SaveFolderName(ForegroundApp.Current(), ForegroundApp.IsKairos, () => ForegroundApp.ForProcess(last.Pid, last.Exe, last.Title),
             DateTime.UtcNow - last.At, seconds);
     }
 
     /// <summary>The last full-screen app in front (a game, usually) and when, seen on the tray's tick.</summary>
-    (uint Pid, string Exe, DateTime At)? _lastGame;
+    (uint Pid, string Exe, string? Title, DateTime At)? _lastGame;
 
     /// <summary>The camera's own clip and the clip it goes with, each kept (with when it came) until the other one comes.</summary>
     (string Path, DateTime At)? _cameraHalf, _clipHalf;
@@ -863,9 +891,7 @@ public sealed class EngineApp : ApplicationContext
         _tray.FlashSaved();
         if (_settings.General.SoundOnSave)
             PlayChime();
-        if (_settings.General.ToastOnSave)
-            _toast.Show(Text.Get("toast.saved"),
-                $"{app} • {Text.Duration(_pendingSeconds)}" + (_pendingByVoice ? " • " + Text.Get("toast.byVoice") : ""), Text.IsRightToLeft);
+        Notify(Text.Get("toast.saved"), $"{app} • {Text.Duration(_pendingSeconds)}" + (_pendingByVoice ? " • " + Text.Get("toast.byVoice") : ""));
         RefreshTray();
         EnforceFolderLimit();
         if (_saveWatch.ShouldWarnLowDisk(free, DateTime.UtcNow))
@@ -895,8 +921,7 @@ public sealed class EngineApp : ApplicationContext
         later.Tick += (_, _) =>
         {
             later.Dispose();
-            _toast.Show(Text.Get("toast.lowDisk"),
-                Text.Format("toast.lowDiskBody", Text.Ltr(Ui.SettingsViewModel.FormatSize(free)), Text.Ltr(drive)), Text.IsRightToLeft, ToastIcon.Warning);
+            Warn((Text.Get("toast.lowDisk"), Text.Format("toast.lowDiskBody", Text.Ltr(Ui.SettingsViewModel.FormatSize(free)), Text.Ltr(drive))));
         };
         later.Start();
     }
@@ -920,7 +945,7 @@ public sealed class EngineApp : ApplicationContext
         var pipeline = _pipeline;
         if (pipeline == null)
         {
-            _toast.Show(Text.Get("toast.shotFailed"), "", Text.IsRightToLeft);
+            ShotFailed();
             return;
         }
         if (ScreenshotGrabber.Busy)
@@ -948,7 +973,7 @@ public sealed class EngineApp : ApplicationContext
     {
         if (path == null)
         {
-            _toast.Show(Text.Get("toast.shotFailed"), "", Text.IsRightToLeft);
+            ShotFailed();
             return;
         }
         Index(path);
@@ -960,8 +985,7 @@ public sealed class EngineApp : ApplicationContext
         _tray.FlashSaved();
         if (_settings.General.SoundOnSave)
             PlayMuted(ShotSound.Play, 400);
-        if (_settings.General.ToastOnSave)
-            _toast.Show(Text.Get("toast.shot"), app + (byVoice ? " • " + Text.Get("toast.byVoice") : ""), Text.IsRightToLeft);
+        Notify(Text.Get("toast.shot"), app + (byVoice ? " • " + Text.Get("toast.byVoice") : ""));
         RefreshTray();
         EnforceFolderLimit();
     }
@@ -1074,24 +1098,62 @@ public sealed class EngineApp : ApplicationContext
         RefreshTray();
     }
 
-    /// <summary>A problem: the amber card, shown even with the save notes turned off.</summary>
+    /// <summary>A problem: the amber card, shown even with the save notes turned off, over a full-screen game too.</summary>
     void Warn((string Title, string Detail) toast) => _toast.Show(toast.Title, toast.Detail, Text.IsRightToLeft, ToastIcon.Warning);
+
+    /// <summary>A screenshot could not be taken: said even with the save notes off, over the game it was taken in.</summary>
+    void ShotFailed() => _toast.Show(Text.Get("toast.shotFailed"), "", Text.IsRightToLeft);
 
     /// <summary>The last game in front that Kairos could not open (<see cref="CapturePipeline.CannotEnterGame"/>).</summary>
     (string Exe, string Title)? _unentered;
 
+    /// <summary>The game Kairos cannot open fills the screen in exclusive full screen now (<see cref="WatchUnenteredGame"/>).</summary>
+    bool _unenteredInFront;
+
+    /// <summary>Each time the game comes in front: a look begun before it left and came back stops.</summary>
+    int _unenteredVisit;
+
     /// <summary>
-    /// On the tray's tick: a game Kairos cannot open, seen in exclusive full screen (the screen copy can come out black;
-    /// in Borderless it records as it is, so no tip), gets the Borderless tip at once, over the game, so no clip is lost
-    /// before the player knows (<see cref="BorderlessTips"/>).
+    /// On the tray's tick: a game Kairos cannot open that comes to fill the screen in exclusive full screen has its
+    /// recorded picture looked at (the screen copy can come out black there, where some recorders stop recording; in
+    /// Borderless it records as it is). Black, it gets the Borderless tip at once, over the game, so no more clips
+    /// are lost before the player knows (<see cref="BorderlessTips"/>); a picture that records gets nothing.
     /// </summary>
-    void WatchUnenteredGame()
+    void WatchUnenteredGame(FullscreenApp? front)
     {
-        if (_unentered is { } game && SaveToast.FullScreenGame
-            && string.Equals(GameWatcher.FullscreenForeground()?.Exe, game.Exe, StringComparison.OrdinalIgnoreCase))
-            _tips.Seen(game.Exe, game.Title);
+        bool inFront = _unentered is { } game && string.Equals(front?.Exe, game.Exe, StringComparison.OrdinalIgnoreCase)
+            && SaveToast.FullScreenGame;
+        if (inFront && !_unenteredInFront && _pipeline is { } p && !_tips.Told(_unentered!.Value.Exe))
+            _ = CheckUnenteredPicture(p, _unentered.Value, ++_unenteredVisit);
+        _unenteredInFront = inFront;
         if (_tips.Pending)
             ShowTip();
+    }
+
+    /// <summary>
+    /// The picture recorded while the game fills the screen: black at two looks 10 s apart (a loading screen is black
+    /// for a moment, never twice), it is told to the player (<see cref="BorderlessTips.SawBlack"/>).
+    /// </summary>
+    async Task CheckUnenteredPicture(CapturePipeline p, (string Exe, string Title) game, int visit)
+    {
+        bool Left() => PipelineGone(p) || !_unenteredInFront || visit != _unenteredVisit;
+        try
+        {
+            foreach (int wait in new[] { 5000, 10_000 })
+            {
+                await Task.Delay(wait);
+                if (Left() || !await ScreenIsBlack(p, $"{game.Exe} in exclusive full screen"))
+                    return;
+            }
+            if (Left())
+                return;
+            ObsLog.Warn($"capture: {game.Exe} fills the screen in exclusive full screen and records black: the Borderless tip");
+            _tips.SawBlack(game.Exe, game.Title);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            ObsLog.Warn("game picture check: " + e.Message);
+        }
     }
 
     /// <summary>
@@ -1104,18 +1166,19 @@ public sealed class EngineApp : ApplicationContext
         if ((SaveToast.FullScreenBusy && !SaveToast.FullScreenGame) || !_tips.TryShow(game =>
             {
                 var (title, detail) = BorderlessToast(game);
-                return _toast.Show(title, detail, Text.IsRightToLeft, ToastIcon.Tip, ToastTiming.Calm, overGame: true);
+                return _toast.Show(title, detail, Text.IsRightToLeft, ToastIcon.Tip, ToastTiming.Calm);
             }))
             return;
         // Not with all the sound recorded together: the chime would be in the next clip (separate sources leave Kairos out).
         if (_settings.General.SoundOnSave && !(_settings.Audio.Layout == AudioLayout.Together && _settings.Audio.System))
             Chime.PlayTip();
-        // Told once a game, across starts: only the list goes onto the file (this copy can be older than it).
-        var told = _settings.Capture.BorderlessTips.ToList();
-        SettingsStore.Update(SettingsStore.DefaultPath, s => s.Capture.BorderlessTips = [.. s.Capture.BorderlessTips.Union(told, StringComparer.OrdinalIgnoreCase)]);
     }
 
-    /// <summary>The small card (never in captures); no sound, which a recording would pick up.</summary>
+    /// <summary>
+    /// What the player just did (a clip or screenshot saved, a recording started or saved): the small card (never in
+    /// captures; no sound, which a recording would pick up), over a full-screen game too, where it was done (a VALORANT
+    /// save showed nothing: Windows calls such a game full screen).
+    /// </summary>
     void Notify(string title, string detail)
     {
         if (_settings.General.ToastOnSave)
@@ -1168,20 +1231,21 @@ public sealed class EngineApp : ApplicationContext
             return;
         string version = AppInfo.Display(status.Version);
         bool shown = status.Important
-            ? _toast.Show(Text.Format("toast.updateImportant", version), Text.Get("toast.updateImportantDetail"), Text.IsRightToLeft, ToastIcon.Update)
-            : _toast.Show(Text.Format("toast.update", version), Text.Get("toast.updateDetail"), Text.IsRightToLeft, ToastIcon.Update);
+            ? _toast.Show(Text.Format("toast.updateImportant", version), Text.Get("toast.updateImportantDetail"), Text.IsRightToLeft, ToastIcon.Update, overGame: false)
+            : _toast.Show(Text.Format("toast.update", version), Text.Get("toast.updateDetail"), Text.IsRightToLeft, ToastIcon.Update, overGame: false);
         if (shown)
             _updates.Reminded(now);
     }
 
     /// <summary>
     /// A few seconds after a build, the screen's picture: black with Automatic (some PCs with two GPUs copy black, without
-    /// an error) tries Windows Graphics Capture, kept for this PC when it shows the screen; set back when it is black too
-    /// (a screen switched off). Read off the canvas small (<see cref="ScreenCheck"/>), never over a screenshot the user takes.
+    /// an error) tries Windows Graphics Capture, kept for this run when it shows the screen and Automatic is black once
+    /// more (a screen that woke between the looks shows with both); set back when it is black too (a screen switched off).
+    /// Read off the canvas small (<see cref="ScreenCheck"/>), never over a screenshot the user takes.
     /// </summary>
     async Task CheckScreenPicture(CapturePipeline p)
     {
-        bool Gone() => p != _pipeline || _stopped;
+        bool Gone() => PipelineGone(p);
         try
         {
             await Task.Delay(6000);
@@ -1209,9 +1273,19 @@ public sealed class EngineApp : ApplicationContext
                 return;
             if (keep)
             {
-                ObsLog.Info("screen capture: Windows Graphics Capture shows the screen: kept for this PC");
-                _hardwareState.ScreenWgc = true;
-                _hardwareState.Save(HardwarePath);
+                p.UseWgcForScreen(false);
+                await Task.Delay(2500);
+                if (Gone())
+                    return;
+                if (!await ScreenIsBlack(p, "DXGI again"))
+                {
+                    ObsLog.Info("screen capture: Automatic shows the screen now (it was asleep): kept");
+                    _screenSeen = true;
+                    return;
+                }
+                p.UseWgcForScreen(true);
+                ObsLog.Info("screen capture: Windows Graphics Capture shows the screen: kept for this run (Automatic tried again at the next start)");
+                (_screenWgc, _screenSeen) = (true, true);
             }
             else
             {
@@ -1224,6 +1298,9 @@ public sealed class EngineApp : ApplicationContext
             ObsLog.Warn("screen check: " + e.Message);
         }
     }
+
+    /// <summary>A look at <paramref name="p"/>'s picture no longer counts: built again since, or Kairos stopping.</summary>
+    bool PipelineGone(CapturePipeline p) => p != _pipeline || _stopped;
 
     /// <summary>
     /// Three looks a little apart, all black (a look that cannot be taken counts as a picture: nothing changes). The log
@@ -1267,7 +1344,7 @@ public sealed class EngineApp : ApplicationContext
             if (!UpdateRules.JustUpdated(last, AppInfo.Version, hadSettings))
                 return;
             UpdateService.ForgetImportant(SettingsStore.AppDataDir);
-            _toast.Show(Text.Format("toast.updated", AppInfo.Display(AppInfo.Version)), Text.Get("toast.updatedDetail"), Text.IsRightToLeft);
+            _toast.Show(Text.Format("toast.updated", AppInfo.Display(AppInfo.Version)), Text.Get("toast.updatedDetail"), Text.IsRightToLeft, overGame: false);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -1418,11 +1495,11 @@ public sealed class EngineApp : ApplicationContext
             case "voice-enroll-shot": _voice.StartEnroll(VoiceAction.Shot); break;
             case "voice-delete-shot": _voice.DeletePhrase(VoiceAction.Shot); break;
             case "delete-last": DeleteLastClip(); break;
-            case "hotkeys-typing": // a hotkey box has focus: it gets the keys
+            case "hotkeys-typing": // a hotkey box has focus: what is typed there runs nothing
                 if (!_hotkeys.Suspended)
                 {
                     _hotkeys.Suspend();
-                    ObsLog.Info("hotkeys: let go while one is typed in the settings");
+                    ObsLog.Info("hotkeys: not watched while one is typed in the settings");
                 }
                 break;
             case "hotkeys-typed": ResumeHotkeys("typing ended"); break;
@@ -1465,7 +1542,6 @@ public sealed class EngineApp : ApplicationContext
                 // Only the settings window asks twice a second, saying whether it is in use.
                 _windowSaidBusy = command == "status busy";
                 _windowAsked = DateTime.UtcNow;
-                _hotkeys.RetryPending();
                 break;
             default:
                 return JsonSerializer.Serialize(new { error = $"unknown command {command}" }, Ipc.Json);
@@ -1475,7 +1551,6 @@ public sealed class EngineApp : ApplicationContext
 
     StatusDto Status() => new(
         _pipeline is { } p ? p.GetStatus() with { NvidiaNote = _nvidiaNote, Behind = _lag.Behind && p.Lightest } : null,
-        _hotkeys.Status.ToDictionary(k => k.Key, k => k.Value),
         _lastClip, _error, _pausedByUser,
         _watcher != null && !_watcher.GameActive,
         AppInfo.Version,

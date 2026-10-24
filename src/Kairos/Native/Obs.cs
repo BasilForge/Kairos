@@ -231,6 +231,8 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_output_stop(IntPtr output);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_output_force_stop(IntPtr output);
     [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool obs_output_active(IntPtr output);
+    /// <summary>The encoded pictures the output has taken since it started.</summary>
+    [DllImport(Lib, CallingConvention = Cc)] public static extern int obs_output_get_total_frames(IntPtr output);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_output_get_last_error(IntPtr output);
     [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool obs_output_pause(IntPtr output, [MarshalAs(UnmanagedType.U1)] bool pause);

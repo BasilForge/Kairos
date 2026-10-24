@@ -40,12 +40,10 @@ public static class Program
                 return Ui.SettingsApp.SelfTestReload(Console.Out);
             case "--render-toast":
                 Text.Language = args.Length > 2 ? args[2] : "ar";
-                // --render-toast <png> [ar|en] [keys-taken|key-taken|not-saved|disk-full|starting|low-disk|record-failed|replay-failed|update|update-important|updated|borderless]
+                // --render-toast <png> [ar|en] [not-saved|disk-full|starting|low-disk|record-failed|replay-failed|update|update-important|updated|borderless]
                 string state = args.Length > 3 ? args[3] : "";
                 string next = AppInfo.Display("1.2.0");
-                var taken = state is "keys-taken" or "key-taken"
-                    ? EngineApp.TakenToast(state == "keys-taken" ? ["Alt+F10", "Alt+Shift+F10", "Alt+F9"] : ["Alt+F10"])
-                    : state == "not-saved" ? EngineApp.NotSavedToast("toast.notSaved.paused")
+                var message = state == "not-saved" ? EngineApp.NotSavedToast("toast.notSaved.paused")
                     : state == "disk-full" ? EngineApp.NotSavedToast("toast.notSaved.disk")
                     : state == "starting" ? EngineApp.NotSavedToast("toast.notSaved.starting")
                     : state == "record-failed" ? EngineApp.RecordFailedToast()
@@ -58,8 +56,8 @@ public static class Program
                     : default;
                 var icon = state is "update" or "update-important" ? ToastIcon.Update : state == "updated" ? ToastIcon.Saved
                     : state == "borderless" ? ToastIcon.Tip : ToastIcon.Warning;
-                using (var card = taken.Title != null
-                           ? SaveToast.Paint(taken.Title, taken.Detail, Text.IsRightToLeft, 1.5f, icon)
+                using (var card = message.Title != null
+                           ? SaveToast.Paint(message.Title, message.Detail, Text.IsRightToLeft, 1.5f, icon)
                            : SaveToast.Paint(Text.Get("toast.saved"), "ELDEN RING™ • 5:00", Text.IsRightToLeft, 1.5f))
                     card.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
                 return 0;

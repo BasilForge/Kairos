@@ -118,7 +118,6 @@ public sealed class AppSettings
         if (string.IsNullOrWhiteSpace(Audio.MicDevice)) Audio.MicDevice = "default";
         if (!Enum.IsDefined(Audio.Layout)) Audio.Layout = AudioLayout.Together;
         Audio.MixersSetUp ??= [];
-        Capture.BorderlessTips ??= [];
         Audio.Sources = (Audio.Sources ?? []).Where(r => r != null && Enum.IsDefined(r.Kind) && !string.IsNullOrWhiteSpace(r.Id))
             .DistinctBy(r => r.Id).ToList();
         foreach (var row in Audio.Sources)
@@ -177,8 +176,6 @@ public sealed class CaptureSettings
     /// </summary>
     public bool ScreenForRiotGames { get; set; }
     public bool CaptureCursor { get; set; } = true;
-    /// <summary>The games told to use Borderless (exe names), once each (<see cref="App.BorderlessTips"/>).</summary>
-    public List<string> BorderlessTips { get; set; } = [];
 }
 
 public sealed record VideoSettings
@@ -259,16 +256,24 @@ public sealed class AudioSettings
     }
 }
 
+/// <summary>
+/// The keys Kairos watches (<see cref="App.HotkeyWatcher"/>). New installs take keys NVIDIA and OBS do not use: Kairos
+/// takes no key from another app, so a shared one would make both act.
+/// </summary>
 public sealed class HotkeySettings
 {
-    public string Save { get; set; } = "Alt+F10";
+    public string Save { get; set; } = "Alt+F8";
     public string Quick { get; set; } = "";
-    public string ToggleBuffer { get; set; } = "Alt+Shift+F10";
-    public string Record { get; set; } = "Alt+F9";
+    public string ToggleBuffer { get; set; } = "Alt+F6";
+    public string Record { get; set; } = "Alt+F7";
     /// <summary>Pauses and resumes a full recording. Missing (settings from before it existed): the recording keys plus Shift.</summary>
     public string? PauseRecord { get; set; }
     /// <summary>Takes a screenshot. Alt+F12: free of OBS's F9–F11 and RTSS's Ctrl+F12.</summary>
     public string Screenshot { get; set; } = "Alt+F12";
+
+    /// <summary>Each action's key by the engine's action names ("" for none).</summary>
+    public (string Id, string Key)[] ByAction() =>
+        [("save", Save), ("quick", Quick), ("toggle", ToggleBuffer), ("record", Record), ("pauseRecord", PauseRecord ?? ""), ("screenshot", Screenshot)];
 }
 
 public enum CameraLayout { Corner, Vertical }

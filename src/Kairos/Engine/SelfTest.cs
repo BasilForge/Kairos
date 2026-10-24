@@ -204,6 +204,10 @@ public static partial class SelfTest
             case "games-game":
                 s.Capture.Mode = CaptureMode.Game; // falls back to the screen with no game
                 break;
+            case "games-unhookable":
+                s.Capture.Mode = CaptureMode.Game;
+                s.Capture.GameFallbackToScreen = false; // games only
+                break;
             case "apps-game":
                 s.Capture.Mode = CaptureMode.Window; // the test game is the chosen app
                 s.Capture.Apps = [window ?? ""];
@@ -234,6 +238,8 @@ public static partial class SelfTest
                 return ScreenGameScene(pipeline, s.Output.Folder, output, window, compare);
             if (kind == "games-game")
                 return GamesGameScene(pipeline, s.Output.Folder, output, window);
+            if (kind == "games-unhookable")
+                return GamesUnhookableScene(pipeline, s.Output.Folder, output);
             if (kind == "apps-game")
                 return AppsGameScene(pipeline, s.Output.Folder, output, window, compare);
             if (kind == "apps")
@@ -669,6 +675,7 @@ public static partial class SelfTest
             }
             var st = pipeline.GetStatus();
             output.WriteLine($"encoder: {st.Encoder} ({pipeline.Choice?.Vendor}) {st.Width}x{st.Height} fps={st.Fps:F1} lagged={st.LaggedFrames} skipped={st.SkippedFrames}/{st.TotalFrames}");
+            output.WriteLine($"pictures taken by the replay: {pipeline.PicturesTaken?.ToString() ?? "none (not running)"}");
             if (st.Auto is { } auto)
                 output.WriteLine($"automatic: {auto}");
             if (st.EncoderFallback != null)

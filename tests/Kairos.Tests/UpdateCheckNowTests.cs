@@ -65,7 +65,7 @@ public static class UpdateCheckNowTests
         };
         try
         {
-            StatusDto Status(UpdateLook look) => new(null, [], null, null, false, false, AppInfo.Version, Look: look);
+            StatusDto Status(UpdateLook look) => new(null, null, null, false, false, AppInfo.Version, Look: look);
             vm.Seed(Status(new UpdateLook(true, false, 2, LookResult.Failed)), null);
             Assert.True(vm.CanCheckUpdates, "installed: the button shows");
             Assert.Equal(Text.Get("general.checkNow"), vm.UpdateLookText, "Check now (a daily look's failure is not shown)");

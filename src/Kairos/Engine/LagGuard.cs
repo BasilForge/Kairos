@@ -86,37 +86,39 @@ public sealed class LagGuard(double share = 0.10, int windowSeconds = 20)
 /// <item>NVIDIA's encoder without its multipass and adaptive quantization, which NVIDIA runs on the shader cores the game
 /// fills (the same kind as the p6 look-ahead that skipped 55-86 % of a user's frames): at the same CQ its gameplay VMAF
 /// was as high or higher, the clips about 5 % larger.</item>
-/// <item>The REALTIME GPU scheduling class for the whole process (Sunshine's default: at HIGH, its docs say, capture
-/// suffers when a game loads the card). NVIDIA's driver can freeze an encoder at REALTIME with the card's memory nearly
-/// full, so it is this step only: behind still after it, the next steps record at HIGH again.</item>
 /// <item>60 fps and 1080p at most.</item>
 /// <item>30 fps: half the work on the graphics card, where the CPU has no room for the last step (a user's 8 threads).</item>
 /// <item>The CPU's encoder (12 threads or more), which needs no time on the graphics card: Medal's own advice.</item>
 /// </list>
-/// The user's settings stay as they are.
+/// The user's settings stay as they are. The REALTIME GPU class, 1.1.1's second step, runs from the start now
+/// (<see cref="GpuPriority"/>).
 /// </summary>
 public static class LagRelief
 {
     /// <summary>NVIDIA's encoder without the passes it runs on the shader cores (kept by every later step).</summary>
     public const int LightEncoder = 1;
 
-    /// <summary>The REALTIME GPU scheduling class (this step only).</summary>
-    public const int Realtime = 2;
-
     /// <summary>60 fps and 1080p at most.</summary>
-    public const int Capped = 3;
+    public const int Capped = 2;
 
     /// <summary>30 fps.</summary>
-    public const int HalfRate = 4;
+    public const int HalfRate = 3;
 
     /// <summary>The step that records on the CPU.</summary>
-    public const int Cpu = 5;
+    public const int Cpu = 4;
 
     /// <summary>
     /// These step numbers, kept with a step in hardware.json: 1.1.0 and the first 1.1.1 tests numbered them otherwise
-    /// (0 there), so a step they kept means another one here. One more whenever the steps change.
+    /// (0 there), 1.1.1 with REALTIME second (1). One more whenever the steps change.
     /// </summary>
-    public const int Numbering = 1;
+    public const int Numbering = 2;
+
+    /// <summary>
+    /// The step here for <paramref name="relief"/> kept under <paramref name="numbering"/>: 1.1.1's REALTIME step is the
+    /// light encoder it came after (REALTIME runs from the start now), its later ones one number lower; null for numbers
+    /// too old to tell (as chosen again).
+    /// </summary>
+    public static int? Renumbered(int relief, int numbering) => numbering == 1 ? relief <= 2 ? Math.Min(relief, LightEncoder) : relief - 1 : null;
 
     public static bool OnCpu(int relief) => relief >= Cpu;
 
@@ -125,22 +127,15 @@ public static class LagRelief
 
     /// <summary>
     /// The first step past <paramref name="relief"/>, up to <paramref name="max"/>, that records lighter than it (the light
-    /// encoder is NVIDIA's only, REALTIME left out on Intel graphics as OBS leaves them; 60 fps and 1080p change nothing
-    /// for a 1080p60 choice); <paramref name="relief"/> when none does.
+    /// encoder is NVIDIA's only; 60 fps and 1080p change nothing for a 1080p60 choice); <paramref name="relief"/> when none does.
     /// </summary>
-    public static int Next(VideoSettings chosen, int relief, int max, bool nvidia, bool realtime)
+    public static int Next(VideoSettings chosen, int relief, int max, bool nvidia)
     {
         for (int next = relief + 1; next <= max; next++)
-            if (OnCpu(next) || (next == LightEncoder && nvidia) || (next == Realtime && realtime) || Video(chosen, next) != Video(chosen, relief))
+            if (OnCpu(next) || (next == LightEncoder && nvidia) || Video(chosen, next) != Video(chosen, relief))
                 return next;
         return relief;
     }
-
-    /// <summary>
-    /// Whether going from <paramref name="from"/> to <paramref name="to"/> changes only the GPU class: set as the recording
-    /// runs, the replay kept (the light encoder is NVIDIA's step only, so another card goes from 0 straight to it).
-    /// </summary>
-    public static bool Live(int from, int to, bool nvidia) => to == Realtime && (from == LightEncoder || from == 0 && !nvidia);
 
     /// <summary>
     /// Whether a step that builds the pipeline again, which starts the replay empty, is taken now: never during a
@@ -150,16 +145,6 @@ public static class LagRelief
     public static bool RebuildNow(bool recording, bool saving, bool gameInReplay, bool savedSince) =>
         !recording && !saving && (!gameInReplay || savedSince);
 
-    /// <summary>What the Status page and the toast say about <paramref name="relief"/> (above 0).</summary>
-    public static string TextKey(int relief) => relief switch
-    {
-        >= Cpu => "status.reliefCpu",
-        >= HalfRate => "status.reliefHalf",
-        >= Capped => "status.relief",
-        Realtime => "status.reliefPriority",
-        _ => "status.reliefEncoder",
-    };
-
     /// <summary>The video settings recorded with at <paramref name="relief"/> (the same object until <see cref="Capped"/>).</summary>
     public static VideoSettings Video(VideoSettings chosen, int relief) => relief < Capped ? chosen : chosen with
     {
@@ -167,4 +152,38 @@ public static class LagRelief
         // 1080p at most: a smaller screen keeps its own size
         Resolution = ResolutionOptions.Height(chosen.Resolution, int.MaxValue) > 1080 ? OutputResolution.P1080 : chosen.Resolution,
     };
+}
+
+/// <summary>
+/// Whether pictures still reach the replay (a recorder's watchdog: no packets for a while, start again):
+/// libobs counts each encoded picture an output takes (obs_output_get_total_frames), and none for <see cref="StopAfter"/>
+/// while it runs means the encoder or the video stopped (NVIDIA's encoder frozen at REALTIME with hardware scheduling and a
+/// full graphics card memory, as Sunshine's notes say): every clip would hold one picture over the sound going on.
+/// </summary>
+public sealed class PictureWatch
+{
+    public static readonly TimeSpan StopAfter = TimeSpan.FromSeconds(10);
+
+    long? _count;
+    DateTime _since, _lastLook;
+
+    /// <summary>
+    /// Takes a look at the count of <paramref name="pictures"/> (null: no replay to watch); true while none came for
+    /// <see cref="StopAfter"/> (a count that starts again is a new output's: pictures coming). A look that comes over
+    /// <see cref="StopAfter"/> after the last one (the PC asleep, the tick held up) is timed anew: nothing was watched.
+    /// </summary>
+    public bool Stopped(DateTime now, long? pictures)
+    {
+        bool gap = now - _lastLook > StopAfter;
+        _lastLook = now;
+        if (pictures != _count || gap)
+        {
+            (_count, _since) = (pictures, now);
+            return false;
+        }
+        return pictures != null && now - _since >= StopAfter;
+    }
+
+    /// <summary>Watched anew from the next look: the pipeline was built again.</summary>
+    public void Reset() => _count = null;
 }

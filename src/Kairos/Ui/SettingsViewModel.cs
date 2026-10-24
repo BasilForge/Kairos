@@ -73,9 +73,6 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
         VoiceDeleteShotCommand = new RelayCommand(_ => VoiceCommand("voice-delete-shot"));
         ScreenshotCommand = new RelayCommand(_ => SendAsync("screenshot"));
         ResetHotkeysCommand = new RelayCommand(_ => ResetHotkeys());
-        foreach (var state in KeyStates)
-            state.FixCommand = new RelayCommand(_ => UseFreeKeys([state]), _ => state.CanFix);
-        FixAllCommand = new RelayCommand(_ => UseFreeKeys(KeyStates.Where(k => k.CanFix)), _ => ShowsFixAll);
         ShareLastClipCommand = new RelayCommand(_ => { if (HasLastClip) ShareRequested?.Invoke(LastClipPath!); });
         ShareLastShotCommand = new RelayCommand(_ => { if (HasLastShot) ShareRequested?.Invoke(LastShotPath!); });
         ViewLastShotCommand = new RelayCommand(_ => { if (HasLastShot) PictureRequested?.Invoke(LastShotPath!); });
@@ -159,7 +156,6 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
         _status = status;
         ShowLookForAMoment();
         UpdateLatestPictures();
-        RefreshKeyStates();
         SetCaps(caps);
         RefreshAudioRowStates();
     }
@@ -169,7 +165,6 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
     {
         _status = status;
         UpdateLatestPictures();
-        RefreshKeyStates();
         RaiseStatus();
     }
 
@@ -231,11 +226,7 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
 
-    void RaiseAll()
-    {
-        RefreshKeyStates();
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
-    }
+    void RaiseAll() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
 
     void Set(Action change)
     {
@@ -869,137 +860,9 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
 
     public ICommand ResetHotkeysCommand { get; }
 
-    // ---------------------------------------------------------------- keys another app holds
-
-    /// <summary>Where the keys are saved and how the engine is told (tests: a temp file and no engine).</summary>
+    /// <summary>Where the settings are saved and how the engine is told (tests: a temp file and no engine).</summary>
     internal string SettingsPath { get; set; } = SettingsStore.DefaultPath;
     internal Func<string, int, string?> Send { get; set; } = (command, timeout) => PipeClient.Send(command, timeout);
-    internal Func<Hotkey, bool> IsKeyFree { get; set; } = HotkeyManager.IsFree;
-    internal Func<IReadOnlyList<Hotkey>> NvidiaKeys { get; set; } = NvidiaHotkeys.Read;
-    internal Func<IReadOnlySet<System.Windows.Forms.Keys>> ObsKeys { get; set; } = ObsHotkeys.Read;
-
-    /// <summary>
-    /// A key Kairos may offer: no app holds it now, it is not one of NVIDIA's shortcuts (NVIDIA takes them back after a
-    /// restart) and OBS does not use its key (OBS reacts to it with any modifiers held too).
-    /// </summary>
-    Func<Hotkey, bool> Available()
-    {
-        var nvidia = NvidiaKeys();
-        var obs = ObsKeys();
-        return h => !nvidia.Contains(h) && !obs.Contains(h.Key) && IsKeyFree(h);
-    }
-
-    public KeyState SaveKey { get; } = new("save");
-    public KeyState ToggleKey { get; } = new("toggle");
-    public KeyState RecordKey { get; } = new("record");
-    public KeyState PauseRecordKey { get; } = new("pauseRecord");
-    public KeyState ScreenshotKey { get; } = new("screenshot");
-    IEnumerable<KeyState> KeyStates => [SaveKey, ToggleKey, RecordKey, PauseRecordKey, ScreenshotKey];
-
-    /// <summary>Two or more keys held by other apps: one button takes free keys for all of them.</summary>
-    public bool ShowsFixAll => KeyStates.Count(k => k.CanFix) >= 2;
-    public ICommand FixAllCommand { get; }
-
-    /// <summary>"3 hotkeys are held by NVIDIA" (or by other apps).</summary>
-    public string TakenSummary
-    {
-        get
-        {
-            var taken = KeyStates.Where(k => k.Taken).ToList();
-            var owners = taken.Select(k => k.Owner).Distinct().ToList();
-            return taken.Count == 0 ? "" : Text.Format("hotkeys.takenMany", taken.Count, owners.Count == 1 ? owners[0] : Text.Get("hotkeys.otherApps"));
-        }
-    }
-
-    string? _keysSeen;
-
-    static string KeyOf(HotkeySettings keys, string action) => action switch
-    {
-        "save" => keys.Save,
-        "toggle" => keys.ToggleBuffer,
-        "record" => keys.Record,
-        "pauseRecord" => keys.PauseRecord ?? "",
-        "screenshot" => keys.Screenshot,
-        _ => "",
-    };
-
-    static void SetKey(HotkeySettings keys, string action, string value)
-    {
-        switch (action)
-        {
-            case "save": keys.Save = value; break;
-            case "toggle": keys.ToggleBuffer = value; break;
-            case "record": keys.Record = value; break;
-            case "pauseRecord": keys.PauseRecord = value; break;
-            case "screenshot": keys.Screenshot = value; break;
-        }
-    }
-
-    /// <summary>Every key Kairos uses (a free key on offer is none of these).</summary>
-    IEnumerable<string> KeysInUse() => [HkSave, HkQuick, HkToggle, HkRecord, HkPauseRecord, HkScreenshot];
-
-    /// <summary>
-    /// Which keys another app holds, from the engine's report (only when that report or the keys changed, not on every
-    /// poll). A key being changed in the page is not marked: the report is about the saved one.
-    /// </summary>
-    void RefreshKeyStates()
-    {
-        var held = _status?.Hotkeys;
-        string seen = (held == null ? "" : string.Join(",", held.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key}={p.Value}")))
-            + "|" + string.Join(",", KeysInUse()) + "|" + _savedJson;
-        if (seen == _keysSeen)
-            return;
-        _keysSeen = seen;
-        var saved = _savedJson == null ? null : SettingsStore.Deserialize(_savedJson).Hotkeys;
-        IReadOnlyList<Hotkey>? nvidia = null;
-        Func<Hotkey, bool>? available = null;
-        foreach (var state in KeyStates)
-        {
-            string key = KeyOf(_s.Hotkeys, state.Action);
-            bool taken = held != null && held.TryGetValue(state.Action, out bool reserved) && !reserved
-                && HotkeyParser.TryParse(key, out _) && (saved == null || KeyOf(saved, state.Action) == key);
-            if (!taken)
-            {
-                state.Update(false, "", null);
-                continue;
-            }
-            nvidia ??= NvidiaKeys();
-            HotkeyParser.TryParse(key, out var hotkey);
-            string owner = nvidia.Contains(hotkey) ? "NVIDIA" : Text.Get("hotkeys.otherApp");
-            available ??= Available();
-            state.Update(true, owner, HotkeyDefaults.FreeChoice(state.Action, KeysInUse(), available));
-        }
-    }
-
-    /// <summary>
-    /// Takes a free key for each of these actions and saves only the keys at once (other unsaved changes stay pending),
-    /// then the engine reserves them.
-    /// </summary>
-    void UseFreeKeys(IEnumerable<KeyState> states)
-    {
-        var disk = SettingsStore.Load(SettingsPath);
-        var inUse = KeysInUse().ToList();
-        var available = Available();
-        bool changed = false;
-        foreach (var state in states.ToList())
-        {
-            if (HotkeyDefaults.FreeChoice(state.Action, inUse, available) is not { } free)
-                continue;
-            SetKey(disk.Hotkeys, state.Action, free);
-            SetKey(_s.Hotkeys, state.Action, free);
-            inUse.Add(free);
-            changed = true;
-        }
-        if (!changed)
-            return;
-        disk.Normalize();
-        SettingsStore.Save(SettingsPath, disk);
-        _savedJson = SettingsStore.Serialize(disk);
-        IsDirty = SettingsStore.Serialize(_s) != _savedJson;
-        RaiseAll();
-        var send = Send;
-        Task.Run(() => send("apply", 4000));
-    }
 
     /// <summary>Kairos's own keys back, as unsaved changes (Save applies them, Revert takes them back).</summary>
     public void ResetHotkeys() => Set(() => _s.Hotkeys = new HotkeySettings());
@@ -1500,7 +1363,6 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
             TryParseStatus(reply);
         if (!wasOnline && _status != null && _caps == null)
             LoadCapsAsync();
-        RefreshKeyStates();
         RefreshAudioRowStates();
         RaiseStatus();
         _poll.Interval = TimeSpan.FromMilliseconds(VoiceView is "enrolling" or "testing" ? 200 : 500);
@@ -1511,7 +1373,7 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
         try
         {
             var s = JsonSerializer.Deserialize<StatusDto>(json, Ipc.Json);
-            if (s != null && s.Hotkeys != null)
+            if (s != null && !string.IsNullOrEmpty(s.Version)) // an error's reply has no version
             {
                 _status = s;
                 UpdateLatestPictures();

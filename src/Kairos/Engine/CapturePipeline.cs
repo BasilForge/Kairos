@@ -81,7 +81,7 @@ public sealed class CapturePipeline : IDisposable
     /// <param name="encoderFilter">Self-test hook that narrows the encoder list, e.g. to force Intel QSV.</param>
     /// <param name="voice">Smart Save listener that hears the microphone source.</param>
     /// <param name="encoders">The encoders that failed this session: left out, or (B-frames) asked less of.</param>
-    /// <param name="screenWgc">This PC's screen capture is black with Automatic: Windows Graphics Capture from the start
+    /// <param name="screenWgc">The screen capture was black with Automatic this run: Windows Graphics Capture from the start
     /// (<see cref="ScreenCheck"/>).</param>
     public CapturePipeline(AppSettings settings, Func<IReadOnlyList<string>, IReadOnlyList<string>>? encoderFilter = null,
         Voice.VoiceTrigger? voice = null, EncoderFallback? encoders = null, bool screenWgc = false)
@@ -108,37 +108,23 @@ public sealed class CapturePipeline : IDisposable
     public int AutoStep { get; init; }
 
     /// <summary>How much lighter to record because recording fell behind a game (<see cref="LagRelief"/>; 0: as chosen).</summary>
-    public int Relief { get => _relief; init => _relief = value; }
-
-    int _relief;
-
-    /// <summary>What <see cref="NextRelief"/> was found with, for a step taken as the recording runs.</summary>
-    (VideoSettings Video, int Max, bool Nvidia) _reliefFrom;
+    public int Relief { get; init; }
 
     /// <summary>
-    /// Takes <paramref name="step"/> as the recording runs when it changes only the GPU class (<see cref="LagRelief.Live"/>):
-    /// the replay is kept. False when it needs the pipeline anew.
+    /// The REALTIME GPU class from the start, as Sunshine runs; false where NVIDIA's encoder froze at
+    /// it (<see cref="App.HardwareState.RealtimeFroze"/>): libobs's own class.
     /// </summary>
-    public bool StepLive(int step)
-    {
-        if (!LagRelief.Live(_relief, step, _reliefFrom.Nvidia))
-            return false;
-        _relief = step;
-        SetGpuClass();
-        FindNextRelief();
-        return true;
-    }
+    public bool Realtime { get; init; } = true;
 
-    /// <summary>The next lighter step from <see cref="Relief"/> (<see cref="LagRelief.Next"/>).</summary>
-    void FindNextRelief() =>
-        NextRelief = LagRelief.Next(_reliefFrom.Video, _relief, _reliefFrom.Max, _reliefFrom.Nvidia, realtime: !GpuPriority.Intel);
-
-    /// <summary>The GPU class for <see cref="Relief"/>: REALTIME at its own step only, libobs's own otherwise.</summary>
-    void SetGpuClass()
-    {
-        if (GpuPriority.SetClass(realtime: _relief == LagRelief.Realtime) is { } priority)
-            ObsLog.Info($"gpu priority: {priority}");
-    }
+    /// <summary>
+    /// The encoded pictures the replay (or, without one, the recording) has taken since it started, for
+    /// <see cref="PictureWatch"/>; null with neither running, or with the recording paused (the pause holds the encoders
+    /// both share: no picture comes by design).
+    /// </summary>
+    public long? PicturesTaken =>
+        RecordingPaused ? null
+        : BufferActive ? Obs.obs_output_get_total_frames(_replay)
+        : Recording ? Obs.obs_output_get_total_frames(_record) : null;
 
     /// <summary>
     /// What Automatic records with: its pick, at its own encoder speed (never a speed set by hand while it was off, which
@@ -212,10 +198,10 @@ public sealed class CapturePipeline : IDisposable
             Choice = SmartSetup.PickChosen(_s.Video.Codec, usable, hw);
             _video = _s.Video;
         }
-        _reliefFrom = (_video, LagRelief.Max(hw.CpuThreads, Choice.Vendor == EncoderVendor.Software && !LagRelief.OnCpu(Relief)),
+        NextRelief = LagRelief.Next(_video, Relief, LagRelief.Max(hw.CpuThreads, Choice.Vendor == EncoderVendor.Software && !LagRelief.OnCpu(Relief)),
             Choice.Vendor == EncoderVendor.Nvidia);
-        FindNextRelief();
-        SetGpuClass();
+        if (GpuPriority.SetClass(Realtime) is { } priority)
+            ObsLog.Info($"gpu priority: {priority}");
         _video = LagRelief.Video(_video, Relief);
         if (_encoders?.NoBFrames(Choice.Id) == true)
             Choice = Choice with { NoBFrames = true }; // a start with B-frames failed on this encoder
@@ -325,8 +311,9 @@ public sealed class CapturePipeline : IDisposable
                 _guardOn = _s.Capture.ScreenForRiotGames && AntiCheatGuard.AnyProtectedRunning();
                 // The game capture is made before the screen under it, as Screen's game layer (the screen starts copying
                 // in the frame its game goes).
+                GameCaptureModeNow = GameCaptureMode(_guardOn);
                 using (var d = new ObsData()
-                           .Set("capture_mode", GameCaptureMode(_guardOn)).Set("window", "").Set("capture_cursor", _s.Capture.CaptureCursor)
+                           .Set("capture_mode", GameCaptureModeNow).Set("window", "").Set("capture_cursor", _s.Capture.CaptureCursor)
                            .Set("anti_cheat_hook", true).Set("capture_overlays", false)
                            .Set("capture_audio", GameSoundOnly))
                     _game = CreateSource("game_capture", "Game", d);
@@ -484,7 +471,7 @@ public sealed class CapturePipeline : IDisposable
     /// <param name="onGraphicsThread">Called by libobs's signal: the log line is written off that thread (a frame waits on it).</param>
     void PlaceScreen(bool gamePicture, bool onGraphicsThread = false)
     {
-        bool show = KeepCaptureUnder || SceneRules.ScreenUnderGame(_mode, gamePicture, _s.Capture.GameFallbackToScreen || _guardOn);
+        bool show = KeepCaptureUnder || SceneRules.ScreenUnderGame(_mode, gamePicture, _s.Capture.GameFallbackToScreen || _guardOn || _unhookableInFront);
         lock (_underGate)
         {
             if (_screenLayer == IntPtr.Zero || Obs.obs_sceneitem_visible(_screenLayer) == show)
@@ -544,17 +531,26 @@ public sealed class CapturePipeline : IDisposable
 
     /// <summary>
     /// Games, once a second: the screen goes off under a hooked game (<see cref="PlaceScreen"/>); a game in front that
-    /// gives no picture is asked whether Kairos can open it (<see cref="CannotEnterGame"/>).
+    /// gives no picture is asked whether Kairos can open it (<see cref="CannotEnterGame"/>), and one it cannot open, on
+    /// the captured screen, is recorded from the screen while it is in front, as the user's choice may not show it
+    /// (games only: no hook and no screen was black).
     /// </summary>
     public void WatchGame(App.FullscreenApp? front = null)
     {
         if (_mode != CaptureMode.Game)
             return;
         bool hooked = !_guardOn && GameHooked;
+        _unhookableInFront = !hooked && !_guardOn && front != null && GameOverlay.MayHook(front.Exe) && !Hookable(front) && OnCapturedScreen(front);
+        SetGameCaptureMode(idle: _guardOn || _unhookableInFront); // libobs would try to open it every 2 s for ever
         PlaceScreen(gamePicture: hooked);
-        if (!hooked && !_guardOn && front != null && GameOverlay.MayHook(front.Exe))
-            Hookable(front);
     }
+
+    /// <summary>Games: the game in front cannot be opened, so the screen records it (<see cref="WatchGame"/>).</summary>
+    bool _unhookableInFront;
+
+    /// <summary><paramref name="front"/> fills the screen Kairos captures (the primary one when none is chosen).</summary>
+    bool OnCapturedScreen(App.FullscreenApp front) =>
+        _captureDevice == null || front.Monitor.Equals(_captureDevice, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Games: its capture has a game's picture.</summary>
     public bool GameHooked => _game != IntPtr.Zero && Obs.obs_source_get_width(_game) > 0;
@@ -571,6 +567,9 @@ public sealed class CapturePipeline : IDisposable
         using var d = new ObsData().Set("window", "");
         Obs.obs_source_update(_gameLayerSource, d.Handle);
     }
+
+    /// <summary>Self-tests: the game in front counts as one Kairos cannot open (run as administrator, or guarded).</summary>
+    internal bool NoHookForTest { get; set; }
 
     /// <summary>Self-tests: Games's capture takes this window (a test game parked off-screen is never fullscreen).</summary>
     internal void TargetGameForTest(string window)
@@ -617,8 +616,7 @@ public sealed class CapturePipeline : IDisposable
     {
         if (_mode != CaptureMode.Screen)
             return;
-        bool here = front != null && (_captureDevice == null || front.Monitor.Equals(_captureDevice, StringComparison.OrdinalIgnoreCase))
-                    && !LeftToScreen(front.Exe) && GameOverlay.MayHook(front.Exe) && Hookable(front);
+        bool here = front != null && OnCapturedScreen(front) && !LeftToScreen(front.Exe) && GameOverlay.MayHook(front.Exe) && Hookable(front);
         UpdateGameLayer(here ? front!.Window : null);
     }
 
@@ -637,7 +635,7 @@ public sealed class CapturePipeline : IDisposable
     bool Hookable(App.FullscreenApp front)
     {
         if (_hookable.Pid != front.Pid)
-            _hookable = (front.Pid, App.ProcessList.CanBeHooked(front.Pid));
+            _hookable = (front.Pid, !NoHookForTest && App.ProcessList.CanBeHooked(front.Pid));
         if (!_hookable.Ok && _toldNotHookable.Add(front.Exe))
         {
             ObsLog.Info($"capture: {front.Exe} cannot be hooked (run as administrator, or guarded by its anti-cheat): the screen records it");
@@ -1254,8 +1252,7 @@ public sealed class CapturePipeline : IDisposable
         if (_mode != CaptureMode.Game || on == _guardOn)
             return;
         _guardOn = on;
-        using (var d = new ObsData().Set("capture_mode", GameCaptureMode(on)).Set("window", ""))
-            Obs.obs_source_update(_game, d.Handle);
+        SetGameCaptureMode(idle: on || _unhookableInFront);
         ShowGuard();
         if (!on)
             ObsLog.Info("anti-cheat guard off: games are captured again");
@@ -1273,7 +1270,21 @@ public sealed class CapturePipeline : IDisposable
     }
 
     /// <summary>The game capture's mode: any full-screen game, or (guarded) a window that is never named, so nothing is hooked.</summary>
-    static string GameCaptureMode(bool guarded) => guarded ? "window" : "any_fullscreen";
+    static string GameCaptureMode(bool idle) => idle ? "window" : "any_fullscreen";
+
+    /// <summary>Games: the game capture's mode now ("window" with no window when it tries no hook).</summary>
+    internal string GameCaptureModeNow { get; private set; } = "";
+
+    /// <summary>Games: the game capture looks for a fullscreen game to hook, or (<paramref name="idle"/>) tries none.</summary>
+    void SetGameCaptureMode(bool idle)
+    {
+        string mode = GameCaptureMode(idle);
+        if (mode == GameCaptureModeNow)
+            return;
+        GameCaptureModeNow = mode;
+        using var d = new ObsData().Set("capture_mode", mode).Set("window", "");
+        Obs.obs_source_update(_game, d.Handle);
+    }
 
     /// <summary>Starts or stops the replay buffer(s). Returns whether the buffer is active afterwards.</summary>
     public bool SetBufferActive(bool on)
@@ -1559,7 +1570,6 @@ public sealed class CapturePipeline : IDisposable
             Auto,
             CameraOn: CameraOn,
             DiskFellBack: DiskFellBack,
-            Relief: Relief,
             RenderedFrames: Obs.obs_get_total_frames(),
             AudioRowsHeardOn: _heardOn);
     }

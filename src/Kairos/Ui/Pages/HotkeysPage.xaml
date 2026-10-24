@@ -9,38 +9,10 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="ToolTip" Value="{l:T hotkeys.hint}"/>
-            <Style.Triggers>
-                <!-- Tag: another app holds this key -->
-                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
-                    <Setter Property="BorderBrush" Value="{StaticResource Warning}"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="TakenLink" TargetType="Button" BasedOn="{StaticResource Ghost}">
-            <Setter Property="Padding" Value="9,3"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Margin" Value="10,0,0,0"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
     </UserControl.Resources>
     <StackPanel>
         <TextBlock Style="{StaticResource Title}" Text="{l:T nav.hotkeys}"/>
-
-        <!-- Two or more keys held by other apps: free keys for all of them in one click -->
-        <Border Background="{StaticResource WarningSoft}" CornerRadius="10" Padding="16,10" Margin="0,0,0,12"
-                Visibility="{Binding ShowsFixAll, Converter={StaticResource Vis}}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="14" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock Text="{Binding TakenSummary}" FontSize="13.5" VerticalAlignment="Center"/>
-                </StackPanel>
-                <Button Grid.Column="1" Style="{StaticResource Primary}" Content="{l:T hotkeys.fixAll}" Command="{Binding FixAllCommand}" Padding="14,7"/>
-            </Grid>
-        </Border>
 
         <!-- One card per feature -->
         <Border Style="{StaticResource Card}">
@@ -51,16 +23,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.save}" FontWeight="SemiBold"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding SaveKey.Taken, Converter={StaticResource Vis}}">
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding SaveKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
-                            <Button Style="{StaticResource TakenLink}" Content="{Binding SaveKey.FixText}" Command="{Binding SaveKey.FixCommand}"
-                                    Visibility="{Binding SaveKey.CanFix, Converter={StaticResource Vis}}"/>
-                        </StackPanel>
-                    </StackPanel>
-                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkSave}" Tag="{Binding SaveKey.Taken}" AutomationProperties.Name="{l:T hotkeys.save}"/>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.save}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkSave}" AutomationProperties.Name="{l:T hotkeys.save}"/>
                 </Grid>
                 <Border Style="{StaticResource Divider}"/>
                 <Grid Margin="0,2" IsEnabled="{Binding QuickEnabled}">
@@ -68,9 +32,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.quick}"/>
-                    </StackPanel>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.quick}" VerticalAlignment="Center"/>
                     <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkQuick}" AutomationProperties.Name="{l:T hotkeys.quick}"/>
                 </Grid>
                 <Border Style="{StaticResource Divider}"/>
@@ -79,16 +41,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.toggle}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding ToggleKey.Taken, Converter={StaticResource Vis}}">
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding ToggleKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
-                            <Button Style="{StaticResource TakenLink}" Content="{Binding ToggleKey.FixText}" Command="{Binding ToggleKey.FixCommand}"
-                                    Visibility="{Binding ToggleKey.CanFix, Converter={StaticResource Vis}}"/>
-                        </StackPanel>
-                    </StackPanel>
-                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkToggle}" Tag="{Binding ToggleKey.Taken}" AutomationProperties.Name="{l:T hotkeys.toggle}"/>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.toggle}" VerticalAlignment="Center"/>
+                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkToggle}" AutomationProperties.Name="{l:T hotkeys.toggle}"/>
                 </Grid>
             </StackPanel>
         </Border>
@@ -101,16 +55,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.record}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding RecordKey.Taken, Converter={StaticResource Vis}}">
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding RecordKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
-                            <Button Style="{StaticResource TakenLink}" Content="{Binding RecordKey.FixText}" Command="{Binding RecordKey.FixCommand}"
-                                    Visibility="{Binding RecordKey.CanFix, Converter={StaticResource Vis}}"/>
-                        </StackPanel>
-                    </StackPanel>
-                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkRecord}" Tag="{Binding RecordKey.Taken}" AutomationProperties.Name="{l:T hotkeys.record}"/>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.record}" VerticalAlignment="Center"/>
+                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkRecord}" AutomationProperties.Name="{l:T hotkeys.record}"/>
                 </Grid>
                 <Border Style="{StaticResource Divider}"/>
                 <Grid Margin="0,2">
@@ -118,16 +64,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.pauseRecord}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding PauseRecordKey.Taken, Converter={StaticResource Vis}}">
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding PauseRecordKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
-                            <Button Style="{StaticResource TakenLink}" Content="{Binding PauseRecordKey.FixText}" Command="{Binding PauseRecordKey.FixCommand}"
-                                    Visibility="{Binding PauseRecordKey.CanFix, Converter={StaticResource Vis}}"/>
-                        </StackPanel>
-                    </StackPanel>
-                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkPauseRecord}" Tag="{Binding PauseRecordKey.Taken}" AutomationProperties.Name="{l:T hotkeys.pauseRecord}"/>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.pauseRecord}" VerticalAlignment="Center"/>
+                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkPauseRecord}" AutomationProperties.Name="{l:T hotkeys.pauseRecord}"/>
                 </Grid>
             </StackPanel>
         </Border>
@@ -140,16 +78,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.screenshot}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding ScreenshotKey.Taken, Converter={StaticResource Vis}}">
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding ScreenshotKey.TakenText}" FontSize="12.5" Foreground="{StaticResource Warning}" VerticalAlignment="Center"/>
-                            <Button Style="{StaticResource TakenLink}" Content="{Binding ScreenshotKey.FixText}" Command="{Binding ScreenshotKey.FixCommand}"
-                                    Visibility="{Binding ScreenshotKey.CanFix, Converter={StaticResource Vis}}"/>
-                        </StackPanel>
-                    </StackPanel>
-                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkScreenshot}" Tag="{Binding ScreenshotKey.Taken}" AutomationProperties.Name="{l:T hotkeys.screenshot}"/>
+                    <TextBlock Style="{StaticResource Label}" Text="{l:T hotkeys.screenshot}" VerticalAlignment="Center"/>
+                    <l:HotkeyBox Grid.Column="1" Style="{StaticResource HkBox}" Hotkey="{Binding HkScreenshot}" AutomationProperties.Name="{l:T hotkeys.screenshot}"/>
                 </Grid>
             </StackPanel>
         </Border>

@@ -58,8 +58,7 @@ public static partial class SettingsApp
 
         string status = JsonSerializer.Serialize(new StatusDto(
             new EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440, 700, 600, clips, false, null,
-                QuietAudioRows: []),
-            [], video, null, false, false, AppInfo.Version, LastShot: picture), Ipc.Json);
+                QuietAudioRows: []), video, null, false, false, AppInfo.Version, LastShot: picture), Ipc.Json);
         string caps = JsonSerializer.Serialize(new CapsDto(
             [new MonitorInfo(@"\\?\DISPLAY1", "Display 1", 2560, 1440, true)],
             [new("Roblox", "Roblox:WINDOWSCLIENT:RobloxPlayerBeta.exe"), new("Discord", "Discord:Chrome_WidgetWin_1:Discord.exe")],
@@ -436,7 +435,7 @@ public static partial class SettingsApp
                     string typed = box.Hotkey;
                     box.Hotkey = keys;
                     System.Windows.Input.Keyboard.ClearFocus();
-                    result = typed == keys ? $"F7 not taken (kept {keys})" : $"F7 typed ({typed}) and set back";
+                    result = $"F7 typed ({typed}) and set back";
                     break;
                 case Slider slider:
                     double value = slider.Value;

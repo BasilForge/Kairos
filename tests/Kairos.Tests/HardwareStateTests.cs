@@ -31,6 +31,58 @@ public static class HardwareStateTests
     }
 
     /// <summary>
+    /// REALTIME from the start: where NVIDIA's encoder froze at it (with hardware scheduling
+    /// and a full graphics card memory, as Sunshine's notes say) libobs's own class is kept for the PC for a quiet week
+    /// (one stop may have had another cause), or until a new driver.
+    /// </summary>
+    [Test]
+    public static void Realtime_that_froze_the_encoder_is_left_out_for_a_week_or_until_the_driver_changes()
+    {
+        string path = Path.Combine(Folder(), "hardware.json");
+        var state = HardwareState.Load(path, "4070ti|581.57");
+        Assert.True(state.RealtimeFroze == null, "a new PC: REALTIME");
+        state.RealtimeFroze = T0;
+        state.Save(path);
+        var kept = HardwareState.Load(path, "4070ti|581.57");
+        Assert.True(kept.RealtimeFroze == T0 && !kept.RetryRealtimeIfQuiet(T0.AddDays(6)), "the same PC within a week: left out");
+        Assert.True(kept.RetryRealtimeIfQuiet(T0.AddDays(7)) && kept.RealtimeFroze == null, "a week later: REALTIME again");
+        Assert.True(HardwareState.Load(path, "4070ti|591.44").RealtimeFroze == null, "a new driver: REALTIME again");
+    }
+
+    static readonly DateTime T0 = new(2026, 10, 24, 20, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// 1.1.1 numbered its steps with REALTIME second; REALTIME runs from the start now, so a step it kept goes on as the
+    /// same recording: its REALTIME step is the light encoder it came after, the later ones one number lower.
+    /// </summary>
+    [Test]
+    public static void Lighter_recording_kept_by_1_1_1_goes_on_as_the_same_step()
+    {
+        string path = Path.Combine(Folder(), "hardware.json");
+        foreach (var (kept, now) in new[] { (1, LagRelief.LightEncoder), (2, LagRelief.LightEncoder), (3, LagRelief.Capped), (4, LagRelief.HalfRate), (5, LagRelief.Cpu) })
+        {
+            File.WriteAllText(path, $$"""{ "Fingerprint": "pc", "Relief": {{kept}}, "ReliefAt": "2026-10-23T20:00:00Z", "ReliefNumbering": 1 }""");
+            var state = HardwareState.Load(path, "pc");
+            Assert.True(state.Relief == now && state.ReliefNumbering == LagRelief.Numbering && state.ReliefAt != null, $"1.1.1's step {kept}: step {now} here, its week kept");
+        }
+    }
+
+    /// <summary>
+    /// The screen was kept on Windows Graphics Capture for good after one black look (a PC on 1.1.1: a copy of every
+    /// one of 280 refreshes a second under Apex). The file's old field is left unread: Desktop Duplication first again.
+    /// </summary>
+    [Test]
+    public static void A_screen_kept_on_windows_graphics_capture_is_tried_with_duplication_again()
+    {
+        string path = Path.Combine(Folder(), "hardware.json");
+        File.WriteAllText(path, $$"""{ "Fingerprint": "pc", "Relief": 1, "ReliefNumbering": {{LagRelief.Numbering}}, "ScreenWgc": true }""");
+        var state = HardwareState.Load(path, "pc");
+        Assert.True(state.Fingerprint == "pc" && state.Relief == 1, "the rest of the file still read");
+        state.Save(path);
+        Assert.True(!File.ReadAllText(path).Contains("ScreenWgc"), "gone from the file");
+    }
+
+    /// <summary>
     /// A user's 30 fps was step 3 before the REALTIME step came in, and step 3 is 60 fps and 1080p now: kept as it was,
     /// his recording would pass the new step by. A step kept under older numbers starts again from none.
     /// </summary>
@@ -41,9 +93,9 @@ public static class HardwareStateTests
         File.WriteAllText(path, """{ "Fingerprint": "pc", "Relief": 3, "ReliefAt": "2026-10-23T20:00:00" }""");
         var old = HardwareState.Load(path, "pc");
         Assert.True(old.Relief == 0 && old.ReliefAt == null, "an older Kairos's step: as chosen again");
-        old.Relieve(new DateTime(2026, 10, 24), LagRelief.Realtime);
+        old.Relieve(new DateTime(2026, 10, 24), LagRelief.Capped);
         old.Save(path);
-        Assert.Equal(LagRelief.Realtime, HardwareState.Load(path, "pc").Relief, "this Kairos's own step: kept");
+        Assert.Equal(LagRelief.Capped, HardwareState.Load(path, "pc").Relief, "this Kairos's own step: kept");
     }
 
     [Test]

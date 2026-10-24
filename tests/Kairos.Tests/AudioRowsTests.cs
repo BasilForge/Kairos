@@ -59,7 +59,7 @@ public static class AudioRowsTests
     {
         var vm = Vm(AudioLayout.Separate);
         vm.Seed(new StatusDto(new Kairos.Engine.EngineStatus(true, false, 60, 0, 0, 0, 300, 300, "x", 1920, 1080, 0, 0, @"D:\Clips", false, null,
-            QuietAudioRows: ["game", "discord"]), [], null, null, false, false, "1.1.0"), null);
+            QuietAudioRows: ["game", "discord"]), null, null, false, false, "1.1.0"), null);
         Assert.Equal(Text.Get("audio.waitingGame"), vm.AudioRows.Single(r => r.Name == "Game").State, "no game yet");
         Assert.Equal(Text.Get("audio.notRunning"), vm.AudioRows.Single(r => r.Name == "Discord").State, "Discord closed");
         Assert.Equal("", vm.AudioRows.Single(r => r.Name == "Other sounds").State, "something plays");
@@ -72,7 +72,7 @@ public static class AudioRowsTests
         // The engine still records everything together, so it tracks no row: none may say its app is closed.
         var vm = Vm(AudioLayout.Separate);
         vm.Seed(new StatusDto(new Kairos.Engine.EngineStatus(true, false, 60, 0, 0, 0, 300, 300, "x", 1920, 1080, 0, 0, @"D:\Clips", false, null,
-            QuietAudioRows: []), [], null, null, false, false, "1.1.0"), null);
+            QuietAudioRows: []), null, null, false, false, "1.1.0"), null);
         Assert.True(vm.AudioRows.All(r => r.State == ""), string.Join(", ", vm.AudioRows.Select(r => $"{r.Name}: {r.State}")));
     }
 
@@ -115,8 +115,7 @@ public static class AudioRowsTests
             [new("Default", "default"), new("Speakers (RODECaster Duo Main Stereo)", "main"), new("Speakers (RODECaster Duo Chat)", "chat"),
              new("LG ULTRAGEAR (NVIDIA High Definition Audio)", "lg")], [], "32.2.2") { DefaultSpeaker = "main" };
         vm.Seed(new StatusDto(new Kairos.Engine.EngineStatus(true, false, 60, 0, 0, 0, 300, 300, "x", 1920, 1080, 0, 0, @"D:\Clips", false, null,
-            QuietAudioRows: ["game", "discord", "other"], AudioRowsHeardOn: new Dictionary<string, string> { ["game"] = "main", ["discord"] = "chat" }),
-            [], null, null, false, false, "1.1.1"), caps);
+            QuietAudioRows: ["game", "discord", "other"], AudioRowsHeardOn: new Dictionary<string, string> { ["game"] = "main", ["discord"] = "chat" }), null, null, false, false, "1.1.1"), caps);
         Assert.Equal("LG ULTRAGEAR (NVIDIA High Definition Audio)", string.Join(",", vm.AddAudioOutputs.Select(o => o.Label)),
             "Main Stereo (every app plays there) and the rows' own devices left out");
         string State(string id) => vm.AudioRows.Single(r => r.Id == id).State;

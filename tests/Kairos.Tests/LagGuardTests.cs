@@ -134,7 +134,6 @@ public static class LagGuardTests
         var mine = new VideoSettings { Fps = 120, Resolution = OutputResolution.Native, Codec = VideoCodec.Hevc };
         Assert.True(ReferenceEquals(mine, LagRelief.Video(mine, 0)), "none: as chosen");
         Assert.True(ReferenceEquals(mine, LagRelief.Video(mine, LagRelief.LightEncoder)), "the light encoder: the same size and rate");
-        Assert.True(ReferenceEquals(mine, LagRelief.Video(mine, LagRelief.Realtime)), "REALTIME: the same size and rate");
         var light = LagRelief.Video(mine, LagRelief.Capped);
         Assert.True(light.Fps == 60 && light.Resolution == OutputResolution.P1080 && light.Codec == VideoCodec.Hevc, "60 fps, 1080p, the same encoder");
         Assert.True(LagRelief.Video(mine, LagRelief.HalfRate) is { Fps: 30, Resolution: OutputResolution.P1080 }, "then 30 fps");
@@ -148,26 +147,60 @@ public static class LagGuardTests
 
     /// <summary>
     /// A user's RTX 3060 Ti in ARC Raiders: 43 % skipped with nothing lighter left ("already as light as it goes": 1080p60
-    /// with 8 threads). Every step that changes something comes in turn: the light encoder (NVIDIA's only), REALTIME
-    /// (not on Intel graphics), then the picture.
+    /// with 8 threads). Every step that changes something comes in turn: the light encoder (NVIDIA's only), then the
+    /// picture. REALTIME is no step: the recording has it from the start.
     /// </summary>
     [Test]
     public static void A_step_that_would_change_nothing_is_skipped()
     {
         var p1080 = new VideoSettings { Fps = 60, Resolution = OutputResolution.P1080 };
-        int Next(VideoSettings v, int relief, int max, bool nvidia = true, bool realtime = true) => LagRelief.Next(v, relief, max, nvidia, realtime);
+        int Next(VideoSettings v, int relief, int max, bool nvidia = true) => LagRelief.Next(v, relief, max, nvidia);
         Assert.Equal(LagRelief.LightEncoder, Next(p1080, 0, LagRelief.HalfRate), "NVIDIA: the light encoder first");
-        Assert.Equal(LagRelief.Realtime, Next(p1080, LagRelief.LightEncoder, LagRelief.HalfRate), "then REALTIME");
-        Assert.Equal(LagRelief.HalfRate, Next(p1080, LagRelief.Realtime, LagRelief.HalfRate), "already 1080p60: then 30 fps");
-        Assert.Equal(LagRelief.Realtime, Next(p1080, 0, LagRelief.HalfRate, nvidia: false), "AMD: no light encoder, REALTIME first");
-        Assert.Equal(LagRelief.HalfRate, Next(p1080, 0, LagRelief.HalfRate, nvidia: false, realtime: false), "Intel: straight to 30 fps");
+        Assert.Equal(LagRelief.HalfRate, Next(p1080, LagRelief.LightEncoder, LagRelief.HalfRate), "already 1080p60: then 30 fps");
+        Assert.Equal(LagRelief.HalfRate, Next(p1080, 0, LagRelief.HalfRate, nvidia: false), "AMD and Intel: no light encoder, 30 fps first");
         Assert.Equal(LagRelief.Cpu, Next(p1080, LagRelief.HalfRate, LagRelief.Cpu), "then the CPU, with room for it");
         Assert.Equal(LagRelief.HalfRate, Next(p1080, LagRelief.HalfRate, LagRelief.HalfRate), "nothing lighter left");
         var p1440 = new VideoSettings { Fps = 120, Resolution = OutputResolution.P1440 };
-        Assert.Equal(LagRelief.Capped, Next(p1440, LagRelief.Realtime, LagRelief.Cpu), "1440p120: then 60 fps and 1080p");
+        Assert.Equal(LagRelief.Capped, Next(p1440, LagRelief.LightEncoder, LagRelief.Cpu), "1440p120: then 60 fps and 1080p");
         var p30 = new VideoSettings { Fps = 30, Resolution = OutputResolution.P720 };
-        Assert.Equal(LagRelief.Realtime, Next(p30, LagRelief.LightEncoder, LagRelief.HalfRate), "720p30: REALTIME still helps");
-        Assert.Equal(LagRelief.Realtime, Next(p30, LagRelief.Realtime, LagRelief.HalfRate), "and nothing after it");
+        Assert.Equal(LagRelief.LightEncoder, Next(p30, LagRelief.LightEncoder, LagRelief.HalfRate), "720p30: nothing lighter after the encoder");
+    }
+
+    /// <summary>
+    /// A recorder starts again when no packets come for a while: NVIDIA's encoder frozen at REALTIME
+    /// (hardware scheduling with a full graphics card memory, Sunshine's notes) leaves the sound going on over one picture
+    /// in every clip. Pictures that stop reaching the replay for 10 s are noticed.
+    /// </summary>
+    [Test]
+    public static void Pictures_that_stop_reaching_the_replay_are_noticed_within_ten_seconds()
+    {
+        var watch = new PictureWatch();
+        Assert.True(!watch.Stopped(T0, 0) && !watch.Stopped(T0.AddSeconds(1), 60) && !watch.Stopped(T0.AddSeconds(2), 120), "pictures come");
+        Assert.True(!watch.Stopped(T0.AddSeconds(11), 120), "9 s without one: not yet");
+        Assert.True(watch.Stopped(T0.AddSeconds(12), 120), "10 s without a picture: stopped");
+        Assert.True(watch.Stopped(T0.AddSeconds(17), 120), "and still, a clip being written meanwhile: told again at the next look");
+        watch.Reset();
+        Assert.True(!watch.Stopped(T0.AddSeconds(18), 120), "built again: watched anew from its first look");
+        Assert.True(!watch.Stopped(T0.AddSeconds(19), null), "no replay (paused, being built): nothing to watch");
+        Assert.True(!watch.Stopped(T0.AddSeconds(20), 0) && !watch.Stopped(T0.AddSeconds(29), 0), "a new replay is timed from its first look");
+        Assert.True(watch.Stopped(T0.AddSeconds(30), 0), "one that never gives a picture: stopped too");
+        var fresh = new PictureWatch();
+        Assert.True(!fresh.Stopped(T0, 900) && !fresh.Stopped(T0.AddSeconds(9), 900) && !fresh.Stopped(T0.AddSeconds(10), 3), "a count that starts again is pictures coming");
+    }
+
+    /// <summary>
+    /// The PC asleep (or the engine's tick held up) between two looks is no stop: on waking, the tick came before the
+    /// rebuild after sleep and read the same count hours later, which built the pipeline again for nothing and left
+    /// REALTIME off for a week.
+    /// </summary>
+    [Test]
+    public static void A_long_gap_between_looks_is_no_stop()
+    {
+        var watch = new PictureWatch();
+        Assert.True(!watch.Stopped(T0, 500) && !watch.Stopped(T0.AddSeconds(5), 800), "pictures come");
+        Assert.True(!watch.Stopped(T0.AddHours(3), 800), "woken after three hours: the same count is no stop");
+        Assert.True(!watch.Stopped(T0.AddHours(3).AddSeconds(5), 800), "timed from the waking");
+        Assert.True(watch.Stopped(T0.AddHours(3).AddSeconds(10), 800), "10 s after it with no picture: stopped");
     }
 
     /// <summary>The light encoder drops NVIDIA's CUDA passes (the same CQ measured as good or better); nothing else changes.</summary>
@@ -199,18 +232,19 @@ public static class LagGuardTests
         Assert.Equal(0, state.Relief, "new video settings from the user: theirs, as chosen");
     }
 
+    /// <summary>
+    /// Kairos solves problems without telling what it does inside. A lighter step is taken silently, in
+    /// every language: no Status note (it said "a game is using most of the graphics card" hours after the game was left)
+    /// and no toast. The Status page speaks only when the user can do something.
+    /// </summary>
     [Test]
-    public static void The_status_page_says_why_it_records_lighter()
+    public static void Lighter_recording_is_never_shown_to_the_user()
     {
         Text.Language = "en";
         var engine = new EngineStatus(true, false, 60, 0, 0, 0, 300, 300, "x", 1920, 1080, 0, 0, @"D:\Clips", false, null);
         Assert.Equal("", Ui.StatusLogic.CaptureWarning(engine), "nothing to say");
-        Assert.Equal(Text.Get("status.reliefEncoder"), Ui.StatusLogic.CaptureWarning(engine with { Relief = LagRelief.LightEncoder }), "the light encoder");
-        Assert.Equal(Text.Get("status.reliefPriority"), Ui.StatusLogic.CaptureWarning(engine with { Relief = LagRelief.Realtime }), "REALTIME");
-        Assert.Equal(Text.Get("status.relief"), Ui.StatusLogic.CaptureWarning(engine with { Relief = LagRelief.Capped }), "lighter");
-        Assert.Equal(Text.Get("status.reliefHalf"), Ui.StatusLogic.CaptureWarning(engine with { Relief = LagRelief.HalfRate }), "30 fps");
-        Assert.Equal(Text.Get("status.reliefCpu"), Ui.StatusLogic.CaptureWarning(engine with { Relief = LagRelief.Cpu }), "on the CPU");
-        Assert.Equal(Text.Get("status.behind"), Ui.StatusLogic.CaptureWarning(engine with { Relief = LagRelief.HalfRate, Behind = true }), "still behind: what the user can do");
+        Assert.Equal(Text.Get("status.behind"), Ui.StatusLogic.CaptureWarning(engine with { Behind = true }), "still behind with nothing lighter left: what the user can do");
+        Assert.True(!Text.AllKeys().Any(k => k.StartsWith("status.relief", StringComparison.Ordinal) || k == "toast.relief"), "no words for it in any language");
     }
 
     [Test]
@@ -225,20 +259,6 @@ public static class LagGuardTests
         watch.Requested(SaveWatch.Request.Started, T0, 0, null);
         watch.Cancel();
         Assert.True(!watch.Pending && watch.Tick(T0.AddMinutes(5), behind: false) == null, "built again: the old save is not reported later");
-    }
-
-    /// <summary>
-    /// The REALTIME step changes only the GPU class: it is set as the recording runs, the replay kept (it was built again,
-    /// and a user's save 2 s after got a 2 s clip). Every other step needs the encoder or the video anew.
-    /// </summary>
-    [Test]
-    public static void Only_the_realtime_step_is_taken_as_the_recording_runs()
-    {
-        Assert.True(LagRelief.Live(LagRelief.LightEncoder, LagRelief.Realtime, nvidia: true), "NVIDIA: the light encoder runs already, only the class changes");
-        Assert.True(LagRelief.Live(0, LagRelief.Realtime, nvidia: false), "another card has no light encoder step: only the class");
-        Assert.True(!LagRelief.Live(0, LagRelief.Realtime, nvidia: true), "NVIDIA from its usual encoder: the light one needs the encoder anew");
-        Assert.True(!LagRelief.Live(0, LagRelief.LightEncoder, nvidia: true), "the light encoder needs the encoder anew");
-        Assert.True(!LagRelief.Live(LagRelief.Realtime, LagRelief.HalfRate, nvidia: true), "30 fps needs the video anew");
     }
 
     /// <summary>

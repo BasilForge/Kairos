@@ -95,11 +95,12 @@ public sealed class SaveToast : NativeWindow, IDisposable
     /// <param name="icon">The green check (saved), an amber "!" (something did not work), a rose arrow (an update) or a rose screen (a tip).</param>
     /// <param name="timing"><see cref="ToastTiming.Usual"/> when null.</param>
     /// <param name="overGame">
-    /// Shown over a full-screen game too (a tip the player must see before a clip is lost): the card never takes focus,
-    /// and Windows composes it over the game. Never over presentation mode.
+    /// Shown over a full-screen game too (what the player just did there, a tip they must see before a clip is lost): the
+    /// card never takes focus, and Windows composes it over the game. Never over presentation mode. False: a note that
+    /// waits for the game to be left.
     /// </param>
     /// <returns>False when nothing showed (an exclusive-fullscreen game or presentation mode).</returns>
-    public bool Show(string title, string subtitle, bool rtl, ToastIcon icon = ToastIcon.Saved, ToastTiming? timing = null, bool overGame = false)
+    public bool Show(string title, string subtitle, bool rtl, ToastIcon icon = ToastIcon.Saved, ToastTiming? timing = null, bool overGame = true)
     {
         // What the user was told, in the log (someone saying "nothing happened" may have been told why).
         string said = subtitle.Length > 0 ? $"{title} | {subtitle}" : title;

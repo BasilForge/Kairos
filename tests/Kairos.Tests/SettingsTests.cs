@@ -21,9 +21,9 @@ public static class SettingsTests
         Assert.Equal("default", s.Audio.MicDevice, "windows default mic");
         Assert.Equal("default", s.Audio.SystemDevice, "windows default output");
         Assert.Equal(true, s.Audio.SeparateTracks, "separate tracks");
-        Assert.Equal("Alt+F10", s.Hotkeys.Save, "save hotkey");
-        Assert.Equal("Alt+Shift+F10", s.Hotkeys.ToggleBuffer, "toggle hotkey");
-        Assert.Equal("Alt+F9", s.Hotkeys.Record, "record hotkey");
+        Assert.Equal("Alt+F8", s.Hotkeys.Save, "save hotkey");
+        Assert.Equal("Alt+F6", s.Hotkeys.ToggleBuffer, "toggle hotkey");
+        Assert.Equal("Alt+F7", s.Hotkeys.Record, "record hotkey");
         Assert.Equal(false, s.Replay.QuickEnabled, "quick clip");
         Assert.Equal(true, s.General.StartWithWindows, "autostart");
         Assert.Equal(true, s.General.SoundOnSave, "sound");
@@ -207,9 +207,9 @@ public static class SettingsTests
         var window = SettingsStore.Copy(engine);
         window.Output.Folder = @"D:\clip 2"; // saved by the window, never applied to the engine
         SettingsStore.Save(path, window);
-        SettingsStore.Update(path, s => s.Capture.BorderlessTips.Add("WutheringWaves"));
+        SettingsStore.Update(path, s => s.Audio.MixersSetUp.Add("MIXLINE"));
         var now = SettingsStore.Load(path);
         Assert.Equal(@"D:\clip 2", now.Output.Folder, "the window's Save kept");
-        Assert.True(now.Capture.BorderlessTips.SequenceEqual(["WutheringWaves"]), "the engine's change in");
+        Assert.True(now.Audio.MixersSetUp.SequenceEqual(["MIXLINE"]), "the engine's change in");
     }
 }

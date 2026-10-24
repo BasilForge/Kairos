@@ -10,7 +10,7 @@ public static class UpdateBarTests
     static SettingsViewModel With(UpdateStatus? update)
     {
         var vm = new SettingsViewModel();
-        vm.SeedStatus(new StatusDto(null, [], null, null, false, false, "1.0.0-beta.1", Update: update));
+        vm.SeedStatus(new StatusDto(null, null, null, false, false, "1.0.0-beta.1", Update: update));
         return vm;
     }
 
@@ -89,8 +89,8 @@ public static class UpdateBarTests
                 int asked = 0;
                 EventHandler look = (_, _) => asked++;
                 vm.UpdateCommand.CanExecuteChanged += look;
-                // The next status answer: the same keys and everything else, only the update is new.
-                vm.SeedStatus(new StatusDto(null, [], null, null, false, false, "1.0.0-beta.1",
+                // The next status answer: everything as before, only the update is new.
+                vm.SeedStatus(new StatusDto(null, null, null, false, false, "1.0.0-beta.1",
                     Update: new UpdateStatus("1.0.1", UpdateState.Available, 0, null)));
                 Settle();
                 Assert.True(asked > 0, "the button was told to look again");

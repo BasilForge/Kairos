@@ -10,7 +10,6 @@ public sealed record NameValue(string Name, string Value);
 
 public sealed record StatusDto(
     EngineStatus? Engine,
-    Dictionary<string, bool> Hotkeys,
     string? LastClip,
     string? Error,
     bool PausedByUser,

@@ -161,7 +161,7 @@ public static class UpdateImportantTests
         var vm = new SettingsViewModel();
         vm.SeedSettings(new AppSettings());
         vm.OnStatusPage = true;
-        vm.SeedStatus(new StatusDto(null, [], null, null, false, false, "1.1.0",
+        vm.SeedStatus(new StatusDto(null, null, null, false, false, "1.1.0",
             Update: new UpdateStatus("1.2.0", UpdateState.Available, 0, "https://example.org", Important: true, Summary: ["Black screen fix", "Lighter recording"])));
         Assert.True(vm.UpdateCardVisible, "the card on the Status page");
         Assert.True(!vm.UpdateBarVisible, "not the slim bar too");

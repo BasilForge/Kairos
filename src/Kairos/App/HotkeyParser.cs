@@ -44,8 +44,22 @@ public static class HotkeyParser
         return true;
     }
 
+    /// <summary>The mouse buttons a hotkey may use, by the names the settings keep: the middle and the two side buttons.</summary>
+    static readonly Dictionary<string, Keys> MouseButtons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["MouseMiddle"] = Keys.MButton, ["Mouse4"] = Keys.XButton1, ["Mouse5"] = Keys.XButton2,
+    };
+
+    /// <summary>Whether <paramref name="key"/> is one of the mouse buttons a hotkey may use (Windows' own hotkeys take none).</summary>
+    public static bool IsMouse(Keys key) => MouseButtons.ContainsValue(key);
+
+    /// <summary>Never a hotkey: the left and right mouse buttons are pressed all through a game.</summary>
+    static readonly HashSet<Keys> Refused = [Keys.LButton, Keys.RButton];
+
     static bool TryParseKey(string part, out Keys key)
     {
+        if (MouseButtons.TryGetValue(part, out key))
+            return true;
         key = Keys.None;
         if (part.Length == 1 && char.IsAsciiDigit(part[0]))
         {
@@ -54,25 +68,15 @@ public static class HotkeyParser
         }
         if (part.Length == 0 || char.IsAsciiDigit(part[0]))
             return false;
-        return Enum.TryParse(part, ignoreCase: true, out key) && Enum.IsDefined(key) && !ModifierKeys.Contains(key);
+        return Enum.TryParse(part, ignoreCase: true, out key) && Enum.IsDefined(key) && !ModifierKeys.Contains(key) && !Refused.Contains(key);
     }
 
     /// <summary>
-    /// F13-F24 (keys only mouse and keyboard software send, for a side button) with Shift, Ctrl or both added, those it
-    /// lacks: Windows fires a key only with exactly its modifiers, so a user's F17 never saved while a game's run (Shift)
-    /// or crouch (Ctrl) was held. Never other keys: Shift+F10 opens menus, Ctrl+F4 closes tabs, Shift+a letter types it.
+    /// F13-F24 (keys only mouse and keyboard software send, for a side button) also with Shift or Ctrl held that they do
+    /// not name: a user's F17 never saved while a game's run (Shift) or crouch (Ctrl) was held. Never other keys: Shift+F10
+    /// opens menus, Ctrl+F4 closes tabs, Shift+a letter types it.
     /// </summary>
-    public static IEnumerable<Hotkey> WithHeldKeys(Hotkey h)
-    {
-        if (h.Key is < Keys.F13 or > Keys.F24)
-            yield break;
-        if (!h.Shift)
-            yield return h with { Shift = true };
-        if (!h.Ctrl)
-            yield return h with { Ctrl = true };
-        if (!h.Shift && !h.Ctrl)
-            yield return h with { Shift = true, Ctrl = true };
-    }
+    public static bool AllowsHeldKeys(Keys key) => key is >= Keys.F13 and <= Keys.F24;
 
     /// <summary>The same keys plus Shift ("Ctrl+F7" -> "Ctrl+Shift+F7"); empty when there is none or it has Shift already.</summary>
     public static string WithShift(string hotkey) =>
@@ -85,7 +89,8 @@ public static class HotkeyParser
         if (h.Alt) parts.Add("Alt");
         if (h.Shift) parts.Add("Shift");
         if (h.Win) parts.Add("Win");
-        parts.Add(h.Key is >= Keys.D0 and <= Keys.D9 ? ((char)('0' + (h.Key - Keys.D0))).ToString() : h.Key.ToString());
+        parts.Add(h.Key is >= Keys.D0 and <= Keys.D9 ? ((char)('0' + (h.Key - Keys.D0))).ToString()
+            : MouseButtons.FirstOrDefault(b => b.Value == h.Key).Key ?? h.Key.ToString());
         return string.Join("+", parts);
     }
 }

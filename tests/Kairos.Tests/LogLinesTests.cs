@@ -62,10 +62,10 @@ public static class LogLinesTests
     }
 
     [Test]
-    public static void The_hotkeys_line_says_each_key_and_whether_kairos_holds_it()
+    public static void The_hotkeys_line_says_each_key_watched()
     {
-        string line = LogLines.Hotkeys([("save", "Alt+F10", true), ("quick", "", false), ("toggle", "Alt+Shift+F10", false)]);
-        Assert.Equal("hotkeys: save=Alt+F10 ok · quick=none · toggle=Alt+Shift+F10 taken", line, "held, unset, taken by another app");
+        string line = LogLines.Hotkeys([("save", "Alt+F8"), ("quick", ""), ("screenshot", "Mouse4")]);
+        Assert.Equal("hotkeys watched: save=Alt+F8 · quick=none · screenshot=Mouse4", line, "each key, none for an unset one");
     }
 
     [Test]

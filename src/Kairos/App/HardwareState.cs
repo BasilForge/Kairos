@@ -27,8 +27,12 @@ public sealed class HardwareState
     public DateTime? ReliefAt { get; set; }
     /// <summary>The step numbers <see cref="Relief"/> was kept under (<see cref="Engine.LagRelief.Numbering"/>).</summary>
     public int ReliefNumbering { get; set; }
-    /// <summary>The screen capture is black here with Automatic and shows with Windows Graphics Capture (<see cref="Engine.ScreenCheck"/>).</summary>
-    public bool ScreenWgc { get; set; }
+    /// <summary>
+    /// When NVIDIA's encoder stopped giving pictures at the REALTIME GPU class here (<see cref="Engine.PictureWatch"/>; with
+    /// hardware scheduling and a full graphics card memory, as Sunshine's notes say): libobs's own class instead, for a
+    /// quiet week (<see cref="RetryRealtimeIfQuiet"/>); null: REALTIME.
+    /// </summary>
+    public DateTime? RealtimeFroze { get; set; }
 
     static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
@@ -44,11 +48,16 @@ public sealed class HardwareState
             {
                 if (kept.Fingerprint == fingerprint)
                 {
-                    // A step kept by a Kairos that numbered them otherwise means another step now: from none again.
+                    // A step kept by a Kairos that numbered them otherwise: the same step under this one's numbers, or
+                    // from none again when they are too old to tell.
                     if (kept.Relief > 0 && kept.ReliefNumbering != Engine.LagRelief.Numbering)
                     {
-                        ObsLog.Info($"lighter recording: relief {kept.Relief} was kept by an older Kairos: as chosen again");
-                        kept.ChoseVideo();
+                        int? now = Engine.LagRelief.Renumbered(kept.Relief, kept.ReliefNumbering);
+                        ObsLog.Info($"lighter recording: relief {kept.Relief} was kept by an older Kairos: " + (now is { } same ? $"relief {same} here" : "as chosen again"));
+                        if (now is { } step)
+                            (kept.Relief, kept.ReliefNumbering) = (step, Engine.LagRelief.Numbering);
+                        else
+                            kept.ChoseVideo();
                     }
                     return kept;
                 }
@@ -120,6 +129,15 @@ public sealed class HardwareState
         (int step, DateTime? at, bool eased) = BackIfQuiet(Relief, ReliefAt, now);
         (Relief, ReliefAt) = (step, at);
         return eased;
+    }
+
+    /// <summary>A week after the encoder stopped at REALTIME: REALTIME again (one stop may have had another cause). True when it did.</summary>
+    public bool RetryRealtimeIfQuiet(DateTime now)
+    {
+        if (RealtimeFroze is not { } at || now - at < TimeSpan.FromDays(7))
+            return false;
+        RealtimeFroze = null;
+        return true;
     }
 
     /// <summary>The user chose new video settings: recorded as chosen again.</summary>

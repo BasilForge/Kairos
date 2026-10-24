@@ -41,8 +41,6 @@ public sealed record EngineStatus(
     bool CameraOn = false,
     /// <summary>The replay was asked for on the disk but is in RAM (no room, the drive missing, a write failed).</summary>
     bool DiskFellBack = false,
-    /// <summary>How much lighter it records because it fell behind a game (<see cref="LagRelief"/>; 0: as chosen).</summary>
-    int Relief = 0,
     /// <summary>Still falling behind at the lightest it can go: the user can cap the game's frame rate.</summary>
     bool Behind = false,
     /// <summary>

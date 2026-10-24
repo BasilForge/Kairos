@@ -157,10 +157,6 @@
                             <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkSave, Converter={StaticResource Vis}}">
                                 <TextBlock Text="{Binding HkSave}" FontSize="11"/>
                             </Border>
-                            <!-- Another app holds the save key: said here too, not only on the Hotkeys page -->
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
-                                       VerticalAlignment="Center" ToolTip="{Binding SaveKey.TakenText}" AutomationProperties.Name="{Binding SaveKey.TakenText}"
-                                       Visibility="{Binding SaveKey.Taken, Converter={StaticResource Vis}}"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Primary}" Command="{Binding StartEngineCommand}" VerticalAlignment="Center"
@@ -240,9 +236,6 @@
                                 <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkRecord, Converter={StaticResource Vis}}">
                                     <TextBlock Text="{Binding HkRecord}" FontSize="11"/>
                                 </Border>
-                                <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
-                                           VerticalAlignment="Center" ToolTip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
-                                           Visibility="{Binding RecordKey.Taken, Converter={StaticResource Vis}}"/>
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource Ghost}" Command="{Binding RecordCommand}"
@@ -253,9 +246,6 @@
                                 <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkRecord, Converter={StaticResource Vis}}">
                                     <TextBlock Text="{Binding HkRecord}" FontSize="11"/>
                                 </Border>
-                                <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
-                                           VerticalAlignment="Center" ToolTip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
-                                           Visibility="{Binding RecordKey.Taken, Converter={StaticResource Vis}}"/>
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource Ghost}" Command="{Binding RecordCommand}"
@@ -266,9 +256,6 @@
                                 <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkRecord, Converter={StaticResource Vis}}">
                                     <TextBlock Text="{Binding HkRecord}" FontSize="11"/>
                                 </Border>
-                                <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
-                                           VerticalAlignment="Center" ToolTip="{Binding RecordKey.TakenText}" AutomationProperties.Name="{Binding RecordKey.TakenText}"
-                                           Visibility="{Binding RecordKey.Taken, Converter={StaticResource Vis}}"/>
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource Ghost}" Command="{Binding PauseRecordCommand}" Margin="10,0,0,0"
@@ -317,9 +304,6 @@
                             <Border Style="{StaticResource KeyChip}" Visibility="{Binding HkScreenshot, Converter={StaticResource Vis}}">
                                 <TextBlock Text="{Binding HkScreenshot}" FontSize="11"/>
                             </Border>
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="12" Foreground="{StaticResource Warning}" Margin="6,1,0,0"
-                                       VerticalAlignment="Center" ToolTip="{Binding ScreenshotKey.TakenText}" AutomationProperties.Name="{Binding ScreenshotKey.TakenText}"
-                                       Visibility="{Binding ScreenshotKey.Taken, Converter={StaticResource Vis}}"/>
                         </StackPanel>
                     </Button>
                 </Grid>

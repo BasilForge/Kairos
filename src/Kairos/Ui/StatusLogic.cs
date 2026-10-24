@@ -42,7 +42,6 @@ public static class StatusLogic
         { EncoderFallback: { } wanted, Encoder: { } id } => Text.Format("status.encoderFallback", Text.Ltr(Engine.EncoderCatalog.Describe(Engine.EncoderCatalog.ById(id))), Text.Ltr(wanted)),
         { AudioDeviceTrouble: { } device } => Text.Format("status.audioDevice", device),
         { Behind: true } => Text.Get("status.behind"),
-        { Relief: > 0 } lighter => Text.Get(Engine.LagRelief.TextKey(lighter.Relief)),
         _ => "",
     };
 

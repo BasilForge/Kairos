@@ -65,6 +65,41 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// Games with "show the screen when no game runs" off, and a game in front Kairos cannot hook (Apex, guarded by its
+    /// anti-cheat): it recorded black (no hook, no screen). The screen is copied under it while it is in front, and let
+    /// go once it is left (with no game nothing is copied, as the user chose).
+    /// </summary>
+    static int GamesUnhookableScene(CapturePipeline pipeline, string folder, TextWriter output)
+    {
+        pipeline.NoHookForTest = true;
+        var game = new FullscreenApp("Protected test game:none:protected-test.exe", (uint)Environment.ProcessId, "protected-test",
+            pipeline.CaptureDevice ?? "");
+        Thread.Sleep(1000);
+        pipeline.WatchGame();
+        Thread.Sleep(1500); // a copy starts or lets go on its next tick
+        bool alone = pipeline.ScreenCopied;
+        pipeline.WatchGame(game);
+        Thread.Sleep(1500);
+        bool under = pipeline.ScreenCopied;
+        string modeUnder = pipeline.GameCaptureModeNow;
+        int colours = CanvasColours(pipeline, folder);
+        pipeline.WatchGame();
+        Thread.Sleep(1500);
+        bool after = pipeline.ScreenCopied;
+        string modeAfter = pipeline.GameCaptureModeNow;
+        output.WriteLine($"scene games-unhookable: the screen copied with no game {alone}, under the game {under} ({colours} colours), after it {after}; " +
+                         $"game capture {modeUnder} then {modeAfter}");
+        string? why = alone ? "the screen is copied with no game, which the user turned off"
+            : !under ? "the game Kairos cannot hook is not recorded from the screen (black)"
+            : colours <= 1 ? "the canvas is black"
+            : after ? "the screen is still copied after the game was left"
+            : modeUnder != "window" ? "the game capture still tries to open the game it cannot open"
+            : modeAfter != "any_fullscreen" ? "the game capture does not look for games again after it" : null;
+        output.WriteLine(why == null ? "scene ok" : $"scene: FAIL {why}");
+        return why == null ? 0 : 1;
+    }
+
+    /// <summary>
     /// One app with the test game as the chosen app (tools/test-game-layer.ps1 -Scene apps-game): the window capture shows
     /// it; with the game fullscreen in front (as the engine's look would see it) the game layer hooks it and the window
     /// is not copied under it; leaving the game (an alt-tab, recorded) shows no black frame, and a look later the window

@@ -146,9 +146,6 @@ public static class SaveFeedbackTests
             yield return (Text.Get("toast.saved"), "Apex Legends • 0:30");
             yield return (Text.Get("toast.shot"), "Apex Legends • " + Text.Get("toast.byVoice"));
             yield return (Text.Get("toast.shotFailed"), "");
-            yield return EngineApp.TakenToast(["Alt+Shift+F10"]);
-            yield return EngineApp.TakenToast(["Alt+F10", "Alt+Shift+F10", "Alt+F9"]);
-            yield return (Text.Get("toast.keysPicked"), Text.Format("toast.keysPickedSave", "Alt+Shift+F10"));
             yield return (Text.Get("toast.recordStarted"), Text.Format("toast.recordHint", "Alt+Shift+F9"));
             yield return (Text.Get("toast.recordPaused"), "12:34 • 1.2 GB");
             yield return (Text.Get("toast.recordResumed"), "12:34 • 1.2 GB");

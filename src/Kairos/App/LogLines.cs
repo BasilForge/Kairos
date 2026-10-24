@@ -62,14 +62,12 @@ public static class LogLines
             ("updates", OnOff(s.General.CheckUpdates)),
             ("smart-save", s.Voice.Enabled ? s.Voice.Sensitivity.ToString().ToLowerInvariant() : "off"),
         };
-        var k = s.Hotkeys;
-        foreach (var (id, key) in new[] { ("save", k.Save), ("quick", k.Quick), ("toggle", k.ToggleBuffer), ("record", k.Record),
-                     ("pauseRecord", k.PauseRecord ?? ""), ("screenshot", k.Screenshot) })
+        foreach (var (id, key) in s.Hotkeys.ByAction())
             list.Add(("key." + id, string.IsNullOrWhiteSpace(key) ? "none" : key));
         return list;
     }
 
-    /// <summary>The settings line at a start (the hotkeys have their own line, with whether Kairos holds each).</summary>
+    /// <summary>The settings line at a start (the hotkeys have their own line).</summary>
     public static string Settings(AppSettings s, Func<string, string> folderKind) =>
         "settings: " + string.Join(" · ", Pairs(s, folderKind).Where(p => !p.Key.StartsWith("key.", StringComparison.Ordinal))
             .Select(p => $"{p.Key}={p.Value}"));
@@ -82,9 +80,9 @@ public static class LogLines
         return changed.Count == 0 ? null : string.Join(", ", changed);
     }
 
-    /// <summary>Each hotkey and whether Kairos holds it ("taken": another app registered it first).</summary>
-    public static string Hotkeys(IEnumerable<(string Id, string Key, bool Held)> keys) =>
-        "hotkeys: " + string.Join(" · ", keys.Select(k => string.IsNullOrWhiteSpace(k.Key) ? $"{k.Id}=none" : $"{k.Id}={k.Key} {(k.Held ? "ok" : "taken")}"));
+    /// <summary>Each hotkey Kairos watches (<see cref="HotkeyWatcher"/>), "none" for an action without one.</summary>
+    public static string Hotkeys(IEnumerable<(string Id, string Key)> keys) =>
+        "hotkeys watched: " + string.Join(" · ", keys.Select(k => $"{k.Id}={(string.IsNullOrWhiteSpace(k.Key) ? "none" : k.Key)}"));
 
     /// <summary>
     /// How it ran since the last health line: frames skipped by the encoder out of those it was given (a rebuild's fresh

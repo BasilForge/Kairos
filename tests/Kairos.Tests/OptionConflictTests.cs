@@ -74,7 +74,7 @@ public static class OptionConflictTests
     public static void A_latest_clip_that_is_gone_is_not_named()
     {
         var vm = Vm(_ => { });
-        vm.Seed(new StatusDto(null, [], Path.Combine(Path.GetTempPath(), "Kairos gone", "Desktop 2026-10-20 10-00-00.mp4"), null, false, false, ""), null);
+        vm.Seed(new StatusDto(null, Path.Combine(Path.GetTempPath(), "Kairos gone", "Desktop 2026-10-20 10-00-00.mp4"), null, false, false, ""), null);
         Assert.Equal(Text.Get("status.noClip"), vm.LastClipName, "named as no clip");
     }
 

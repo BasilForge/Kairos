@@ -213,7 +213,7 @@ public static partial class SettingsApp
         }
         catch (JsonException) { }
         if (voiceState != null)
-            status = (status ?? new StatusDto(null, [], null, null, false, false, "")) with
+            status = (status ?? new StatusDto(null, null, null, false, false, "")) with
             {
                 Voice = voiceState == "testing"
                     ? new Engine.Voice.VoiceStatus(true, true, "testing", 0, null, 0.031, true, 0.06)
@@ -234,7 +234,7 @@ public static partial class SettingsApp
             var engine = new Engine.EngineStatus(voiceState != "ready", recording, 60, 0, 0, 1000, 300, 300,
                 "obs_nvenc_av1_tex", 2560, 1440, 729, 600, @"D:\Clips", false, null,
                 voiceState == "record-paused", 754, 1_300_000_000, notice, NvidiaNote: voiceState == "notice-nvidia" ? "status.nvidiaDriver" : null);
-            status = new StatusDto(engine, [], @"D:\Clips\Desktop\Desktop 2026-10-14 20-37-26.mp4", null, false, false, AppInfo.Version);
+            status = new StatusDto(engine, @"D:\Clips\Desktop\Desktop 2026-10-14 20-37-26.mp4", null, false, false, AppInfo.Version);
             if (voiceState == "ready")
                 vm.SeedReplay(false);
         }
@@ -248,7 +248,7 @@ public static partial class SettingsApp
         {
             string? Newest(string pattern) => Directory.GetFiles(samples, pattern, SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTime).FirstOrDefault();
             status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
-                700, 600, samples, false, null), [], Newest("*.mp4"), null, false, false, AppInfo.Version, LastShot: Newest("*.png"));
+                700, 600, samples, false, null), Newest("*.mp4"), null, false, false, AppInfo.Version, LastShot: Newest("*.png"));
         }
         // <page> update-available|update-downloading|update-waiting|update-failed: the update bar over the page (made up);
         // update-important: an important one, the card on the Status page with made-up lines.
@@ -262,7 +262,7 @@ public static partial class SettingsApp
                 "update-failed" => Engine.Updates.UpdateState.Failed,
                 _ => Engine.Updates.UpdateState.Available,
             };
-            status = (status ?? new StatusDto(null, [], null, null, false, false, AppInfo.Version)) with
+            status = (status ?? new StatusDto(null, null, null, false, false, AppInfo.Version)) with
             {
                 Update = new Engine.Updates.UpdateStatus("1.0.1", state, 40, Engine.Updates.UpdateRules.NotesUrl("1.0.1", localSource: false),
                     Important: voiceState == "update-important",
@@ -348,8 +348,7 @@ public static partial class SettingsApp
                 };
             status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
                 700, 600, @"D:\Clips", false, null, QuietAudioRows: voiceState == "separate-rode" ? ["game", "discord", "other"] : ["discord", "app:brave"],
-                AudioRowsHeardOn: voiceState == "separate-rode" ? new Dictionary<string, string> { ["game"] = "rode-main", ["discord"] = "rode-chat" } : null),
-                [], null, null, false, false, AppInfo.Version);
+                AudioRowsHeardOn: voiceState == "separate-rode" ? new Dictionary<string, string> { ["game"] = "rode-main", ["discord"] = "rode-chat" } : null), null, null, false, false, AppInfo.Version);
         }
         // capture camera: the Camera card on, a round camera in a corner, its own file kept (made-up camera list).
         if (page == "capture" && voiceState == "camera")
@@ -409,7 +408,7 @@ public static partial class SettingsApp
             caps = new CapsDto([], [], [], [], ["obs_nvenc_hevc_tex", "obs_nvenc_h264_tex", "obs_x264"], "32.2.2", RefreshHz: 60);
             var auto = new Engine.AutoPick("obs_nvenc_h264_tex", "NVIDIA GeForce RTX 3060", 1440, 60, QualityPreset.High);
             status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_h264_tex", 2560, 1440,
-                700, 600, @"D:\Clips", false, null, Auto: auto), [], null, null, false, false, AppInfo.Version);
+                700, 600, @"D:\Clips", false, null, Auto: auto), null, null, false, false, AppInfo.Version);
         }
         // quality av1-note: AV1 chosen (a made-up RTX 4070) on a Windows without the AV1 extension.
         if (page == "quality" && voiceState == "av1-note")
@@ -421,11 +420,11 @@ public static partial class SettingsApp
             SettingsViewModel.Plays = c => c != VideoCodec.Av1;
             caps = new CapsDto([], [], [], [], ["obs_nvenc_av1_tex", "obs_nvenc_hevc_tex", "obs_nvenc_h264_tex", "obs_x264"], "32.2.2", RefreshHz: 144);
             status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
-                700, 600, @"D:\Clips", false, null), [], null, null, false, false, AppInfo.Version);
+                700, 600, @"D:\Clips", false, null), null, null, false, false, AppInfo.Version);
         }
         // general check-idle|check-checking|check-uptodate|check-failed: the update row's Check now (never sent to an engine).
         if (page == "general" && voiceState is "check-idle" or "check-checking" or "check-uptodate" or "check-failed")
-            status = new StatusDto(null, [], null, null, false, false, AppInfo.Version, Look: new Engine.Updates.UpdateLook(true, false, 1, Engine.Updates.LookResult.None));
+            status = new StatusDto(null, null, null, false, false, AppInfo.Version, Look: new Engine.Updates.UpdateLook(true, false, 1, Engine.Updates.LookResult.None));
         vm.Seed(status, caps);
         // <page> unsaved: the clips folder changed, not saved, and the window closed: "save them?" over the page.
         if (voiceState == "unsaved")
@@ -784,7 +783,7 @@ public static partial class SettingsApp
             return path;
         }
         StatusDto Status(string last, string? shot = null) => new(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
-            700, 600, root, false, null), [], last, null, false, false, AppInfo.Version, LastShot: shot);
+            700, 600, root, false, null), last, null, false, false, AppInfo.Version, LastShot: shot);
         try
         {
             string old = "";

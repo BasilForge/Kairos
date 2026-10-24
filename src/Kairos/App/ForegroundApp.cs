@@ -35,21 +35,24 @@ public static class ForegroundApp
     public static bool IsSameApp(string? path, string? ownPath) =>
         path != null && ownPath != null && string.Equals(Path.GetFullPath(path), Path.GetFullPath(ownPath), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Folder name for a running exe (Window mode targets).</summary>
-    public static string ForExe(string exeName)
+    /// <summary>Folder name for a running exe (Window mode targets), its window titled <paramref name="title"/>.</summary>
+    public static string ForExe(string exeName, string? title = null)
     {
         var proc = Process.GetProcessesByName(exeName).FirstOrDefault();
-        return proc == null ? ClipOrganizer.AppFolderName(exeName, null, null) : FromProcessId(proc.Id, null);
+        return proc == null ? ClipOrganizer.AppFolderName(exeName, null, title) : FromProcessId(proc.Id, title);
     }
 
     /// <summary>
-    /// Folder name for a process seen earlier (a snapshot, the last game in front): its exe name when it is gone, or when
-    /// its pid is another process's by now.
+    /// Folder name for a process seen earlier (a snapshot, the last game in front, its window then titled
+    /// <paramref name="title"/>): its exe name when it is gone, or when its pid is another process's by now.
     /// </summary>
-    public static string ForProcess(uint pid, string exeName) =>
+    public static string ForProcess(uint pid, string exeName) => ForProcess(pid, exeName, null);
+
+    /// <inheritdoc cref="ForProcess(uint, string)"/>
+    public static string ForProcess(uint pid, string exeName, string? title) =>
         ImagePath((int)pid) is { } path && Path.GetFileNameWithoutExtension(path).Equals(exeName, StringComparison.OrdinalIgnoreCase)
-            ? FromProcessId((int)pid, null)
-            : ClipOrganizer.AppFolderName(exeName, null, null);
+            ? FromProcessId((int)pid, title)
+            : ClipOrganizer.AppFolderName(exeName, null, title);
 
     static string FromProcessId(int pid, string? title)
     {
