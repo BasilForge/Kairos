@@ -74,6 +74,21 @@ public sealed class ClipItem : INotifyPropertyChanged
 
     bool _new;
 
+    /// <summary>Pinned: stays under Favorites at the top of the Library.</summary>
+    public bool IsFavorite
+    {
+        get => _favorite;
+        set
+        {
+            if (_favorite == value)
+                return;
+            _favorite = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsFavorite)));
+        }
+    }
+
+    bool _favorite;
+
     /// <summary>Its H.264 copy is being made for a drag (<see cref="PlayableCopies"/>): the card shows a ring.</summary>
     public bool Preparing
     {
@@ -105,6 +120,29 @@ public sealed class ClipItem : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
+/// <summary>A folder on the Library home: defaults (Favorites / Videos / Screenshots) or a user album.</summary>
+public sealed class LibraryFolder
+{
+    public required string Id { get; init; }
+    public required string Label { get; init; }
+    public required string Meta { get; init; }
+    public required IReadOnlyList<ClipItem> Sheets { get; init; }
+    /// <summary>Built-in folder: no rename / delete / hide from the ⋮ menu.</summary>
+    public bool IsDefault { get; init; } = true;
+    public string SizeText { get; init; } = "";
+    public string ModifiedText { get; init; } = "";
+    /// <summary>Newest clip shown as the card cover.</summary>
+    public ClipItem? Cover => Sheets.Count > 0 ? Sheets[0] : null;
+    /// <summary>Segoe Fluent icon for the folder kind.</summary>
+    public string Glyph => Id switch
+    {
+        "favorites" => "\uE735",
+        "video" => "\uE8B2",
+        "picture" => "\uE91B",
+        _ => "\uE8B7",
+    };
+}
+
 /// <summary>
 /// One entry of the Clips page's folder list. It stays the same object while its count changes, so the list keeps
 /// showing what was chosen when clips are added or removed.
@@ -131,27 +169,36 @@ public sealed class FolderChoice(string value, string label) : INotifyPropertyCh
 }
 
 /// <summary>
-/// Every video and picture in the clips folder and its subfolders, newest first, shown a page at a time (more as the
-/// list is scrolled down), with thumbnails, selection and deletion; filtered by folder and by kind.
+/// Every video and picture in the clips folder and its subfolders. Home shows Favorites / Videos / Screenshots folders;
+/// opening one shows its clips a page at a time. Pinned clips stay on top inside a folder.
 /// </summary>
 public sealed class ClipsViewModel : INotifyPropertyChanged
 {
     /// <summary>Cards shown first (a screenful: quick to lay out), then added at a time; thumbnails only for cards shown.</summary>
     const int FirstPage = 24, PageSize = 36;
+    /// <summary>Newest clips shown as "Recent" on home and at the top inside a folder.</summary>
+    const int RecentCount = 5;
     readonly Func<string> _folder;
     readonly Func<string> _saveHotkey;
     readonly Func<string> _shotHotkey;
+    readonly ClipFavorites _favorites;
+    readonly LibraryAlbums _albums;
     List<ClipItem> _all = [];
     List<ClipItem> _filtered = [];
     string _filter = "";
-    string _kind = "";
+    /// <summary>null = Library home; favorites / video / picture / u:{albumId}.</summary>
+    string? _browse;
     bool _confirmingPermanent;
+    LibraryFolder? _folderPendingDelete;
 
-    public ClipsViewModel(Func<string> folder, Func<string> saveHotkey, Func<string>? shotHotkey = null)
+    public ClipsViewModel(Func<string> folder, Func<string> saveHotkey, Func<string>? shotHotkey = null,
+        ClipFavorites? favorites = null, LibraryAlbums? albums = null)
     {
         _folder = folder;
         _saveHotkey = saveHotkey;
         _shotHotkey = shotHotkey ?? (() => "");
+        _favorites = favorites ?? new ClipFavorites(ClipFavorites.DefaultPath);
+        _albums = albums ?? new LibraryAlbums(LibraryAlbums.DefaultPath);
         RefreshCommand = new RelayCommand(_ => Refresh());
         PlayCommand = new RelayCommand(p =>
         {
@@ -166,12 +213,35 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
         OpenCameraCommand = new RelayCommand(p => Open((p as ClipItem)?.Camera));
         DeleteCommand = new RelayCommand(p => { if (p is ClipItem c) Remove([c], permanent: false); });
         ShareCommand = new RelayCommand(p => { if (p is ClipItem c) ShareRequested?.Invoke(c); });
+        FavoriteCommand = new RelayCommand(p => { if (p is ClipItem c) ToggleFavorite(c); });
+        OpenFolderCommand = new RelayCommand(p =>
+        {
+            if (p is LibraryFolder folder)
+                Enter(folder.Id);
+        });
+        BackCommand = new RelayCommand(_ => Enter(null));
+        AddFolderCommand = new RelayCommand(_ => AddFolder());
+        RenameFolderCommand = new RelayCommand(p => { if (p is LibraryFolder { IsDefault: false } f) RenameFolder(f); });
+        HideFolderCommand = new RelayCommand(p => { if (p is LibraryFolder { IsDefault: false } f) HideFolder(f); });
+        UnhideFolderCommand = new RelayCommand(p => { if (p is LibraryFolder { IsDefault: false } f) UnhideFolder(f); });
+        AskDeleteFolderCommand = new RelayCommand(p =>
+        {
+            if (p is not LibraryFolder { IsDefault: false } f)
+                return;
+            _folderPendingDelete = f;
+            Raise();
+        });
+        ConfirmDeleteFolderCommand = new RelayCommand(_ => ConfirmDeleteFolder());
+        CancelDeleteFolderCommand = new RelayCommand(_ => { _folderPendingDelete = null; Raise(); });
         SelectAllCommand = new RelayCommand(_ => SetAll(!AllSelected));
         ClearSelectionCommand = new RelayCommand(_ => SetAll(false));
         RecycleSelectedCommand = new RelayCommand(_ => Remove(Selected, permanent: false));
         AskPermanentCommand = new RelayCommand(_ => { _confirmingPermanent = true; Raise(); });
         ConfirmPermanentCommand = new RelayCommand(_ => Remove(Selected, permanent: true));
         CancelPermanentCommand = new RelayCommand(_ => { _confirmingPermanent = false; Raise(); });
+        // Kind list kept for counts / older tests; navigation is the glass folders.
+        UpdateChoices(Kinds, [("", Text.Format("clips.kind.all", 0)), ("video", Text.Format("clips.kind.videos", 0)),
+            ("picture", Text.Format("clips.kind.pictures", 0))]);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -230,6 +300,8 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     public ObservableCollection<FolderChoice> Apps { get; } = [];
     /// <summary>All / Videos / Screenshots, with counts; the same entries stay while the counts change.</summary>
     public ObservableCollection<FolderChoice> Kinds { get; } = [];
+    /// <summary>Glass folders above the grid (Favorites, Videos, Screenshots when each has clips).</summary>
+    public ObservableCollection<LibraryFolder> Folders { get; } = [];
 
     /// <summary>The picture <paramref name="step"/> places on from <paramref name="from"/> among what is shown, skipping videos.</summary>
     public ClipItem? NextPicture(ClipItem from, int step)
@@ -243,17 +315,15 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
         return null;
     }
 
-    /// <summary>"" (everything), "video" or "picture".</summary>
+    /// <summary>"" (everything), "video" or "picture" — opens that folder (home when cleared). Kept for tests and counts.</summary>
     public string Kind
     {
-        get => _kind;
+        get => _browse is "video" or "picture" ? _browse : "";
         set
         {
-            // Null comes from the list itself while it is rebuilt: not a choice.
-            if (value == null || value == _kind)
+            if (value == null)
                 return;
-            _kind = value;
-            ApplyFilter();
+            Enter(value.Length == 0 ? null : value);
         }
     }
     public string Filter
@@ -265,6 +335,7 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
             if (value == null || value == _filter)
                 return;
             _filter = value;
+            Raise(nameof(Filter));
             ApplyFilter();
         }
     }
@@ -280,8 +351,36 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     public string SelectedText => Text.Format("clips.selected", SelectedCount);
     public string SelectAllLabel => Text.Get(AllSelected ? "clips.clearSelection" : "clips.selectAll");
     public string ConfirmText => Text.Format("clips.confirmForever", Text.Count("count.files", SelectedCount));
-    public bool IsEmpty => Items.Count == 0;
-    public string EmptyText => _kind == "picture" ? Text.Format("clips.emptyShots", _shotHotkey()) : Text.Format("clips.empty", _saveHotkey());
+    public bool ConfirmingFolderDelete => _folderPendingDelete != null;
+    public string FolderDeleteText => _folderPendingDelete == null ? ""
+        : Text.Format("clips.folder.deleteConfirm", _folderPendingDelete.Label);
+    /// <summary>Hidden user albums (for the + menu to show again).</summary>
+    public IReadOnlyList<LibraryFolder> HiddenFolders { get; private set; } = [];
+    public bool HasHiddenFolders => HiddenFolders.Count > 0;
+    /// <summary>Nothing in the library at all (home empty state).</summary>
+    public bool IsEmpty => _all.Count == 0;
+    /// <summary>Inside a folder with no matching clips.</summary>
+    public bool FolderEmpty => InsideFolder && Items.Count == 0 && !HasMore;
+    public string EmptyText => _browse == "picture" ? Text.Format("clips.emptyShots", _shotHotkey()) : Text.Format("clips.empty", _saveHotkey());
+
+    public bool AtHome => _browse == null;
+    public bool InsideFolder => _browse != null;
+    public bool HasFolders => AtHome && Folders.Count > 0;
+    /// <summary>Folder cards + the pink add tile on Library home.</summary>
+    public bool ShowFolderRow => AtHome;
+    /// <summary>Clip cards are shown on home (Recent) and inside a folder.</summary>
+    public bool ShowClips => Items.Count > 0 || HasMore;
+    public string FolderTitle => _browse switch
+    {
+        "favorites" => Text.Get("clips.favorites"),
+        "video" => Text.Get("clips.groupVideos"),
+        "picture" => Text.Get("clips.groupPictures"),
+        _ when LibraryAlbums.AlbumIdOf(_browse) is { } id => _albums.Find(id)?.Name ?? Text.Get("clips.title"),
+        _ => Text.Get("clips.title"),
+    };
+    /// <summary>Any clip is pinned.</summary>
+    public bool HasFavorites => _all.Any(c => c.IsFavorite);
+    public int FavoriteCount => _all.Count(c => c.IsFavorite);
 
     public string CountText
     {
@@ -323,6 +422,18 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     public ICommand ShowCommand { get; }
     public ICommand DeleteCommand { get; }
     public ICommand ShareCommand { get; }
+    public ICommand FavoriteCommand { get; }
+    /// <summary>Enters a folder (Favorites / Videos / Screenshots).</summary>
+    public ICommand OpenFolderCommand { get; }
+    /// <summary>Returns to the Library home (folder cards).</summary>
+    public ICommand BackCommand { get; }
+    public ICommand AddFolderCommand { get; }
+    public ICommand RenameFolderCommand { get; }
+    public ICommand HideFolderCommand { get; }
+    public ICommand UnhideFolderCommand { get; }
+    public ICommand AskDeleteFolderCommand { get; }
+    public ICommand ConfirmDeleteFolderCommand { get; }
+    public ICommand CancelDeleteFolderCommand { get; }
     public ICommand SelectAllCommand { get; }
     public ICommand ClearSelectionCommand { get; }
     public ICommand RecycleSelectedCommand { get; }
@@ -335,13 +446,27 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     /// <param name="live">A clip was saved while the page is open: what is new is marked so.</param>
     public void Refresh(bool live = false)
     {
+        _favorites.Prune();
+        var pinned = _favorites.Load();
         var library = ClipLibrary.Scan(_folder());
+        _albums.PruneMissing(library.Select(c => c.Path));
         // Clips that did not change keep their card (and its picture): coming back to the page rebuilds nothing.
         var known = _all.ToDictionary(c => c.Path, StringComparer.OrdinalIgnoreCase);
+        bool favChanged = false;
         var next = library
-            .Select(c => known.TryGetValue(c.Path, out var old) && old.Time == c.Time && old.Size == c.Size && old.App == c.Group && old.Camera == c.Camera
-                ? old
-                : new ClipItem
+            .Select(c =>
+            {
+                bool fav = pinned.Contains(c.Path);
+                if (known.TryGetValue(c.Path, out var old) && old.Time == c.Time && old.Size == c.Size && old.App == c.Group && old.Camera == c.Camera)
+                {
+                    if (old.IsFavorite != fav)
+                    {
+                        old.IsFavorite = fav;
+                        favChanged = true;
+                    }
+                    return old;
+                }
+                return new ClipItem
                 {
                     Path = c.Path,
                     Name = System.IO.Path.GetFileNameWithoutExtension(c.Path),
@@ -351,7 +476,9 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
                     Kind = c.Kind,
                     Camera = c.Camera,
                     IsNew = live,
-                })
+                    IsFavorite = fav,
+                };
+            })
             .ToList();
         if (!live)
             foreach (var clip in next)
@@ -368,11 +495,24 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
             _filter = ""; // its folder is gone
             Raise(nameof(Filter));
         }
+        // Folder we were in no longer has anything (or the album was removed): go home.
+        if (_browse == "favorites" && next.All(c => !c.IsFavorite)
+            || _browse == "video" && next.All(c => c.IsPicture)
+            || _browse == "picture" && next.All(c => !c.IsPicture)
+            || LibraryAlbums.AlbumIdOf(_browse) is { } gone && _albums.Find(gone) == null)
+            _browse = null;
         if (next.Count == _all.Count && next.Zip(_all).All(p => ReferenceEquals(p.First, p.Second)))
         {
-            if (_confirmingPermanent)
+            // Same clips: still refresh folder cards (albums may have changed) without rebuilding every card.
+            if (favChanged)
+                ApplyFilter();
+            else
             {
-                _confirmingPermanent = false;
+                RebuildFolders();
+                foreach (var clip in Folders.SelectMany(f => f.Sheets))
+                    RequestThumb(clip);
+                if (_confirmingPermanent)
+                    _confirmingPermanent = false;
                 Raise();
             }
             return;
@@ -413,16 +553,188 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
         }
     }
 
+    void Enter(string? browse)
+    {
+        if (_browse == browse)
+            return;
+        _browse = browse;
+        _confirmingPermanent = false;
+        SetAll(false);
+        ApplyFilter();
+    }
+
     void ApplyFilter()
     {
         Items.Clear();
-        _filtered = _all.Where(c => (_filter.Length == 0 || string.Equals(c.App, _filter, StringComparison.OrdinalIgnoreCase))
-                                    && (_kind.Length == 0 || c.IsPicture == (_kind == "picture"))).ToList();
+        RebuildFolders();
+        if (_browse == null)
+        {
+            // Home: last few clips under Recent (folders sit above).
+            _filtered = _all.OrderByDescending(c => c.Time).Take(RecentCount).ToList();
+            foreach (var clip in _filtered)
+                clip.GroupLabel = Text.Get("clips.groupRecent");
+            LoadMore();
+            foreach (var clip in Folders.SelectMany(f => f.Sheets))
+                RequestThumb(clip);
+            Raise();
+            return;
+        }
+
+        IEnumerable<ClipItem> q = _browse switch
+        {
+            "favorites" => _all.Where(c => c.IsFavorite),
+            "video" => _all.Where(c => !c.IsPicture),
+            "picture" => _all.Where(c => c.IsPicture),
+            _ when LibraryAlbums.AlbumIdOf(_browse) is { } albumId =>
+                UserAlbumClips(albumId),
+            _ => _all,
+        };
+        if (_filter.Length > 0)
+            q = q.Where(c => string.Equals(c.App, _filter, StringComparison.OrdinalIgnoreCase));
+        _filtered = q.OrderByDescending(c => c.Time).ToList();
+        // Pinned clips stay on top; then Recent (newest few); then older by day.
+        List<ClipItem> pinned = [];
+        bool userAlbum = LibraryAlbums.IsUserBrowse(_browse);
+        if (_browse != "favorites" && !userAlbum && _filtered.Any(c => c.IsFavorite))
+        {
+            pinned = _filtered.Where(c => c.IsFavorite).ToList();
+            _filtered = _filtered.Where(c => !c.IsFavorite).ToList();
+            foreach (var clip in pinned)
+                clip.GroupLabel = Text.Get("clips.groupFavorites");
+        }
         var now = DateTime.Now;
-        foreach (var clip in _filtered)
-            clip.GroupLabel = DayGroup(clip.Time, now);
+        for (int i = 0; i < _filtered.Count; i++)
+            _filtered[i].GroupLabel = i < RecentCount
+                ? Text.Get("clips.groupRecent")
+                : DayGroup(_filtered[i].Time, now);
+        if (pinned.Count > 0)
+            _filtered = [.. pinned, .. _filtered];
         LoadMore();
         Raise();
+    }
+
+    void RebuildFolders()
+    {
+        Folders.Clear();
+        static List<ClipItem> Sheets(IEnumerable<ClipItem> clips) =>
+            clips.OrderByDescending(c => c.Time).Take(RecentCount).ToList();
+
+        LibraryFolder Make(string id, string label, string meta, List<ClipItem> clips, bool isDefault, DateTime? emptyModified = null)
+        {
+            long size = clips.Sum(c => c.Size);
+            DateTime modified = clips.Count > 0 ? clips.Max(c => c.Time) : emptyModified ?? DateTime.Now;
+            return new LibraryFolder
+            {
+                Id = id,
+                Label = label,
+                Meta = meta,
+                Sheets = Sheets(clips),
+                IsDefault = isDefault,
+                SizeText = Text.Ltr(SettingsViewModel.FormatSize(size)),
+                ModifiedText = modified.ToString("yyyy-MM-dd HH:mm"),
+            };
+        }
+
+        var pinned = _all.Where(c => c.IsFavorite).ToList();
+        if (pinned.Count > 0)
+            Folders.Add(Make("favorites", Text.Get("clips.favorites"), Text.Count("count.files", pinned.Count), pinned, true));
+        var videos = _all.Where(c => !c.IsPicture).ToList();
+        if (videos.Count > 0)
+            Folders.Add(Make("video", Text.Get("clips.groupVideos"), Text.Count("count.clips", videos.Count), videos, true));
+        var pictures = _all.Where(c => c.IsPicture).ToList();
+        if (pictures.Count > 0)
+            Folders.Add(Make("picture", Text.Get("clips.groupPictures"), Text.Count("count.shots", pictures.Count), pictures, true));
+
+        var hidden = new List<LibraryFolder>();
+        foreach (var album in _albums.Load())
+        {
+            var clips = UserAlbumClips(album.Id).ToList();
+            var card = Make(LibraryAlbums.BrowseId(album.Id), album.Name,
+                Text.Count("count.files", clips.Count), clips, isDefault: false, album.Created);
+            if (album.Hidden)
+                hidden.Add(card);
+            else
+                Folders.Add(card);
+        }
+        HiddenFolders = hidden;
+    }
+
+    IEnumerable<ClipItem> UserAlbumClips(string albumId)
+    {
+        var album = _albums.Find(albumId);
+        if (album == null)
+            return [];
+        var paths = album.Paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return _all.Where(c => paths.Contains(c.Path));
+    }
+
+    void AddFolder()
+    {
+        string? name = NamePrompt.Ask(Text.Get("clips.folder.new"), Text.Get("clips.folder.nameHint"));
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+        var album = _albums.Add(name);
+        Enter(LibraryAlbums.BrowseId(album.Id));
+    }
+
+    void RenameFolder(LibraryFolder folder)
+    {
+        if (LibraryAlbums.AlbumIdOf(folder.Id) is not { } id || _albums.Find(id) is not { } album)
+            return;
+        string? name = NamePrompt.Ask(Text.Get("clips.folder.rename"), Text.Get("clips.folder.nameHint"), album.Name);
+        if (string.IsNullOrWhiteSpace(name) || name == album.Name)
+            return;
+        album.Name = name.Trim();
+        _albums.Update(album);
+        ApplyFilter();
+    }
+
+    void HideFolder(LibraryFolder folder)
+    {
+        if (LibraryAlbums.AlbumIdOf(folder.Id) is not { } id || _albums.Find(id) is not { } album)
+            return;
+        album.Hidden = true;
+        _albums.Update(album);
+        if (_browse == folder.Id)
+            _browse = null;
+        ApplyFilter();
+    }
+
+    void UnhideFolder(LibraryFolder folder)
+    {
+        if (LibraryAlbums.AlbumIdOf(folder.Id) is not { } id || _albums.Find(id) is not { } album)
+            return;
+        album.Hidden = false;
+        _albums.Update(album);
+        ApplyFilter();
+    }
+
+    void ConfirmDeleteFolder()
+    {
+        if (_folderPendingDelete == null || LibraryAlbums.AlbumIdOf(_folderPendingDelete.Id) is not { } id)
+            return;
+        if (_browse == _folderPendingDelete.Id)
+            _browse = null;
+        _albums.Remove(id);
+        _folderPendingDelete = null;
+        ApplyFilter();
+    }
+
+    static void RequestThumb(ClipItem clip)
+    {
+        if (clip.Thumbnail != null)
+            return;
+        var target = clip;
+        ShellThumbnail.Request(clip.Path, image =>
+            System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => target.Thumbnail = image));
+    }
+
+    void ToggleFavorite(ClipItem clip)
+    {
+        clip.IsFavorite = _favorites.Toggle(clip.Path);
+        if (_browse == "favorites" && !_all.Any(c => c.IsFavorite))
+            _browse = null;
+        ApplyFilter();
     }
 
     /// <summary>Today, Yesterday, This week, This month or Older.</summary>
@@ -458,6 +770,8 @@ public sealed class ClipsViewModel : INotifyPropertyChanged
     {
         if (clips.Count == 0)
             return;
+        _favorites.Remove(clips.Select(c => c.Path));
+        _albums.RemovePaths(clips.Select(c => c.Path));
         ClipDeleter.Delete(clips.Select(c => c.Path), permanent, ClipDeleter.Recycle);
         Refresh();
     }

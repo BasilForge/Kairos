@@ -1,4 +1,7 @@
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 
 namespace Kairos.Ui.Pages;
 
@@ -23,6 +26,85 @@ public partial class ClipsPage : UserControl
             if (_scroller != null)
                 _scroller.ScrollChanged -= OnScroll;
             _scroller = null;
+        };
+    }
+
+    /// <summary>Header +: new folder. If any albums are hidden, also list them to restore.</summary>
+    void OnAddFolderMenu(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Button btn || DataContext is not ClipsViewModel vm)
+            return;
+        if (!vm.HasHiddenFolders)
+        {
+            vm.AddFolderCommand.Execute(null);
+            return;
+        }
+        var menu = new ContextMenu
+        {
+            PlacementTarget = btn,
+            Placement = PlacementMode.Bottom,
+            MinWidth = 200,
+        };
+        menu.Items.Add(FolderMenuItem("\uE710", "clips.folder.new", vm.AddFolderCommand, parameter: null));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = App.Text.Get("clips.folder.showHidden"), IsEnabled = false });
+        foreach (var hidden in vm.HiddenFolders)
+            menu.Items.Add(FolderMenuItem("\uE609", hidden.Label, vm.UnhideFolderCommand, hidden));
+        menu.IsOpen = true;
+    }
+
+    /// <summary>⋮ on a user album: open / rename / hide / delete (defaults never get this menu).</summary>
+    void OnFolderMenu(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Button btn || btn.DataContext is not LibraryFolder { IsDefault: false } folder
+            || DataContext is not ClipsViewModel vm)
+            return;
+        var menu = new ContextMenu
+        {
+            PlacementTarget = btn,
+            Placement = PlacementMode.Bottom,
+            MinWidth = 180,
+        };
+        menu.Items.Add(FolderMenuItem("\uE8A7", "clips.folder.open", vm.OpenFolderCommand, folder));
+        menu.Items.Add(FolderMenuItem("\uE8AC", "clips.folder.rename", vm.RenameFolderCommand, folder));
+        menu.Items.Add(FolderMenuItem("\uE7B3", "clips.folder.hide", vm.HideFolderCommand, folder));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(FolderMenuItem("\uE74D", "clips.folder.delete", vm.AskDeleteFolderCommand, folder, danger: true));
+        menu.IsOpen = true;
+    }
+
+    static MenuItem FolderMenuItem(string glyph, string textKeyOrLabel, System.Windows.Input.ICommand command, object? parameter, bool danger = false)
+    {
+        string text = textKeyOrLabel.StartsWith("clips.", StringComparison.Ordinal)
+            ? App.Text.Get(textKeyOrLabel)
+            : textKeyOrLabel;
+        var icon = new TextBlock
+        {
+            Text = glyph,
+            FontFamily = (FontFamily)Application.Current.FindResource("IconFont"),
+            FontSize = 14,
+            Width = 20,
+            Margin = new Thickness(0, 0, 10, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = danger
+                ? (Brush)Application.Current.FindResource("Accent")
+                : (Brush)Application.Current.FindResource("TextPrimary"),
+        };
+        var label = new TextBlock
+        {
+            Text = text,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = danger
+                ? (Brush)Application.Current.FindResource("Accent")
+                : (Brush)Application.Current.FindResource("TextPrimary"),
+        };
+        return new MenuItem
+        {
+            Header = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, label } },
+            Command = command,
+            CommandParameter = parameter,
         };
     }
 
