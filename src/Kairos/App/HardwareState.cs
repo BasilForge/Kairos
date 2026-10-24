@@ -25,6 +25,8 @@ public sealed class HardwareState
     public int Relief { get; set; }
     /// <summary>When recording was last made lighter (or eased): a quiet week eases it one step.</summary>
     public DateTime? ReliefAt { get; set; }
+    /// <summary>The step numbers <see cref="Relief"/> was kept under (<see cref="Engine.LagRelief.Numbering"/>).</summary>
+    public int ReliefNumbering { get; set; }
     /// <summary>The screen capture is black here with Automatic and shows with Windows Graphics Capture (<see cref="Engine.ScreenCheck"/>).</summary>
     public bool ScreenWgc { get; set; }
 
@@ -41,7 +43,15 @@ public sealed class HardwareState
             if (File.Exists(path) && JsonSerializer.Deserialize<HardwareState>(File.ReadAllText(path), Options) is { } kept)
             {
                 if (kept.Fingerprint == fingerprint)
+                {
+                    // A step kept by a Kairos that numbered them otherwise means another step now: from none again.
+                    if (kept.Relief > 0 && kept.ReliefNumbering != Engine.LagRelief.Numbering)
+                    {
+                        ObsLog.Info($"lighter recording: relief {kept.Relief} was kept by an older Kairos: as chosen again");
+                        kept.ChoseVideo();
+                    }
                     return kept;
+                }
                 // New hardware or driver: what failed before may work now; an outdated driver stays known for the restart note.
                 return new HardwareState { Fingerprint = fingerprint, NvidiaOutdatedDriver = kept.NvidiaOutdatedDriver };
             }
@@ -101,6 +111,7 @@ public sealed class HardwareState
     {
         Relief = to;
         ReliefAt = now;
+        ReliefNumbering = Engine.LagRelief.Numbering;
     }
 
     /// <summary>A week without falling behind: one step closer to what the user chose. True when it did.</summary>

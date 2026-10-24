@@ -199,5 +199,22 @@
         <!-- The editor, over the viewers and over Share (it can be opened from Share) -->
         <ContentControl x:Name="EditorLayer" Grid.RowSpan="2" Grid.ColumnSpan="2" Panel.ZIndex="11" Visibility="Collapsed" Focusable="False"/>
 
+        <!-- Closed with unsaved changes: asked over everything (the window buttons stay above it) -->
+        <Grid Grid.RowSpan="2" Grid.ColumnSpan="2" Panel.ZIndex="12" Background="#B01A1514"
+              Visibility="{Binding AskingClose, Converter={StaticResource Vis}}">
+            <Border Style="{StaticResource Card}" Width="460" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="22,20" Margin="0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Section}" Text="{l:T close.unsaved.title}" Margin="0,0,0,8"/>
+                    <!-- The theme's Caption text, written out: "Caption" here is the window buttons' style -->
+                    <TextBlock Text="{l:T close.unsaved.body}" FontSize="12.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Style="{StaticResource Ghost}" Content="{l:T close.unsaved.back}" Command="{Binding KeepOpenCommand}" Padding="16,9" Margin="0,0,10,0"/>
+                        <Button Style="{StaticResource Ghost}" Content="{l:T close.unsaved.discard}" Command="{Binding CloseWithoutSavingCommand}" Padding="16,9" Margin="0,0,10,0"/>
+                        <Button Style="{StaticResource Primary}" Content="{l:T close.unsaved.save}" Command="{Binding SaveAndCloseCommand}" Padding="18,9"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
     </Grid>
 </Window>

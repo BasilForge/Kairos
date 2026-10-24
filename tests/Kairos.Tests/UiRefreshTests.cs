@@ -158,9 +158,32 @@ public static class UiRefreshTests
         var vm = new SettingsViewModel();
         vm.PresetLevel = 1;
         Assert.Equal("Faster", vm.PresetWord, "1");
+        vm.PresetLevel = 4;
+        Assert.Equal("Balanced", vm.PresetWord, "4");
         vm.PresetLevel = 5;
-        Assert.Equal("Balanced", vm.PresetWord, "5");
+        Assert.Equal("Best quality", vm.PresetWord, "5: the slowest NVIDIA preset without look-ahead");
         vm.PresetLevel = 7;
-        Assert.Equal("Best quality", vm.PresetWord, "7");
+        Assert.Equal(5, vm.PresetLevel, "p6 and p7 turn NVIDIA's look-ahead on, which a game holding the card starves: never");
     });
+
+    /// <summary>
+    /// NVIDIA's p6 and p7 presets turn look-ahead on (libobs keeps the preset's), which a game holding an RTX 30 card
+    /// starved: 55-86 % of the frames skipped and frozen clips, gone at p5 (a user's report, 1.1.0). Settings from before
+    /// say p5 at most, and Automatic records with its own p5 whatever a hidden manual setting says.
+    /// </summary>
+    [Test]
+    public static void The_encoder_never_runs_nvidia_look_ahead()
+    {
+        var s = new AppSettings();
+        s.Video.Preset = "p7";
+        s.Normalize();
+        Assert.Equal("p5", s.Video.Preset, "an old p7 becomes p5");
+        s.Video.Preset = "p3";
+        s.Normalize();
+        Assert.Equal("p3", s.Video.Preset, "a lighter one stays");
+        var smart = new Kairos.Engine.SmartChoice(Kairos.Engine.EncoderCatalog.ById("obs_nvenc_h264_tex"), OutputResolution.P1440, 60, QualityPreset.Ultra);
+        var user = new VideoSettings { Auto = true, Preset = "p2", CustomCq = 30 };
+        var auto = Kairos.Engine.CapturePipeline.AutoVideo(smart, user);
+        Assert.True(auto is { Preset: "p5", CustomCq: 30, Resolution: OutputResolution.P1440, Fps: 60 }, "Automatic: its own preset, the user's custom numbers kept");
+    }
 }

@@ -121,6 +121,19 @@ public static class SettingsStore
         File.Move(tmp, path, overwrite: true);
     }
 
+    /// <summary>
+    /// <paramref name="change"/> made to the settings as saved, and saved: an engine's own change (a game told about
+    /// Borderless, a mixer set up), never its whole copy, which can be older than the file (a Save whose "apply" never
+    /// reached it: writing that copy undid the user's change).
+    /// </summary>
+    public static void Update(string path, Action<AppSettings> change)
+    {
+        var settings = Load(path);
+        change(settings);
+        settings.Normalize();
+        Save(path, settings);
+    }
+
     public static string Serialize(AppSettings settings) => JsonSerializer.Serialize(settings, Options);
 
     /// <summary>A deep copy, as saved and read back.</summary>

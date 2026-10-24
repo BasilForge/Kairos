@@ -14,8 +14,8 @@ public sealed record VirtualDevice(string Brand, VirtualRole Role, bool MixOnYou
 }
 
 /// <summary>
-/// Sound apps that split the PC's sound into virtual devices (SteelSeries Sonar, GoXLR, Elgato Wave Link, Voicemeeter,
-/// NVIDIA Broadcast) told apart by name, so the system sound is recorded from the device the game plays to: a game
+/// Sound apps that split the PC's sound into virtual devices (SteelSeries Sonar, GoXLR, Elgato Wave Link, Logitech
+/// MIXLINE, Voicemeeter, NVIDIA Broadcast) told apart by name, so the system sound is recorded from the device the game plays to: a game
 /// on "Sonar - Gaming" is not heard on "Sonar - Chat".
 /// </summary>
 public static class VirtualAudio
@@ -26,19 +26,25 @@ public static class VirtualAudio
     /// (capturing it records every other app a second time, a moment late), whether it plays all it mixes on your own
     /// headphones or speakers, and the words of the recording devices that carry its whole mix and the voice alone.
     /// </summary>
-    sealed record Mixer(string Match, string Brand, string? App = null, bool MixOnYourDevice = false, string? WholeMix = null, string? Voice = null);
+    sealed record Mixer(string[] Match, string Brand, string? App = null, bool MixOnYourDevice = false, string[]? WholeMix = null, string? Voice = null);
 
     /// <summary>
     /// GoXLR mixes in the hardware: its playback devices are the mixer's inputs and its mix comes back as the recording
-    /// device Broadcast Stream Mix, the voice alone as Chat Mic (its manual; GoXLR Utility's routing), so no exe plays it again.
+    /// device Broadcast Stream Mix (and VOD: all but the music), the voice alone as Chat Mic (its manual; GoXLR Utility's
+    /// routing), so no exe plays it again; its app only drives the hardware. RØDECaster Duo and Pro II mix in the hardware
+    /// too, their mix back as the recording device Main Stereo. Wave Link plays its Monitor Mix on your headphones and
+    /// sends its Stream Mix as a recording device. Logitech MIXLINE likewise: its one playback device ("Speakers
+    /// (MIXLINE)") played again on the headset by MIXLINE.exe, its mixes as the recording devices MIXLINE Stream and Record.
     /// </summary>
     static readonly Mixer[] Mixers =
     [
-        new("Sonar", "SteelSeries Sonar", App: "SteelSeriesSonar", MixOnYourDevice: true),
-        new("GoXLR", "GoXLR", WholeMix: "BroadcastStreamMix", Voice: "ChatMic"),
-        new("WaveLink", "Wave Link"), new("ElgatoVirtual", "Wave Link"),
-        new("Voicemeeter", "Voicemeeter", App: "voicemeeter"),
-        new("NVIDIABroadcast", "NVIDIA Broadcast", App: "NVIDIA Broadcast"),
+        new(["Sonar"], "SteelSeries Sonar", App: "SteelSeriesSonar", MixOnYourDevice: true),
+        new(["GoXLR"], "GoXLR", App: "GoXLR", WholeMix: ["BroadcastStreamMix", "VOD"], Voice: "ChatMic"),
+        new(["RODECaster", "RØDECaster"], "RØDECaster", WholeMix: ["MainStereo"]),
+        new(["WaveLink", "ElgatoVirtual"], "Wave Link", App: "WaveLink", MixOnYourDevice: true, WholeMix: ["StreamMix"]),
+        new(["MIXLINE"], "Logitech MIXLINE", App: "MIXLINE", MixOnYourDevice: true, WholeMix: ["MIXLINEStream", "MIXLINERecord"]),
+        new(["Voicemeeter"], "Voicemeeter", App: "voicemeeter"),
+        new(["NVIDIABroadcast"], "NVIDIA Broadcast", App: "NVIDIA Broadcast"),
     ];
 
     static readonly (string Word, VirtualRole Role)[] Roles =
@@ -53,9 +59,17 @@ public static class VirtualAudio
     static Mixer? BrandOf(string name)
     {
         foreach (var mixer in Mixers)
-            if (Says(name, mixer.Match))
+            if (SaysAny(name, mixer.Match))
                 return mixer;
         return null;
+    }
+
+    static bool SaysAny(ReadOnlySpan<char> text, string[] keys)
+    {
+        foreach (string key in keys)
+            if (Says(text, key))
+                return true;
+        return false;
     }
 
     /// <summary>Whether <paramref name="text"/> has <paramref name="key"/> (written without spaces), spaces and case aside; nothing allocated.</summary>
@@ -77,9 +91,12 @@ public static class VirtualAudio
         // The role is the device's own word, before the app's name in brackets ("Chat (TC-Helicon GoXLR)", "Sonar - Chat").
         string own = name.Contains(" - ", StringComparison.Ordinal) ? name[(name.IndexOf(" - ", StringComparison.Ordinal) + 3)..] : name;
         int bracket = own.IndexOf('(');
-        if (bracket > 0 && !Says(own.AsSpan(0, bracket), mixer.Match))
+        if (bracket > 0 && !SaysAny(own.AsSpan(0, bracket), mixer.Match))
             own = own[..bracket];
+        // A device named after the mixer gives its role in the brackets ("Speakers (RODECaster Duo Chat)").
         var role = Roles.FirstOrDefault(r => own.Contains(r.Word, StringComparison.OrdinalIgnoreCase));
+        if (role.Word == null)
+            role = Roles.FirstOrDefault(r => name.Contains(r.Word, StringComparison.OrdinalIgnoreCase));
         return new VirtualDevice(mixer.Brand, role.Word == null ? VirtualRole.System : role.Role, mixer.MixOnYourDevice, mixer.WholeMix != null);
     }
 
@@ -96,11 +113,11 @@ public static class VirtualAudio
     public static string ShortName(string name)
     {
         int bracket = name.IndexOf(" (", StringComparison.Ordinal);
-        return bracket > 0 && BrandOf(name) is { } mixer && Says(name.AsSpan(0, bracket), mixer.Match) ? name[..bracket] : name;
+        return bracket > 0 && BrandOf(name) is { } mixer && SaysAny(name.AsSpan(0, bracket), mixer.Match) ? name[..bracket] : name;
     }
 
     /// <summary>The mixer whose whole mix a recording device is (GoXLR's Broadcast Stream Mix: the game, chat, music and the voice), or null.</summary>
-    public static string? WholeMixOf(string name) => BrandOf(name) is { WholeMix: { } mix } mixer && Says(name, mix) ? mixer.Brand : null;
+    public static string? WholeMixOf(string name) => BrandOf(name) is { WholeMix: { } mixes } mixer && SaysAny(name, mixes) ? mixer.Brand : null;
 
     /// <summary>The device a choice means: <paramref name="chosen"/>, or for "Default" the one Windows has as the default; null when it is not there.</summary>
     public static App.NameValue? Chosen(IEnumerable<App.NameValue> devices, string chosen, string? defaultId)

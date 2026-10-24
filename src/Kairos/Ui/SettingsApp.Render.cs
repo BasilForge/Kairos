@@ -272,12 +272,16 @@ public static partial class SettingsApp
         // audio separate|separate-full|together: the Audio page over made-up settings, devices and apps (Discord not
         // running); separate-full adds two apps, so the last one shares the sixth track; separate-new adds Spotify unsaved;
         // together-sonar has SteelSeries Sonar on (Default is its Gaming device, one pair of headphones); together-goxlr and
-        // separate-goxlr have a GoXLR, Default on its System device and the microphone on its Broadcast Stream Mix.
+        // separate-goxlr have a GoXLR, Default on its System device and the microphone on its Broadcast Stream Mix;
+        // separate-add has a GoXLR Mini (named as a user's) with Chat Mic as the microphone and "+ Add source" open;
+        // separate-rode is a user's RØDECaster Duo with Main Stereo (Windows's default) and Chat added as rows, the game
+        // and Discord heard on them; separate-rode-add has the same devices, no device rows, and "+ Add source" open.
         bool audioState = page == "audio" && voiceState is "separate" or "separate-full" or "separate-new" or "together" or "together-sonar"
-            or "together-goxlr" or "separate-goxlr";
+            or "together-goxlr" or "separate-goxlr" or "separate-add" or "separate-rode" or "separate-rode-add";
         if (audioState)
         {
             bool goxlr = voiceState is "together-goxlr" or "separate-goxlr";
+            bool rode = voiceState is "separate-rode" or "separate-rode-add";
             var made = new AppSettings();
             made.Audio.Layout = voiceState is "together" or "together-sonar" or "together-goxlr" ? AudioLayout.Together : AudioLayout.Separate;
             made.Normalize();
@@ -288,6 +292,21 @@ public static partial class SettingsApp
                 ]);
             if (goxlr)
                 made.Audio.SelectMic("goxlr-mix");
+            if (voiceState == "separate-add")
+            {
+                made.Audio.SelectMic("mini-chatmic");
+                SettingsViewModel.OpenApps = () => [new("Chatterino", "chatterino"), new("Google Chrome", "chrome"), new("Steam", "steam")];
+            }
+            if (rode)
+            {
+                made.Audio.SelectMic("rode-chatmic");
+                SettingsViewModel.OpenApps = () => [new("Call of Duty®", "cod"), new("YouTube Music", "YouTube Music"), new("Steam", "steam")];
+                if (voiceState == "separate-rode")
+                    made.Audio.Sources.AddRange([
+                        new AudioSource { Id = "output:main", Kind = AudioSourceKind.Output, Target = "rode-main", Label = "Speakers (RODECaster Duo Main Stereo)" },
+                        new AudioSource { Id = "output:chat", Kind = AudioSourceKind.Output, Target = "rode-chat", Label = "Speakers (RODECaster Duo Chat)" },
+                    ]);
+            }
             vm.SeedSettings(made);
             if (voiceState == "separate-new")
                 vm.AddAudioAppCommand.Execute(new NameValue("Spotify", "Spotify"));
@@ -309,8 +328,28 @@ public static partial class SettingsApp
                         new("Chat (TC-Helicon GoXLR)", "goxlr-chat"), new("Music (TC-Helicon GoXLR)", "goxlr-music")],
                     DefaultSpeaker = "goxlr-system",
                 };
+            if (voiceState == "separate-add")
+                caps = caps with
+                {
+                    Mics = [new("Default", "default"), new("Chat Mic (2- TC-HELICON GoXLR Mini)", "mini-chatmic"), new("Microphone (DroidCam Audio)", "droidcam"),
+                        new("VOD (2- TC-HELICON GoXLR Mini)", "mini-vod"), new("Broadcast Stream Mix (2- TC-HELICON GoXLR Mini)", "mini-mix")],
+                    Speakers = [new("Default", "default"), new("System (2- TC-HELICON GoXLR Mini)", "mini-system"), new("Game (2- TC-HELICON GoXLR Mini)", "mini-game"),
+                        new("Chat (2- TC-HELICON GoXLR Mini)", "mini-chat"), new("Music (2- TC-HELICON GoXLR Mini)", "mini-music"),
+                        new("Sample (2- TC-HELICON GoXLR Mini)", "mini-sample")],
+                    DefaultSpeaker = "mini-system",
+                };
+            if (rode)
+                caps = caps with
+                {
+                    Mics = [new("Default", "default"), new("Microphone (RODECaster Duo Chat)", "rode-chatmic"), new("Microphone (RODECaster Duo Main Stereo)", "rode-mainmic")],
+                    Speakers = [new("Default", "default"), new("Speakers (RODECaster Duo Main Stereo)", "rode-main"), new("Speakers (RODECaster Duo Chat)", "rode-chat"),
+                        new("LG ULTRAGEAR (NVIDIA High Definition Audio)", "lg"), new("XG27AQWMG (NVIDIA High Definition Audio)", "asus")],
+                    DefaultSpeaker = "rode-main",
+                };
             status = new StatusDto(new Engine.EngineStatus(true, false, 60, 0, 0, 1000, 300, 300, "obs_nvenc_av1_tex", 2560, 1440,
-                700, 600, @"D:\Clips", false, null, QuietAudioRows: ["discord", "app:brave"]), [], null, null, false, false, AppInfo.Version);
+                700, 600, @"D:\Clips", false, null, QuietAudioRows: voiceState == "separate-rode" ? ["game", "discord", "other"] : ["discord", "app:brave"],
+                AudioRowsHeardOn: voiceState == "separate-rode" ? new Dictionary<string, string> { ["game"] = "rode-main", ["discord"] = "rode-chat" } : null),
+                [], null, null, false, false, AppInfo.Version);
         }
         // capture camera: the Camera card on, a round camera in a corner, its own file kept (made-up camera list).
         if (page == "capture" && voiceState == "camera")
@@ -388,6 +427,12 @@ public static partial class SettingsApp
         if (page == "general" && voiceState is "check-idle" or "check-checking" or "check-uptodate" or "check-failed")
             status = new StatusDto(null, [], null, null, false, false, AppInfo.Version, Look: new Engine.Updates.UpdateLook(true, false, 1, Engine.Updates.LookResult.None));
         vm.Seed(status, caps);
+        // <page> unsaved: the clips folder changed, not saved, and the window closed: "save them?" over the page.
+        if (voiceState == "unsaved")
+        {
+            vm.Folder = @"D:\clip 2";
+            vm.AskBeforeClose();
+        }
         if (page == "general" && voiceState is "check-checking" or "check-uptodate" or "check-failed")
         {
             SettingsViewModel.PipeSend = _ => null;
@@ -578,8 +623,10 @@ public static partial class SettingsApp
             root = Standalone(FontList());
         else if (page == "editor-colour")
             root = Standalone(new Edit.ColourPicker { Colour = "#F48BA4" });
-        // share-copysizes: Copy's sizes as they open under it (a popup: drawn over the panel here, once it is laid out).
-        var sizesLayer = page == "share-copysizes" ? new System.Windows.Controls.Canvas() : null;
+        // share-copysizes: Copy's sizes as they open under it; audio separate-add: "+ Add source" open (popups: drawn over
+        // the page here, once it is laid out).
+        bool addSource = page == "audio" && voiceState is "separate-add" or "separate-rode-add";
+        var sizesLayer = page == "share-copysizes" || addSource ? new System.Windows.Controls.Canvas() : null;
         if (sizesLayer != null)
             root = new System.Windows.Controls.Grid { Children = { root, sizesLayer } };
         root.DataContext = vm;
@@ -613,7 +660,7 @@ public static partial class SettingsApp
         if (sizesLayer != null)
         {
             // The menu drawn on its own (a ContextMenu takes no parent), then put where it opens: under its tile.
-            var menu = window.CopySizes();
+            var menu = addSource ? Pages.AudioPage.AddSourceMenu(vm, FindChild<Pages.AudioPage>(root)!.AddSourceButton) : window.CopySizes();
             var tile = (FrameworkElement)menu.PlacementTarget;
             menu.FlowDirection = window.FlowDirection;
             menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -623,7 +670,9 @@ public static partial class SettingsApp
             drawn.Render(menu);
             var image = new System.Windows.Controls.Image { Source = drawn, Width = menu.ActualWidth, Height = menu.ActualHeight };
             var at = tile.TranslatePoint(new Point(0, tile.ActualHeight), sizesLayer);
-            System.Windows.Controls.Canvas.SetLeft(image, at.X); // in a right-to-left layout both count from the right
+            // From the tile's far edge across it (in a right-to-left layout both count from the right): a menu wider than
+            // its button opens over the page, as Windows keeps it on the screen.
+            System.Windows.Controls.Canvas.SetLeft(image, at.X + tile.ActualWidth - menu.ActualWidth);
             System.Windows.Controls.Canvas.SetTop(image, at.Y);
             sizesLayer.Children.Add(image);
             border.Measure(size);

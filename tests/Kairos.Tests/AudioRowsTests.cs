@@ -76,6 +76,84 @@ public static class AudioRowsTests
         Assert.True(vm.AudioRows.All(r => r.State == ""), string.Join(", ", vm.AudioRows.Select(r => $"{r.Name}: {r.State}")));
     }
 
+    /// <summary>
+    /// A mixer's channels are playback devices (GoXLR's Music, RØDECaster's Chat): "Add source" offers them too, and each
+    /// becomes a row of its own that can go again (users of both asked, 1.1.0).
+    /// </summary>
+    [Test]
+    public static void Add_source_offers_playback_devices()
+    {
+        var vm = Vm(AudioLayout.Separate);
+        vm.Seed(null, new CapsDto([], [], [new("Default", "default")],
+            [new("Default", "default"), new("Music (TC-Helicon GoXLR)", "music"), new("Speakers (RODECaster Duo Chat)", "chat")], [], "32.2.2"));
+        Assert.Equal("Music (TC-Helicon GoXLR),Speakers (RODECaster Duo Chat)", string.Join(",", vm.AddAudioOutputs.Select(o => o.Label)),
+            "the playback devices, Default aside");
+        vm.AddAudioOutputCommand.Execute(new NameValue("Music (TC-Helicon GoXLR)", "music"));
+        var row = vm.AudioRows.Single(r => r.Row.Kind == AudioSourceKind.Output);
+        Assert.True(row.Row is { Target: "music", Label: "Music (TC-Helicon GoXLR)" } && row.Removable, "its row, removable");
+        Assert.Equal("Speakers (RODECaster Duo Chat)", string.Join(",", vm.AddAudioOutputs.Select(o => o.Label)), "not offered twice");
+    }
+
+    /// <summary>
+    /// A user's RØDECaster Duo: he added Main Stereo (Windows's default, where every app plays) and Chat as rows, so each
+    /// app's sound went to those tracks and his Game, Discord and Other sounds rows stayed silent ("Call of Duty is not
+    /// recorded"). "+ Add source" no longer offers the device every app plays on, a row of it says to remove it, and a
+    /// row whose app is heard on a device row says which one.
+    /// </summary>
+    [Test]
+    public static void The_device_every_app_plays_on_is_not_offered_and_rows_say_where_their_sound_went()
+    {
+        Text.Language = "en";
+        var s = new AppSettings();
+        s.Audio.Layout = AudioLayout.Separate;
+        s.Normalize();
+        s.Audio.Sources.Add(new AudioSource { Id = "output:main", Kind = AudioSourceKind.Output, Target = "main", Label = "Speakers (RODECaster Duo Main Stereo)" });
+        s.Audio.Sources.Add(new AudioSource { Id = "output:chat", Kind = AudioSourceKind.Output, Target = "chat", Label = "Speakers (RODECaster Duo Chat)" });
+        var vm = new SettingsViewModel();
+        vm.SeedSettings(s);
+        var caps = new CapsDto([], [], [new("Default", "default")],
+            [new("Default", "default"), new("Speakers (RODECaster Duo Main Stereo)", "main"), new("Speakers (RODECaster Duo Chat)", "chat"),
+             new("LG ULTRAGEAR (NVIDIA High Definition Audio)", "lg")], [], "32.2.2") { DefaultSpeaker = "main" };
+        vm.Seed(new StatusDto(new Kairos.Engine.EngineStatus(true, false, 60, 0, 0, 0, 300, 300, "x", 1920, 1080, 0, 0, @"D:\Clips", false, null,
+            QuietAudioRows: ["game", "discord", "other"], AudioRowsHeardOn: new Dictionary<string, string> { ["game"] = "main", ["discord"] = "chat" }),
+            [], null, null, false, false, "1.1.1"), caps);
+        Assert.Equal("LG ULTRAGEAR (NVIDIA High Definition Audio)", string.Join(",", vm.AddAudioOutputs.Select(o => o.Label)),
+            "Main Stereo (every app plays there) and the rows' own devices left out");
+        string State(string id) => vm.AudioRows.Single(r => r.Id == id).State;
+        Assert.Equal(Text.Format("audio.heardOnRow", "Speakers (RODECaster Duo Main Stereo)"), State("game"), "the game: heard on Main Stereo's row");
+        Assert.Equal(Text.Format("audio.heardOnRow", "Speakers (RODECaster Duo Chat)"), State("discord"), "Discord: on Chat's row");
+        Assert.Equal(Text.Get("audio.nothingPlaying"), State("other"), "Other sounds as before");
+        Assert.Equal(Text.Get("audio.outputIsDefault"), State("output:main"), "Main Stereo's own row: remove it");
+        Assert.Equal("", State("output:chat"), "Chat: a channel of its own, fine");
+    }
+
+    /// <summary>
+    /// Device names in "+ Add source" read left to right in Arabic: "Music (2- TC-HELICON GoXLR Mini)" came out as
+    /// "(Music (2- TC-HELICON GoXLR Mini" (a user's screenshot), as the device lists elsewhere already do.
+    /// </summary>
+    [Test]
+    public static void Add_source_device_names_keep_their_brackets_in_arabic()
+    {
+        Text.Language = "ar";
+        try
+        {
+            var s = new AppSettings();
+            s.Audio.Layout = AudioLayout.Separate;
+            s.Normalize();
+            var vm = new SettingsViewModel();
+            vm.SeedSettings(s);
+            vm.Seed(null, new CapsDto([], [], [new("Default", "default"), new("Microphone (DroidCam Audio)", "droid")],
+                [new("Default", "default"), new("Music (2- TC-HELICON GoXLR Mini)", "music")], [], "32.2.2"));
+            static bool Wrapped(string label) => label.StartsWith('‎') && label.EndsWith('‎');
+            Assert.True(vm.AddAudioDevices.All(o => Wrapped(o.Label)), "input devices");
+            Assert.True(vm.AddAudioOutputs.All(o => Wrapped(o.Label)), "playback devices");
+        }
+        finally
+        {
+            Text.Language = "en";
+        }
+    }
+
     [Test]
     public static void The_recorded_microphone_is_not_offered_again()
     {

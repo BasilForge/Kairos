@@ -37,14 +37,51 @@ public static class AudioPartitionTests
 
     /// <summary>
     /// A sound mixer app plays every other app's sound again (SteelSeries Sonar on the headphones): as Other sounds it
-    /// put Discord and the game in the clip twice, a moment apart (measured with Sonar on, 2026-10-21).
+    /// put Discord and the game in the clip twice, a moment apart (measured with Sonar on, 2026-10-21; Discord in Other
+    /// sounds with Logitech MIXLINE, a user's report 2026-10-24).
     /// </summary>
     [Test]
     public static void A_sound_mixer_app_is_never_other_sounds()
     {
-        ProcInfo[] processes = [.. Processes, new(80, 10, "SteelSeriesSonar"), new(81, 10, "NVIDIA Broadcast"), new(82, 10, "voicemeeterpro")];
-        var a = AudioPartition.Assign(processes, new HashSet<uint> { 31, 50, 80, 81, 82 }, Rows());
-        Assert.Equal("50", Other(a), "Spotify; not Sonar, Broadcast or Voicemeeter (each app is heard from itself)");
+        ProcInfo[] processes = [.. Processes, new(80, 10, "SteelSeriesSonar"), new(81, 10, "NVIDIA Broadcast"), new(82, 10, "voicemeeterpro"), new(83, 10, "MIXLINE")];
+        var a = AudioPartition.Assign(processes, new HashSet<uint> { 31, 50, 80, 81, 82, 83 }, Rows());
+        Assert.Equal("50", Other(a), "Spotify; not Sonar, Broadcast, Voicemeeter or MIXLINE (each app is heard from itself)");
+    }
+
+    /// <summary>
+    /// A mixer's output added as a row (GoXLR's Music, RØDECaster's Chat): what plays on it is heard from it, so the
+    /// apps playing there leave Other sounds and their own rows (each sound once).
+    /// </summary>
+    [Test]
+    public static void An_app_on_an_added_output_device_is_heard_from_that_device()
+    {
+        var music = new AudioSource { Id = "output:music", Kind = AudioSourceKind.Output, Target = "{music-device}", Label = "Music (GoXLR)" };
+        // chrome's audio and Discord play on it
+        var input = Rows(21, music) with { OnOutputs = new Dictionary<uint, string> { [41] = "{music-device}", [31] = "{music-device}" } };
+        var heardOn = new Dictionary<string, string>();
+        var a = AudioPartition.Assign(Processes, new HashSet<uint> { 21, 31, 41, 50 }, input, heardOn: heardOn);
+        Assert.Equal("50", Other(a), "Spotify only: chrome is heard from the Music device");
+        Assert.True(!a.ContainsKey("discord"), "Discord plays on that device: its row hears it there, not twice");
+        Assert.Equal("21", string.Join(",", a["game"]), "the game elsewhere keeps its row");
+        Assert.True(!a.ContainsKey(music.Id), "a device row is no process capture");
+        Assert.Equal("{music-device}", heardOn.GetValueOrDefault("discord"), "Discord's row says which device row hears it");
+        Assert.True(!heardOn.ContainsKey("game") && !heardOn.ContainsKey("other"), "the game is in its own row; Other sounds is no app's");
+    }
+
+    /// <summary>
+    /// A user's RØDECaster Duo: Main Stereo, Windows's default device, added as a row, and his game played there: the Game
+    /// row stayed silent. It says the game is heard on that device's row.
+    /// </summary>
+    [Test]
+    public static void A_game_on_a_device_row_is_said_to_be_heard_there()
+    {
+        var main = new AudioSource { Id = "output:main", Kind = AudioSourceKind.Output, Target = "{main}", Label = "Speakers (RODECaster Duo Main Stereo)" };
+        var input = Rows(21, main) with { OnOutputs = new Dictionary<uint, string> { [21] = "{main}", [50] = "{main}" } };
+        var heardOn = new Dictionary<string, string>();
+        var a = AudioPartition.Assign(Processes, new HashSet<uint> { 21, 31, 50 }, input, heardOn: heardOn);
+        Assert.True(!a.ContainsKey("game"), "the game is heard on Main Stereo's row, not twice");
+        Assert.Equal("{main}", heardOn.GetValueOrDefault("game"), "and its row says so");
+        Assert.Equal("30", string.Join(",", a["discord"]), "Discord elsewhere keeps its row");
     }
 
     [Test]

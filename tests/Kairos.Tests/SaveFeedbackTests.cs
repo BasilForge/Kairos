@@ -77,6 +77,42 @@ public static class SaveFeedbackTests
         Assert.Near(0, SaveToast.Opacity(SaveToast.Total), 0.001, "gone");
     }
 
+    /// <summary>A tip over a game must not startle: it comes in slower and from further, and stays long enough to read.</summary>
+    [Test]
+    public static void A_tip_arrives_calmly_and_stays_to_be_read()
+    {
+        var calm = ToastTiming.Calm;
+        Assert.True(calm.FadeIn >= ToastTiming.Usual.FadeIn * 2 && calm.SlidePx > ToastTiming.Usual.SlidePx, "slower and from further than a save");
+        Assert.True(calm.Hold >= 6, $"held {calm.Hold} s: two lines read at ease");
+        Assert.True(SaveToast.Opacity(calm.FadeIn / 2, calm) is > 0 and < 1, "fading in");
+        Assert.Near(1, SaveToast.Opacity(calm.FadeIn + 1, calm), 0.001, "held");
+        Assert.Near(0, SaveToast.Opacity(calm.Total, calm), 0.001, "gone");
+        Assert.Near(SaveToast.Opacity(0.1), SaveToast.Opacity(0.1, ToastTiming.Usual), 0.0001, "a save as before");
+    }
+
+    [Test]
+    public static void A_tip_shows_the_soft_rose_mark()
+    {
+        using var tip = SaveToast.Paint("A tip", "Set the game to Borderless", rtl: false, scale: 1f, ToastIcon.Tip);
+        var c = tip.GetPixel(22, 32);
+        Assert.True(c.R > 220 && c.G is > 110 and < 160 && c.B is > 140 and < 190, $"a tip: Kairos's rose ({c})");
+    }
+
+    [Test]
+    public static void The_tip_sound_is_soft_and_not_the_save_sound()
+    {
+        byte[] wav = Chime.TipWav();
+        int samples = (wav.Length - 44) / 2;
+        short Sample(int i) => BitConverter.ToInt16(wav, 44 + i * 2);
+        int peak = 0;
+        for (int i = 0; i < samples; i++)
+            peak = Math.Max(peak, Math.Abs((int)Sample(i)));
+        Assert.True(peak < 32767 * 0.25, $"peak {peak}: softer than the save sound");
+        Assert.True(Math.Abs((int)Sample(0)) < 200 && Math.Abs((int)Sample(samples - 1)) < 200, "starts and ends at silence");
+        Assert.True(samples / 48000.0 is > 0.3 and < 1.2, "a short chime");
+        Assert.True(!wav.AsSpan().SequenceEqual(Chime.Wav()), "not the save sound");
+    }
+
     [Test]
     public static void A_problem_shows_an_amber_mark_not_the_green_check()
     {
@@ -122,6 +158,8 @@ public static class SaveFeedbackTests
                 yield return EngineApp.NotSavedToast("toast.notSaved." + reason);
             yield return (Text.Get("toast.lowDisk"), Text.Format("toast.lowDiskBody", "8.2 GB", "C:"));
             yield return (Text.Format("toast.update", "1.1.0"), Text.Get("toast.updateDetail"));
+            yield return EngineApp.BorderlessToast("Wuthering Waves");
+            yield return EngineApp.BorderlessToast("Arknights: Endfield");
         }
         var cut = new List<string>();
         foreach (var language in Text.Languages)

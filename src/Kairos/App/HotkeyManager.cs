@@ -17,6 +17,8 @@ public sealed class HotkeyManager : NativeWindow, IDisposable
     static readonly IntPtr HWND_MESSAGE = new(-3);
 
     readonly Dictionary<int, string> _idsByAtom = [];
+    /// <summary>The extra registrations of F13-F24 keys with Shift or Ctrl held (<see cref="HotkeyParser.WithHeldKeys"/>).</summary>
+    readonly Dictionary<int, Hotkey> _held = [];
     readonly Dictionary<string, bool> _status = [];
     /// <summary>Every key Kairos wants, by id (kept while suspended, registered again on resume).</summary>
     readonly Dictionary<string, Hotkey> _wanted = [];
@@ -109,15 +111,34 @@ public sealed class HotkeyManager : NativeWindow, IDisposable
         foreach (int atom in _idsByAtom.Keys)
             UnregisterHotKey(Handle, atom);
         _idsByAtom.Clear();
+        _held.Clear();
     }
 
     bool Reserve(string id, Hotkey hotkey)
+    {
+        // A held-key variant of an earlier key that is this one: it gives way (Kairos's own keys come first).
+        foreach (int atom in _held.Where(v => v.Value == hotkey).Select(v => v.Key).ToList())
+        {
+            UnregisterHotKey(Handle, atom);
+            _held.Remove(atom);
+            _idsByAtom.Remove(atom);
+        }
+        bool ok = Take(id, hotkey);
+        if (ok)
+            foreach (var held in HotkeyParser.WithHeldKeys(hotkey))
+                if (!_wanted.ContainsValue(held) && !_held.ContainsValue(held) && Take(id, held)) // another app holds it: left to it
+                    _held[_nextAtom - 1] = held;
+        _status[id] = ok;
+        return ok;
+    }
+
+    /// <summary>One registration under a new atom; false when another app holds the keys.</summary>
+    bool Take(string id, Hotkey hotkey)
     {
         int atom = _nextAtom++;
         bool ok = RegisterHotKey(Handle, atom, Modifiers(hotkey), (uint)hotkey.Key);
         if (ok)
             _idsByAtom[atom] = id;
-        _status[id] = ok;
         return ok;
     }
 

@@ -39,11 +39,46 @@ public sealed class ProcessLoopback : IDisposable
         _thread.Start();
     }
 
+    /// <summary>
+    /// The stereo copy of each packet, grown to the largest packet yet (a second to start). Not sized from GetBufferSize:
+    /// a user's Windows 10 (19045) reported a size past an int for process loopback, the buffer asked for a negative
+    /// size and the capture thread's OutOfMemoryException closed Kairos as the replay started.
+    /// </summary>
+    internal sealed class StereoBuffer : IDisposable
+    {
+        /// <summary>Ten seconds: a packet larger is no packet Windows sends (WASAPI hands 10 ms at a time).</summary>
+        const int MaxFrames = SampleRate * 10;
+
+        IntPtr _data;
+
+        public int Frames { get; private set; }
+
+        /// <summary>Room for <paramref name="frames"/> stereo float frames; an impossible packet is the source's error.</summary>
+        public IntPtr For(uint frames)
+        {
+            if (frames > MaxFrames)
+                throw new InvalidOperationException($"a packet of {frames} frames");
+            if (frames > Frames)
+            {
+                Marshal.FreeHGlobal(_data); // nothing to free the first time (IntPtr.Zero)
+                Frames = Math.Max((int)frames, SampleRate);
+                _data = Marshal.AllocHGlobal(Frames * Channels * 4);
+            }
+            return _data;
+        }
+
+        public void Dispose()
+        {
+            Marshal.FreeHGlobal(_data);
+            _data = IntPtr.Zero;
+        }
+    }
+
     void Run()
     {
         IAudioClient? client = null;
         IAudioCaptureClient? capture = null;
-        IntPtr stereo = IntPtr.Zero;
+        using var stereo = new StereoBuffer();
         using var ready = new AutoResetEvent(false);
         try
         {
@@ -68,8 +103,6 @@ public sealed class ProcessLoopback : IDisposable
             {
                 Marshal.FreeHGlobal(format);
             }
-            Check(client.GetBufferSize(out uint bufferFrames), "GetBufferSize");
-            stereo = Marshal.AllocHGlobal((int)Math.Max(bufferFrames, (uint)SampleRate) * Channels * 4);
             Check(client.SetEventHandle(ready.SafeWaitHandle.DangerousGetHandle()), "SetEventHandle");
             Check(client.GetService(typeof(IAudioCaptureClient).GUID, out object service), "GetService");
             capture = (IAudioCaptureClient)service;
@@ -84,11 +117,12 @@ public sealed class ProcessLoopback : IDisposable
                     if ((hr = capture.GetBuffer(out IntPtr data, out uint frames, out uint bufferFlags, out _, out ulong qpc)) != 0)
                         break;
                     ulong ts = qpc != 0 ? qpc * 100 : Native.Obs.os_gettime_ns() - (ulong)frames * 1_000_000_000UL / SampleRate;
+                    IntPtr folded = stereo.For(frames);
                     if ((bufferFlags & 0x2 /* SILENT */) != 0)
-                        NativeMemoryClear(stereo, (int)frames * Channels * 4);
+                        NativeMemoryClear(folded, (int)frames * Channels * 4);
                     else
-                        Fold(data, stereo, frames);
-                    _packet(stereo, frames, ts);
+                        Fold(data, folded, frames);
+                    _packet(folded, frames, ts);
                     capture.ReleaseBuffer(frames);
                 }
                 // The device went away (the audio service restarted, the device changed): said, so the source starts again.
@@ -100,10 +134,11 @@ public sealed class ProcessLoopback : IDisposable
         {
             // Stopped while Windows was still activating it.
         }
-        catch (Exception e) when (e is COMException or InvalidOperationException or TimeoutException)
+        catch (Exception e)
         {
+            // Whatever goes wrong here stops this one source (ProcessAudioSource starts it again, RetryAfter): never Kairos.
             Error = e.Message;
-            ObsLog.Warn($"process audio {_pid}: {e.Message}");
+            ObsLog.Warn($"process audio {_pid}: {e.GetType().Name}: {e.Message}");
         }
         finally
         {
@@ -111,8 +146,6 @@ public sealed class ProcessLoopback : IDisposable
                 Marshal.ReleaseComObject(capture);
             if (client != null)
                 Marshal.ReleaseComObject(client);
-            if (stereo != IntPtr.Zero)
-                Marshal.FreeHGlobal(stereo);
         }
     }
 

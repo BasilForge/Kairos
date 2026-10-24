@@ -161,7 +161,7 @@ public static class RecordingTests
         Text.Language = "en";
         var engine = Status().Engine!;
         var fell = engine with { Encoder = "obs_x264", EncoderFallback = "HEVC" };
-        Assert.Equal("Recording with H.264 (CPU): the HEVC encoder could not start", StatusLogic.CaptureWarning(fell), "the fallback line");
+        Assert.Equal("Recording with H.264 (CPU), because HEVC doesn't work on this PC", StatusLogic.CaptureWarning(fell), "the fallback line");
         Assert.Equal(Text.Get("status.antiCheat"), StatusLogic.CaptureWarning(fell with { CaptureNotice = "status.antiCheat" }), "a capture notice comes first");
     }
 
@@ -181,7 +181,7 @@ public static class RecordingTests
         trouble.Note("WASAPI: Device '26 (soundcore Q20i)' [48000 Hz] initialized (source: Desktop audio)");
         Assert.True(trouble.SystemDevice == null, "started: nothing to say");
         var engine = Status().Engine! with { AudioDeviceTrouble = "26 (soundcore Q20i)" };
-        Assert.Equal("System sound could not be captured from 26 (soundcore Q20i): pick it by name in Audio, or switch the headset to Stereo",
+        Assert.Equal("Kairos can't hear the sound from 26 (soundcore Q20i). In Audio, pick it by name, or set the headset to Stereo",
             StatusLogic.CaptureWarning(engine), "the line");
     }
 }

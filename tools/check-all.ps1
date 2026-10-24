@@ -83,9 +83,12 @@ if ($SelfTests) {
     foreach ($p in @(@('clip-h264.mp4', '0'), @('clip-h264-5tracks.mp4', '2'), @('clip-av1-2tracks.mp4', '1'))) {
         $null = Check "selftest-preview-$($p[0] -replace '\.mp4','')" @('--selftest-preview', (Join-Path $Fixtures $p[0]), '3', '0', $p[1]) 'preview|exit=' -OwnDesktop
     }
-    $a = Start-ParkedPlayer -Title 'Kairos hook test'
-    try { $null = Check 'selftest-scene-game-hook' @('--selftest-scene', 'screen-game', 'Kairos hook test:SDL_app:ffplay.exe') }
-    finally { if ($a -and -not $a.HasExited) { $a.Kill($true) } }
+    # A hooked game: the screen under it is not copied, and is again (no black frame) the moment the game closes.
+    foreach ($scene in 'screen-game', 'games-game', 'apps-game') {
+        $a = Start-ParkedPlayer -Title 'Kairos hook test'
+        try { $null = Check "selftest-scene-$scene-hook" @('--selftest-scene', $scene, 'Kairos hook test:SDL_app:ffplay.exe') 'exit=|FAIL|scene |hooked game' }
+        finally { if ($a -and -not $a.HasExited) { $a.Kill($true) } }
+    }
     $copy = Join-Path $Out 'kairosappb.exe'
     $ffplay = Get-Item (Get-Command ffplay).Source
     Copy-Item ($ffplay.ResolvedTarget ?? $ffplay.FullName) $copy -Force

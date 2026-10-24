@@ -37,6 +37,8 @@ public sealed class VoiceTrigger : IDisposable
     VoicePhrase? _phrase, _shotPhrase;
     bool _phraseOnDisk, _shotOnDisk;
     VoiceAction _enrollFor = VoiceAction.Clip;
+    /// <summary>How many times loose samples (<see cref="VoicePhrase.TightSpread"/>) were asked again in this recording.</summary>
+    int _looseRetries;
     bool _enabled, _micConnected;
     VoiceSensitivity _sensitivity = VoiceSensitivity.Normal;
     string _mode = "idle";
@@ -188,7 +190,10 @@ public sealed class VoiceTrigger : IDisposable
             _generation++;
             _queue.Clear();
             if (clearSamples)
+            {
                 _samples.Clear();
+                _looseRetries = 0;
+            }
         }
         EnsureWorker();
     }
@@ -197,7 +202,8 @@ public sealed class VoiceTrigger : IDisposable
     {
         if (_worker != null || !Listening)
             return;
-        _worker = new Thread(Run) { IsBackground = true, Name = "Smart Save", Priority = ThreadPriority.BelowNormal };
+        // Lowest in the engine's above-normal process (CpuPriority): the game's own level, so its model never goes first.
+        _worker = new Thread(Run) { IsBackground = true, Name = "Smart Save", Priority = ThreadPriority.Lowest };
         _worker.Start();
     }
 
@@ -320,10 +326,13 @@ public sealed class VoiceTrigger : IDisposable
             {
                 if (generation != _generation)
                     return;
-                if (built.Spread > VoicePhrase.MaxSpread)
+                var verdict = VoicePhrase.Verdict(built.Spread, _looseRetries);
+                if (verdict == EnrollVerdict.SayAgain)
                 {
                     // Three samples too unlike each other: the one furthest from the other two is said again.
-                    ObsLog.Info($"voice phrase: samples {built.Spread:F3} apart (most {VoicePhrase.MaxSpread:F3}): sample {built.WorstSample + 1} again");
+                    if (built.Spread <= VoicePhrase.MaxSpread)
+                        _looseRetries++;
+                    ObsLog.Info($"voice phrase: samples {built.Spread:F3} apart (kept at once up to {VoicePhrase.TightSpread:F3}, never past {VoicePhrase.MaxSpread:F3}): sample {built.WorstSample + 1} again");
                     _samples.RemoveAt(built.WorstSample);
                     _message = "voice.err.notAlike";
                     return;
@@ -341,8 +350,9 @@ public sealed class VoiceTrigger : IDisposable
                 }
                 LogPhrase(built);
                 _samples.Clear();
+                _looseRetries = 0;
                 _mode = "idle";
-                _message = "voice.enrolled";
+                _message = verdict == EnrollVerdict.KeepLoose ? "voice.enrolledLoose" : "voice.enrolled";
                 _generation++;
             }
             return;

@@ -29,12 +29,20 @@ public sealed class AudioRowView : INotifyPropertyChanged
     internal AudioSource Row => _row;
     public string Id => _row.Id;
 
-    public string Name => SoundNames.Name(TrackPlanner.Role(_row.Kind), TrackPlanner.Name(_row));
+    /// <summary>Its name; an added device's reads left to right in an Arabic window ("(Speakers (RODECaster Duo Chat" was shown).</summary>
+    public string Name => _row.Kind is AudioSourceKind.Input or AudioSourceKind.Output
+        ? App.Text.Ltr(TrackPlanner.Name(_row))
+        : SoundNames.Name(TrackPlanner.Role(_row.Kind), TrackPlanner.Name(_row));
 
     /// <summary>The icon of its track (an input device: a microphone's).</summary>
-    public string Glyph => SoundNames.Glyph(_row.Kind == AudioSourceKind.Input ? TrackRole.Microphone : TrackPlanner.Role(_row.Kind));
+    public string Glyph => SoundNames.Glyph(_row.Kind switch
+    {
+        AudioSourceKind.Input => TrackRole.Microphone,
+        AudioSourceKind.Output => TrackRole.Other,
+        _ => TrackPlanner.Role(_row.Kind),
+    });
 
-    public bool Removable => _row.Kind is AudioSourceKind.App or AudioSourceKind.Input;
+    public bool Removable => _row.Kind == AudioSourceKind.App || _row.Kind.IsDevice() && _row.Kind != AudioSourceKind.Microphone;
 
     /// <summary>The microphone row also picks its device.</summary>
     public bool IsMicrophone => _row.Kind == AudioSourceKind.Microphone;

@@ -69,12 +69,16 @@ public partial class AudioPage : UserControl
 {
     public AudioPage() => InitializeComponent();
 
-    /// <summary>"+ Add source": apps playing sound now, then input devices (each list only when it has any).</summary>
     void OnAddSource(object sender, System.Windows.RoutedEventArgs e)
     {
-        if (DataContext is not SettingsViewModel vm)
-            return;
-        var menu = new ContextMenu { PlacementTarget = (Button)sender, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        if (DataContext is SettingsViewModel vm)
+            AddSourceMenu(vm, (Button)sender).IsOpen = true;
+    }
+
+    /// <summary>"+ Add source": the apps open now, input devices, then playback devices (each list only when it has any).</summary>
+    internal static ContextMenu AddSourceMenu(SettingsViewModel vm, System.Windows.FrameworkElement under)
+    {
+        var menu = new ContextMenu { PlacementTarget = under, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
         void Group(string title, IReadOnlyList<Option> options, System.Windows.Input.ICommand command)
         {
             if (options.Count == 0)
@@ -87,9 +91,10 @@ public partial class AudioPage : UserControl
         }
         Group("audio.addApps", vm.AddAudioApps, vm.AddAudioAppCommand);
         Group("audio.addDevices", vm.AddAudioDevices, vm.AddAudioDeviceCommand);
+        Group("audio.addOutputs", vm.AddAudioOutputs, vm.AddAudioOutputCommand);
         if (menu.Items.Count == 0)
             menu.Items.Add(new MenuItem { Header = App.Text.Get("audio.addNone"), IsEnabled = false });
-        menu.IsOpen = true;
+        return menu;
     }
 }
 

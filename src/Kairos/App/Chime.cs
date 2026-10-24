@@ -9,17 +9,45 @@ public static class Chime
     const double Seconds = 0.30;
     const double TargetPeak = 0.30;
 
-    static readonly Lazy<byte[]> Cached = new(Build);
-    static SoundPlayer? _player;
+    static readonly Lazy<byte[]> Cached = new(Build), CachedTip = new(BuildTip);
+    static SoundPlayer? _player, _tipPlayer;
 
     public static byte[] Wav() => Cached.Value;
 
+    /// <summary>The tip sound: two soft bell notes a fourth apart, rising, quieter than the save sound.</summary>
+    public static byte[] TipWav() => CachedTip.Value;
+
     /// <summary>Plays asynchronously on the default output device.</summary>
-    public static void Play()
+    public static void Play() => Play(ref _player, Wav);
+
+    /// <summary>Plays the tip sound asynchronously on the default output device.</summary>
+    public static void PlayTip() => Play(ref _tipPlayer, TipWav);
+
+    static void Play(ref SoundPlayer? player, Func<byte[]> wav)
     {
-        _player ??= new SoundPlayer(new MemoryStream(Wav()));
-        _player.Stream!.Position = 0;
-        _player.Play();
+        player ??= new SoundPlayer(new MemoryStream(wav()));
+        player.Stream!.Position = 0;
+        player.Play();
+    }
+
+    static byte[] BuildTip()
+    {
+        var mix = new double[(int)(SampleRate * 0.8)];
+        AddBell(mix, 659.25, 1.0, 0.000); // E5
+        AddBell(mix, 880.00, 0.8, 0.140); // A5
+        return ToWav(mix, SampleRate, 0.20);
+    }
+
+    /// <summary>A sine with a soft 12 ms attack and a slow decay, and a faint octave above it for a bell's shimmer.</summary>
+    static void AddBell(double[] mix, double freq, double amplitude, double start)
+    {
+        int first = (int)(start * SampleRate);
+        for (int i = first; i < mix.Length; i++)
+        {
+            double t = (i - first) / (double)SampleRate;
+            double env = Math.Min(1, t / 0.012) * Math.Exp(-t / 0.22);
+            mix[i] += amplitude * env * (Math.Sin(2 * Math.PI * freq * t) + 0.12 * Math.Sin(4 * Math.PI * freq * t) * Math.Exp(-t / 0.08));
+        }
     }
 
     static byte[] Build()

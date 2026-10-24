@@ -4,6 +4,9 @@ namespace Kairos.Engine.Voice;
 
 public enum EnrollProblem { None, TooShort, TooLong, Different }
 
+/// <summary>What the three samples make: a phrase, the furthest sample said again, or a phrase kept with a warning.</summary>
+public enum EnrollVerdict { Keep, SayAgain, KeepLoose }
+
 /// <summary>The user's recorded phrase: three samples plus slower and faster copies, as embedding sequences.</summary>
 public sealed class VoicePhrase
 {
@@ -17,6 +20,21 @@ public sealed class VoicePhrase
     /// talked). Real voices measured 0.045-0.064.
     /// </summary>
     public const double MaxSpread = 0.066;
+
+    /// <summary>
+    /// Samples further apart than this put Normal at its cap (1.8 × the spread passes 0.100), where ordinary talk can
+    /// come close (a user's 0.065 saved four clips in 13 minutes of play): the furthest is asked again, up to
+    /// <see cref="LooseRetries"/> times, then kept with a warning (a voice that varies is never stuck).
+    /// </summary>
+    public const double TightSpread = 0.055;
+    public const int LooseRetries = 2;
+
+    /// <summary>What three samples <paramref name="spread"/> apart make, after <paramref name="retries"/> loose tries.</summary>
+    public static EnrollVerdict Verdict(double spread, int retries) =>
+        spread > MaxSpread ? EnrollVerdict.SayAgain
+        : spread <= TightSpread ? EnrollVerdict.Keep
+        : retries < LooseRetries ? EnrollVerdict.SayAgain
+        : EnrollVerdict.KeepLoose;
 
     public IReadOnlyList<float[][]> Templates { get; }
 

@@ -82,6 +82,34 @@ public partial class MainWindow : Window
         Action<bool> typing = _vm.SetTypingHotkey;
         HotkeyBox.TypingChanged += typing;
         Closed += (_, _) => HotkeyBox.TypingChanged -= typing;
+        // Closed with unsaved changes: "save them?" first, never dropped without a word.
+        bool answered = false;
+        Closing += (_, e) =>
+        {
+            if (!answered && _vm.AskBeforeClose())
+                e.Cancel = true;
+        };
+        Action<bool> close = save =>
+        {
+            answered = true;
+            Hide(); // gone at once, while the engine is told
+            try
+            {
+                if (save)
+                    _vm.SaveBeforeClose();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Not saved (the file held, the disk full): the window comes back with its changes, never left hidden.
+                Engine.ObsLog.Warn($"settings: not saved as the window closed: {e.Message}");
+                answered = false;
+                Show();
+                return;
+            }
+            Close();
+        };
+        _vm.CloseAnswered += close;
+        Closed += (_, _) => _vm.CloseAnswered -= close;
         _vm.SetTypingHotkey(false); // nothing left over from a window that closed while typing
         Title = Text.Get("app");
         // Drawn once from Fraunces (Kai + italic ro) and Aref Ruqaa (كا + slanted يرو), six times the size shown.

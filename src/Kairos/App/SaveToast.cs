@@ -11,20 +11,37 @@ namespace Kairos.App;
 /// The "clip saved" card in the top-right corner. A click-through layered window that never takes focus;
 /// it fades in, holds, and fades out. Not shown over exclusive-fullscreen games or presentations.
 /// </summary>
-/// <summary>The toast's mark: saved (a green check), something that did not work (an amber "!"), an update (a rose arrow).</summary>
-public enum ToastIcon { Saved, Warning, Update }
+/// <summary>
+/// The toast's mark: saved (a green check), something that did not work (an amber "!"), an update (a rose arrow), a tip
+/// (a rose screen: something the user may change, nothing wrong).
+/// </summary>
+public enum ToastIcon { Saved, Warning, Update, Tip }
+
+/// <summary>
+/// How a card comes and goes (seconds, and how far it slides in at 100 %): <see cref="Usual"/> for what Kairos just did,
+/// <see cref="Calm"/> for a tip shown over a game, which comes in slower and from further so it never startles, and
+/// stays long enough to read two lines.
+/// </summary>
+public sealed record ToastTiming(double FadeIn, double Hold, double FadeOut, int SlidePx)
+{
+    public static readonly ToastTiming Usual = new(SaveToast.FadeIn, SaveToast.Hold, SaveToast.FadeOut, 14);
+    public static readonly ToastTiming Calm = new(0.45, 7, 0.6, 28);
+
+    public double Total => FadeIn + Hold + FadeOut;
+}
 
 public sealed class SaveToast : NativeWindow, IDisposable
 {
     public const double FadeIn = 0.18, Hold = 2.2, FadeOut = 0.35;
     public const double Total = FadeIn + Hold + FadeOut;
-    const int BaseWidth = 300, BaseHeight = 64, BaseMargin = 16, SlidePx = 14;
+    const int BaseWidth = 300, BaseHeight = 64, BaseMargin = 16;
 
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 15 };
     Bitmap? _image;
     Point _pos;
     float _scale = 1;
     DateTime _shownAt;
+    ToastTiming _timing = ToastTiming.Usual;
 
     /// <summary>Self-test hook: draw here (off-screen) instead of the top-right corner.</summary>
     public Point? TestPosition { get; set; }
@@ -51,26 +68,42 @@ public sealed class SaveToast : NativeWindow, IDisposable
         new(workArea.Right - size.Width - margin, workArea.Top + margin);
 
     /// <summary>Opacity 0..1 at <paramref name="t"/> seconds after showing.</summary>
-    public static double Opacity(double t)
+    public static double Opacity(double t) => Opacity(t, ToastTiming.Usual);
+
+    /// <summary>Opacity 0..1 at <paramref name="t"/> seconds after showing, eased in and out as <paramref name="timing"/> says.</summary>
+    public static double Opacity(double t, ToastTiming timing)
     {
-        if (t <= 0 || t >= Total)
+        if (t <= 0 || t >= timing.Total)
             return 0;
-        if (t < FadeIn)
-            return 1 - Math.Pow(1 - t / FadeIn, 3);
-        if (t < FadeIn + Hold)
+        if (t < timing.FadeIn)
+            return 1 - Math.Pow(1 - t / timing.FadeIn, 3);
+        if (t < timing.FadeIn + timing.Hold)
             return 1;
-        double k = (t - FadeIn - Hold) / FadeOut;
+        double k = (t - timing.FadeIn - timing.Hold) / timing.FadeOut;
         return 1 - k * k * k;
     }
 
+    /// <summary>Windows says a game holds the screen in full screen (QUNS_RUNNING_D3D_FULL_SCREEN).</summary>
+    public static bool FullScreenGame => NotificationState() == 3;
+
+    /// <summary>An exclusive full-screen game or presentation mode: Windows asks apps to show no card now.</summary>
+    public static bool FullScreenBusy => NotificationState() is 3 or 4;
+
+    static int NotificationState() => SHQueryUserNotificationState(out int state) == 0 ? state : 0;
+
     /// <summary>Shows (or restarts) the card on the monitor of the foreground window.</summary>
-    /// <param name="icon">The green check (saved), an amber "!" (something did not work) or a rose arrow (an update).</param>
+    /// <param name="icon">The green check (saved), an amber "!" (something did not work), a rose arrow (an update) or a rose screen (a tip).</param>
+    /// <param name="timing"><see cref="ToastTiming.Usual"/> when null.</param>
+    /// <param name="overGame">
+    /// Shown over a full-screen game too (a tip the player must see before a clip is lost): the card never takes focus,
+    /// and Windows composes it over the game. Never over presentation mode.
+    /// </param>
     /// <returns>False when nothing showed (an exclusive-fullscreen game or presentation mode).</returns>
-    public bool Show(string title, string subtitle, bool rtl, ToastIcon icon = ToastIcon.Saved)
+    public bool Show(string title, string subtitle, bool rtl, ToastIcon icon = ToastIcon.Saved, ToastTiming? timing = null, bool overGame = false)
     {
         // What the user was told, in the log (someone saying "nothing happened" may have been told why).
         string said = subtitle.Length > 0 ? $"{title} | {subtitle}" : title;
-        if (SHQueryUserNotificationState(out int state) == 0 && state is 3 or 4)
+        if (NotificationState() is var state && (state == 4 || (state == 3 && !overGame)))
         {
             Engine.ObsLog.Info($"toast (not shown: a full-screen game or presentation): {said}");
             return false; // exclusive-fullscreen game or presentation mode
@@ -87,6 +120,7 @@ public sealed class SaveToast : NativeWindow, IDisposable
         var work = Rectangle.FromLTRB(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom);
         _pos = TestPosition ?? Place(work, _image.Size, (int)(BaseMargin * _scale));
         _shownAt = DateTime.UtcNow;
+        _timing = timing ?? ToastTiming.Usual;
         Frames = 0;
         Animate();
         ShowWindow(Handle, 4 /* SW_SHOWNOACTIVATE */);
@@ -98,14 +132,14 @@ public sealed class SaveToast : NativeWindow, IDisposable
     void Animate()
     {
         double t = (DateTime.UtcNow - _shownAt).TotalSeconds;
-        double opacity = Opacity(t);
-        if (t >= Total || _image == null)
+        double opacity = Opacity(t, _timing);
+        if (t >= _timing.Total || _image == null)
         {
             _timer.Stop();
             ShowWindow(Handle, 0 /* SW_HIDE */);
             return;
         }
-        int slide = t < FadeIn ? (int)((1 - opacity) * SlidePx * _scale) : 0;
+        int slide = t < _timing.FadeIn ? (int)((1 - opacity) * _timing.SlidePx * _scale) : 0;
         Present(_image, new Point(_pos.X + slide, _pos.Y), (byte)Math.Round(opacity * 255));
     }
 
@@ -174,13 +208,22 @@ public sealed class SaveToast : NativeWindow, IDisposable
         using (var disc = new SolidBrush(TrayMenu.Rgb(icon switch
                {
                    ToastIcon.Warning => Settings.ThemeColors.Warning,
-                   ToastIcon.Update => Settings.ThemeColors.Accent,
+                   ToastIcon.Update or ToastIcon.Tip => Settings.ThemeColors.Accent,
                    _ => Settings.ThemeColors.Saved,
                })))
             g.FillEllipse(disc, iconX, iconY, size, size);
-        using (var mark = new Pen(TrayMenu.Rgb(Settings.ThemeColors.Background), 2.6f * scale) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+        using (var mark = new Pen(TrayMenu.Rgb(icon == ToastIcon.Tip ? Settings.ThemeColors.OnAccent : Settings.ThemeColors.Background),
+                   (icon == ToastIcon.Tip ? 2.2f : 2.6f) * scale) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
         {
-            if (icon == ToastIcon.Update)
+            if (icon == ToastIcon.Tip)
+            {
+                // A screen on its stand: the game's display mode
+                using (var screen = GdiShapes.Rounded(new RectangleF(iconX + size * 0.27f, iconY + size * 0.29f, size * 0.46f, size * 0.32f), 2.5f * scale))
+                    g.DrawPath(mark, screen);
+                g.DrawLine(mark, iconX + size * 0.5f, iconY + size * 0.62f, iconX + size * 0.5f, iconY + size * 0.71f);
+                g.DrawLine(mark, iconX + size * 0.39f, iconY + size * 0.72f, iconX + size * 0.61f, iconY + size * 0.72f);
+            }
+            else if (icon == ToastIcon.Update)
             {
                 // An arrow down: a stroke and its head
                 g.DrawLine(mark, iconX + size * 0.5f, iconY + size * 0.27f, iconX + size * 0.5f, iconY + size * 0.68f);

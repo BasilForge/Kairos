@@ -16,6 +16,8 @@ public static class WindowTarget
 
     public static string? Title(string? window) => Parts(window) is { Length: 3 } p ? Decode(p[0]) : null;
 
+    public static string? ClassName(string? window) => Parts(window) is { Length: 3 } p ? Decode(p[1]) : null;
+
     public static string? ExeName(string? window) =>
         Parts(window) is { Length: 3 } p && p[2].Length > 0 ? Path.GetFileNameWithoutExtension(Decode(p[2])) : null;
 

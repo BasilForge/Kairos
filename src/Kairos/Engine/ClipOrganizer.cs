@@ -22,6 +22,14 @@ public static class ClipOrganizer
 
     static readonly HashSet<char> InvalidChars = [.. Path.GetInvalidFileNameChars()];
 
+    /// <summary>
+    /// The folder a saved clip goes to: the app in front, unless that is the desktop or Kairos's own window (a save from a
+    /// macro, the tray or Kairos's Save button) while a game was in front within the clip's length: that game's (a user's
+    /// ARC Raiders clips all went to "Desktop"). Kairos's window and the game's name are looked up only when needed.
+    /// </summary>
+    public static string SaveFolderName(string front, Func<bool> frontIsKairos, Func<string>? lastGame, TimeSpan sinceLastGame, double clipSeconds) =>
+        lastGame != null && sinceLastGame.TotalSeconds <= clipSeconds && (front == Desktop || frontIsKairos()) ? lastGame() : front;
+
     /// <summary>Folder-safe name for the app in the foreground when a clip was saved.</summary>
     public static string AppFolderName(string? processName, string? productName, string? windowTitle)
     {

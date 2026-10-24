@@ -27,6 +27,7 @@ public static partial class SelfTest
         {
             output.WriteLine($"log: {ObsLog.CurrentPath}");
             output.WriteLine($"failed modules: {string.Join(", ", ObsHost.FailedModules)}");
+            output.WriteLine(GpuMemory.Read() is { } memory ? App.LogLines.GpuMemory(memory.Used, memory.Budget, memory.InSystem) : "gpu memory: unknown");
             output.WriteLine("encoders: " + string.Join(", ", ObsHost.EncoderIds()));
             foreach (var m in ObsHost.Monitors())
                 output.WriteLine($"monitor: {m.Width}x{m.Height} primary={m.Primary} {m.Name}");
@@ -183,6 +184,8 @@ public static partial class SelfTest
     public static int Scene(string[] args, TextWriter output)
     {
         string kind = args.Length > 1 ? args[1] : "window";
+        string? window = args.Length > 2 && !args[2].StartsWith("--") ? args[2] : null; // the *-game scenes: the test game
+        int compare = Array.IndexOf(args, "--compare-copy") is var at and >= 0 && at + 1 < args.Length ? int.Parse(args[at + 1]) : 0;
         var s = new AppSettings();
         s.Output.Folder = Path.Combine(Path.GetTempPath(), "kairos-selftest-scene");
         switch (kind)
@@ -197,6 +200,13 @@ public static partial class SelfTest
                 break;
             case "screen-game":
                 s.Capture.Mode = CaptureMode.Screen;
+                break;
+            case "games-game":
+                s.Capture.Mode = CaptureMode.Game; // falls back to the screen with no game
+                break;
+            case "apps-game":
+                s.Capture.Mode = CaptureMode.Window; // the test game is the chosen app
+                s.Capture.Apps = [window ?? ""];
                 break;
             case "apps":
                 s.Capture.Mode = CaptureMode.Window;
@@ -221,7 +231,11 @@ public static partial class SelfTest
             if (kind == "game-guard")
                 return GuardScene(pipeline, s.Output.Folder, output);
             if (kind == "screen-game")
-                return ScreenGameScene(pipeline, s.Output.Folder, output, args.Length > 2 ? args[2] : null);
+                return ScreenGameScene(pipeline, s.Output.Folder, output, window, compare);
+            if (kind == "games-game")
+                return GamesGameScene(pipeline, s.Output.Folder, output, window);
+            if (kind == "apps-game")
+                return AppsGameScene(pipeline, s.Output.Folder, output, window, compare);
             if (kind == "apps")
                 return AppsScene(pipeline, s.Capture.Apps, s.Output.Folder, output);
             string expected = kind == "window" ? "status.captureGone" : "status.captureNoApp";
@@ -263,28 +277,46 @@ public static partial class SelfTest
 
     /// <summary>
     /// Screen with a game in front. With no <paramref name="window"/>, one that gives no picture (a window that does not
-    /// exist): the screen keeps showing, the game layer stays hidden and is hooked again after 8 s; alt-tab hides it.
-    /// With a real game window ("title:class:exe", e.g. ffplay parked off-screen by tools/test-game-layer.ps1): the layer
-    /// hooks it and shows its picture.
+    /// exist): the screen keeps showing (and is copied), the game layer stays hidden and is hooked again after 8 s;
+    /// alt-tab hides it. With a real game window ("title:class:exe", e.g. ffplay parked off-screen by
+    /// tools/test-game-layer.ps1): the layer hooks it and shows its picture, the screen under it is not copied, and it is
+    /// again the moment the game closes (<see cref="HookedGame"/>).
     /// </summary>
-    static int ScreenGameScene(CapturePipeline pipeline, string folder, TextWriter output, string? window)
+    static int ScreenGameScene(CapturePipeline pipeline, string folder, TextWriter output, string? window, int compare)
     {
-        var game = new App.FullscreenApp(window ?? "Kairos test game:KairosTestGame:kairos-test-game.exe", 1,
+        var game = new App.FullscreenApp(window ?? "Kairos test game:KairosTestGame:kairos-test-game.exe", GamePid(window),
             App.WindowTarget.ExeName(window ?? "") ?? "kairos-test-game", pipeline.CaptureDevice ?? "");
-        bool shown = false;
-        for (int i = 0; i < (window == null ? 10 : 20) && !shown; i++)
+        // The engine's once-a-second look with the game in front, until the layer shows a real game's picture.
+        bool ShowGame(int looks)
         {
-            pipeline.WatchScreenGame(game);
-            Thread.Sleep(1000);
-            shown = window != null && pipeline.GameLayerShown;
+            for (int i = 0; i < looks; i++)
+            {
+                pipeline.WatchScreenGame(game);
+                Thread.Sleep(1000);
+                if (window != null && pipeline.GameLayerShown)
+                    return true;
+            }
+            return false;
         }
+        Thread.Sleep(1000);
+        double? screenLit = ScreenLit(pipeline);
+        bool copiedAlone = pipeline.ScreenCopied;
+        bool shown = ShowGame(window == null ? 10 : 20);
+        if (shown && compare > 0)
+            CompareCopy(pipeline, () => pipeline.WatchScreenGame(game), () => pipeline.ScreenCopied, compare, output);
         int colours = CanvasColours(pipeline, folder);
-        output.WriteLine($"scene screen-game: {colours} colours, the game layer {(pipeline.GameLayerShown ? "shown" : "hidden")}");
-        pipeline.WatchScreenGame(null);
+        bool copiedNoPicture = pipeline.ScreenCopied;
+        output.WriteLine($"scene screen-game: {colours} colours, the game layer {(pipeline.GameLayerShown ? "shown" : "hidden")}, " +
+                         $"the screen copied before the game {copiedAlone}");
         string? why = colours <= 1 ? "the canvas is black"
+            : !copiedAlone ? "no game: the screen is not copied"
             : window == null && pipeline.GameLayerShown ? "a layer without a picture shows"
+            : window == null && !copiedNoPicture ? "a game that gives no picture: the screen is not copied"
             : window != null && !shown ? "the game layer never hooked the game"
+            : window != null ? HookedGame(pipeline, folder, output, window, screenLit, altTab: (() => pipeline.WatchScreenGame(null), () => ShowGame(20)))
             : null;
+        pipeline.WatchScreenGame(null);
+        why ??= pipeline.ScreenCopied ? null : "no game in front: the screen is not copied";
         output.WriteLine(why == null ? "scene ok" : $"scene: FAIL {why}");
         return why == null ? 0 : 1;
     }
@@ -506,6 +538,7 @@ public static partial class SelfTest
                 case "--res": s.Video.Resolution = Enum.Parse<OutputResolution>(next, true); i++; break;
                 case "--fps": s.Video.Fps = int.Parse(next); i++; break;
                 case "--quality": s.Video.Quality = Enum.Parse<QualityPreset>(next, true); i++; break;
+                case "--preset": s.Video.Preset = next; i++; break;
                 case "--auto": s.Video.Auto = true; break;
                 case "--relief": relief = int.Parse(next); i++; break;
                 case "--window": s.Capture.Apps = [next]; i++; break;
@@ -526,6 +559,11 @@ public static partial class SelfTest
                 case "--voice": voiceTest = true; s.Voice.Enabled = true; break;
                 case "--no-fallback": s.Capture.GameFallbackToScreen = false; break;
                 case "--audio": separate = next == "separate"; s.Audio.Layout = separate ? AudioLayout.Separate : AudioLayout.Together; i++; break;
+                case "--output-row": // the default playback device as a row of its own (the tone plays there)
+                    AddOutputRow(s, Audio.CoreAudio.DefaultRenderId() ?? "");
+                    break;
+                case "--output-device": AddOutputRow(s, next); i++; break; // any playback device as a row of its own
+                case "--tone-device": ToneDevice = next; i++; break; // the separate-sources tone plays there
                 case "--volume": liveVolume = double.Parse(next, System.Globalization.CultureInfo.InvariantCulture); i++; break;
                 // --camera corner|round|vertical: the camera (OBS's virtual camera here: no light, no real device) over the picture.
                 case "--camera":

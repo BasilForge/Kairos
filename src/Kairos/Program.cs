@@ -40,7 +40,7 @@ public static class Program
                 return Ui.SettingsApp.SelfTestReload(Console.Out);
             case "--render-toast":
                 Text.Language = args.Length > 2 ? args[2] : "ar";
-                // --render-toast <png> [ar|en] [keys-taken|key-taken|not-saved|disk-full|starting|low-disk|record-failed|replay-failed|update|update-important|updated]
+                // --render-toast <png> [ar|en] [keys-taken|key-taken|not-saved|disk-full|starting|low-disk|record-failed|replay-failed|update|update-important|updated|borderless]
                 string state = args.Length > 3 ? args[3] : "";
                 string next = AppInfo.Display("1.2.0");
                 var taken = state is "keys-taken" or "key-taken"
@@ -54,8 +54,10 @@ public static class Program
                     : state == "update" ? (Title: Text.Format("toast.update", next), Detail: Text.Get("toast.updateDetail"))
                     : state == "update-important" ? (Title: Text.Format("toast.updateImportant", next), Detail: Text.Get("toast.updateImportantDetail"))
                     : state == "updated" ? (Title: Text.Format("toast.updated", next), Detail: Text.Get("toast.updatedDetail"))
+                    : state == "borderless" ? EngineApp.BorderlessToast("Wuthering Waves")
                     : default;
-                var icon = state is "update" or "update-important" ? ToastIcon.Update : state == "updated" ? ToastIcon.Saved : ToastIcon.Warning;
+                var icon = state is "update" or "update-important" ? ToastIcon.Update : state == "updated" ? ToastIcon.Saved
+                    : state == "borderless" ? ToastIcon.Tip : ToastIcon.Warning;
                 using (var card = taken.Title != null
                            ? SaveToast.Paint(taken.Title, taken.Detail, Text.IsRightToLeft, 1.5f, icon)
                            : SaveToast.Paint(Text.Get("toast.saved"), "ELDEN RING™ • 5:00", Text.IsRightToLeft, 1.5f))

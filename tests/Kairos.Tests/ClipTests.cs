@@ -7,6 +7,41 @@ public static class ClipTests
 {
     static string TempDir() => Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "kairos-tests", Guid.NewGuid().ToString("N"))).FullName;
 
+    /// <summary>A user's Genshin Impact clips all went to "Desktop": its anti-cheat lets Kairos read neither its file nor its product.</summary>
+    [Test]
+    public static void A_game_kairos_cannot_open_is_named_after_its_window()
+    {
+        Assert.Equal("Genshin Impact", ForegroundApp.Unopened("GenshinImpact", "Genshin Impact"), "its window's title");
+        Assert.Equal("Honkai Star Rail", ForegroundApp.Unopened("StarRail", "Honkai: Star Rail"), "':' is no file name's");
+        Assert.Equal("Client-Win64-Shipping", ForegroundApp.Unopened("Client-Win64-Shipping", " "), "no title: its exe");
+        Assert.Equal("Desktop", ForegroundApp.Unopened(null, null), "gone: as before");
+        Assert.Equal("Desktop", ForegroundApp.Unopened("explorer", "Program Manager"), "the shell stays the desktop");
+    }
+
+    /// <summary>
+    /// A user saved from a macro (Kairos.exe --send save) with the desktop in front: his ARC Raiders clips all went to
+    /// "Desktop". A save from the desktop or Kairos's own window goes to the game in front within the clip's length.
+    /// </summary>
+    [Test]
+    public static void A_save_from_the_desktop_or_kairos_goes_to_the_game_played_just_before()
+    {
+        static string Arc() => "ARC Raiders";
+        Assert.Equal("ARC Raiders", ClipOrganizer.SaveFolderName("Desktop", () => false, Arc, TimeSpan.FromSeconds(4), 180), "a macro's save: the game a moment ago");
+        Assert.Equal("ARC Raiders", ClipOrganizer.SaveFolderName("Kairos", () => true, Arc, TimeSpan.FromSeconds(30), 180), "Kairos's own Save button");
+        Assert.Equal("Desktop", ClipOrganizer.SaveFolderName("Desktop", () => false, Arc, TimeSpan.FromMinutes(10), 180), "the game left before the clip's minutes");
+        Assert.Equal("Brave Browser", ClipOrganizer.SaveFolderName("Brave Browser", () => false, Arc, TimeSpan.FromSeconds(4), 180), "another app in front: its own");
+        Assert.Equal("Desktop", ClipOrganizer.SaveFolderName("Desktop", () => false, null, TimeSpan.Zero, 180), "no game seen");
+    }
+
+    /// <summary>A game's pid kept after it closed can be another process's by then: the game's own name, not that one's.</summary>
+    [Test]
+    public static void A_game_seen_earlier_is_named_after_its_exe_when_its_pid_is_another_process_now()
+    {
+        uint self = (uint)Environment.ProcessId;
+        Assert.Equal("ARC Raiders", ForegroundApp.ForProcess(self, "ARC Raiders"), "the pid is this test's now: the game's name");
+        Assert.True(ForegroundApp.ForProcess(self, Path.GetFileNameWithoutExtension(Environment.ProcessPath!)) != "ARC Raiders", "its own exe: read from it");
+    }
+
     [Test]
     public static void Product_name_is_preferred_over_process_name()
     {

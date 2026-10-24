@@ -279,6 +279,7 @@ public static unsafe class DiskReplayOutput
     {
         var owner = state.RingOwner ?? throw new IOException("its replay is gone");
         var slice = owner.Ring!.Take(state.Seconds) ?? throw new IOException("nothing to save yet");
+        ObsLog.Info(App.LogLines.RingClip(slice.Pictures, slice.PictureShare, slice.PictureBehind));
         string? path = Interlocked.Exchange(ref state.NextPath, null);
         if (path == null)
         {

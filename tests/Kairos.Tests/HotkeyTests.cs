@@ -85,6 +85,28 @@ public static class HotkeyTests
         Assert.True(!kairos.Status.ContainsKey("save"), "the old key stays let go");
     }
 
+    /// <summary>
+    /// A user's mouse button sent F17: Windows fires a key only with exactly its modifiers, so it never saved while the
+    /// game's run (Shift) or crouch (Ctrl) key was held. F13-F24 now fire with them held; other keys keep only theirs.
+    /// </summary>
+    [Test]
+    public static void Side_button_keys_fire_with_shift_or_ctrl_held()
+    {
+        static Hotkey Key(string s) => HotkeyParser.TryParse(s, out var h) ? h : throw new ArgumentException(s);
+        static string Held(string s) => string.Join("|", HotkeyParser.WithHeldKeys(Key(s)).Select(HotkeyParser.Format));
+        Assert.Equal("Shift+F17|Ctrl+F17|Ctrl+Shift+F17", Held("F17"), "F17 with Shift, Ctrl or both");
+        Assert.Equal("Ctrl+Shift+F20", Held("Shift+F20"), "it has Shift: Ctrl added");
+        Assert.Equal("", Held("Alt+F10"), "never other keys (Shift+F10 opens menus, Ctrl+F4 closes tabs)");
+        Assert.Equal("", Held("F10"), "nor F1-F12");
+        using var kairos = new HotkeyManager();
+        Assert.True(kairos.Register("save", Key("F24")), "F24 taken");
+        Assert.True(!HotkeyManager.IsFree(Key("Shift+F24")) && !HotkeyManager.IsFree(Key("Ctrl+F24")) && !HotkeyManager.IsFree(Key("Ctrl+Shift+F24")),
+            "and with Shift, Ctrl or both held");
+        Assert.True(kairos.Register("toggle", Key("Shift+F24")) && kairos.Status["toggle"], "a later Kairos key on Shift+F24: the variant gives way");
+        kairos.UnregisterAll();
+        Assert.True(HotkeyManager.IsFree(Key("F24")) && HotkeyManager.IsFree(Key("Shift+F24")) && HotkeyManager.IsFree(Key("Ctrl+F24")), "all let go");
+    }
+
     [Test]
     public static void A_key_is_free_only_when_no_app_holds_it()
     {

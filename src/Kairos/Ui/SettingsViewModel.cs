@@ -59,6 +59,9 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
         StartEngineCommand = new RelayCommand(_ => StartEngine());
         ApplyCommand = new RelayCommand(_ => Apply(), _ => IsDirty);
         RevertCommand = new RelayCommand(_ => Load(), _ => IsDirty);
+        SaveAndCloseCommand = new RelayCommand(_ => AnswerClose(save: true));
+        CloseWithoutSavingCommand = new RelayCommand(_ => AnswerClose(save: false));
+        KeepOpenCommand = new RelayCommand(_ => AskingClose = false);
         RefreshCapsCommand = new RelayCommand(_ => LoadCapsAsync());
         BrowseFolderCommand = new RelayCommand(_ => BrowseFolder());
         VoiceRecordCommand = new RelayCommand(_ => VoiceCommand("voice-enroll"));
@@ -794,12 +797,12 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
     public int CustomMbps { get => _s.Video.CustomMbps; set => Set(() => _s.Video.CustomMbps = value); }
     public int PresetLevel
     {
-        get => int.TryParse(_s.Video.Preset.TrimStart('p', 'P'), out int n) ? Math.Clamp(n, 1, 7) : 5;
-        set => Set(() => _s.Video.Preset = $"p{Math.Clamp(value, 1, 7)}");
+        get => int.Parse(VideoSettings.Capped(_s.Video.Preset).AsSpan(1));
+        set => Set(() => _s.Video.Preset = $"p{Math.Clamp(value, 1, VideoSettings.MaxPreset)}");
     }
 
-    /// <summary>The encoder speed in words: faster (1–2), balanced (3–5), best quality (6–7).</summary>
-    public string PresetWord => Text.Get(PresetLevel switch { <= 2 => "quality.speedFast", <= 5 => "quality.speedBalanced", _ => "quality.speedBest" });
+    /// <summary>The encoder speed in words: faster (1–2), balanced (3–4), best quality (5).</summary>
+    public string PresetWord => Text.Get(PresetLevel switch { <= 2 => "quality.speedFast", < VideoSettings.MaxPreset => "quality.speedBalanced", _ => "quality.speedBest" });
 
     (int W, int H) BaseSize
     {
@@ -1371,9 +1374,7 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
     void Apply()
     {
         bool languageChanged = _s.General.Language != SettingsStore.Deserialize(_savedJson).General.Language;
-        SettingsStore.Save(SettingsStore.DefaultPath, _s);
-        _savedJson = SettingsStore.Serialize(_s);
-        IsDirty = false;
+        Persist();
         _message = "…";
         RaiseAll();
         Task.Run(() =>
@@ -1394,6 +1395,52 @@ public sealed partial class SettingsViewModel : INotifyPropertyChanged
             ApplyLanguage(_s.General.Language);
             LanguageChanged?.Invoke();
         }
+    }
+
+    bool _askingClose;
+
+    /// <summary>The window was closed with unsaved changes: "save them?" shows over it (they were dropped without a word).</summary>
+    public bool AskingClose
+    {
+        get => _askingClose;
+        private set
+        {
+            _askingClose = value;
+            Raise(nameof(AskingClose));
+        }
+    }
+
+    /// <summary>The answer to that question, true to save first: the window closes next.</summary>
+    public event Action<bool>? CloseAnswered;
+    public ICommand SaveAndCloseCommand { get; }
+    public ICommand CloseWithoutSavingCommand { get; }
+    public ICommand KeepOpenCommand { get; }
+
+    /// <summary>The window is closing: whether it stays open and asks first (there are unsaved changes).</summary>
+    public bool AskBeforeClose() => AskingClose = IsDirty;
+
+    void AnswerClose(bool save)
+    {
+        AskingClose = false;
+        CloseAnswered?.Invoke(save);
+    }
+
+    /// <summary>
+    /// Saves for a window that is closing, the engine told and waited for: a send left running would end with the
+    /// window's process, and the engine would keep the old settings until it starts again.
+    /// </summary>
+    public void SaveBeforeClose()
+    {
+        Persist();
+        Send("apply", 4000);
+    }
+
+    /// <summary>These settings written, and nothing unsaved any more (Save, and Save as the window closes).</summary>
+    void Persist()
+    {
+        SettingsStore.Save(SettingsPath, _s);
+        _savedJson = SettingsStore.Serialize(_s);
+        IsDirty = false;
     }
 
     /// <summary>

@@ -19,7 +19,7 @@
     <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))=/_/</PathMap>
     <AssemblyName>Kairos</AssemblyName>
     <RootNamespace>Kairos</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Product>Kairos</Product>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <ApplicationIcon>app.ico</ApplicationIcon>

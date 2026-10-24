@@ -19,7 +19,9 @@ public static class GameFollow
 /// window thread and handed to <paramref name="apply"/> on it. Only made for that layout: nothing runs otherwise.
 /// </summary>
 /// <param name="captured">Apps: the chosen app's window recorded now.</param>
-public sealed class AudioWatcher(Func<AppSettings> settings, Action<IReadOnlyDictionary<string, uint[]>> apply, Func<string?> captured)
+/// <param name="apply">Each row's processes, and the named rows heard on a device row instead (row id, device id).</param>
+public sealed class AudioWatcher(Func<AppSettings> settings, Action<IReadOnlyDictionary<string, uint[]>, IReadOnlyDictionary<string, string>> apply,
+    Func<string?> captured)
     : IDisposable
 {
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 2000 };
@@ -51,9 +53,11 @@ public sealed class AudioWatcher(Func<AppSettings> settings, Action<IReadOnlyDic
             var processes = ProcessList.All();
             var running = processes.Select(p => p.Pid).ToHashSet();
             uint game = Chosen(s, processes, window) ?? GameFollow.Next(following, fullscreen, front, running, self);
-            var assignment = AudioPartition.Assign(processes, CoreAudio.ProcessesWithSound(),
-                new PartitionInput(game, s.Audio.Sources, ProcessList.SelfName), ProcessList.StartedAt);
-            return (game, assignment);
+            var (withSound, onOutputs) = CoreAudio.Sound(s.Audio.Sources);
+            var heardOn = new Dictionary<string, string>();
+            var assignment = AudioPartition.Assign(processes, withSound, new PartitionInput(game, s.Audio.Sources, ProcessList.SelfName, onOutputs),
+                ProcessList.StartedAt, heardOn);
+            return (game, assignment, heardOn);
         }).ContinueWith(t =>
         {
             ui?.Post(_ =>
@@ -62,7 +66,7 @@ public sealed class AudioWatcher(Func<AppSettings> settings, Action<IReadOnlyDic
                 if (t.IsCompletedSuccessfully)
                 {
                     _game = t.Result.game;
-                    apply(t.Result.assignment);
+                    apply(t.Result.assignment, t.Result.heardOn);
                 }
                 else if (t.Exception is { } e)
                     Engine.ObsLog.Warn($"audio watcher: {e.GetBaseException().Message}");

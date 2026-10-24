@@ -193,4 +193,23 @@ public static class SettingsTests
         Assert.True(updated.Video.Auto, "a real 1.0.1 file on its own defaults: Automatic");
         Assert.Equal(AppSettings.CurrentVersion, updated.Version, "and marked done");
     }
+
+    /// <summary>
+    /// The engine's own change (a game told about Borderless, a mixer set up) goes onto the file as saved: its copy can be
+    /// older (a Save whose "apply" never reached it), and writing it whole undid the user's Save (a folder "went back").
+    /// </summary>
+    [Test]
+    public static void An_engine_change_keeps_what_the_window_saved_since()
+    {
+        string path = TempFile();
+        var engine = new AppSettings();
+        engine.Normalize();
+        var window = SettingsStore.Copy(engine);
+        window.Output.Folder = @"D:\clip 2"; // saved by the window, never applied to the engine
+        SettingsStore.Save(path, window);
+        SettingsStore.Update(path, s => s.Capture.BorderlessTips.Add("WutheringWaves"));
+        var now = SettingsStore.Load(path);
+        Assert.Equal(@"D:\clip 2", now.Output.Folder, "the window's Save kept");
+        Assert.True(now.Capture.BorderlessTips.SequenceEqual(["WutheringWaves"]), "the engine's change in");
+    }
 }

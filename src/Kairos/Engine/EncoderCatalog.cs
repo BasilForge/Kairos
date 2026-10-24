@@ -92,8 +92,11 @@ public static class EncoderCatalog
         return ((w, h), Math.Min(fps, 30));
     }
 
-    /// <summary>libobs encoder settings for <paramref name="choice"/>, from the quality numbers in <paramref name="plan"/>.</summary>
-    public static Dictionary<string, object> Settings(EncoderPlan plan, EncoderChoice choice)
+    /// <summary>
+    /// libobs encoder settings for <paramref name="choice"/>, from the quality numbers in <paramref name="plan"/>;
+    /// <paramref name="light"/>: NVIDIA's encoder kept off the shader cores a game fills (<see cref="LagRelief.LightEncoder"/>).
+    /// </summary>
+    public static Dictionary<string, object> Settings(EncoderPlan plan, EncoderChoice choice, bool light = false)
     {
         // plan.Cq is on the 1-63 scale for AV1 and the 1-51 scale for HEVC/H.264 (see EncoderPresets).
         long cq = plan.Cq;
@@ -108,13 +111,16 @@ public static class EncoderCatalog
                 s["target_quality"] = cq;
                 s["max_bitrate"] = (long)plan.MaxBitrateKbps;
                 s["bitrate"] = (long)plan.MaxBitrateKbps;
-                s["preset"] = plan.Preset;
+                s["preset"] = Kairos.Settings.VideoSettings.Capped(plan.Preset); // p6/p7 turn look-ahead on whatever "lookahead" says
                 s["tune"] = "hq";
-                s["multipass"] = "qres";
+                // The light encoder: NVIDIA runs the quarter-size pass and the adaptive quantization on CUDA. At the same CQ
+                // its gameplay VMAF came out as high or higher (H.264 95.8 -> 96.5, HEVC 95.6 -> 96.3, AV1 96.3 -> 96.7),
+                // the clips about 5 % larger.
+                s["multipass"] = light ? "disabled" : "qres";
                 s["profile"] = profile;
                 s["bf"] = choice.NoBFrames ? 0L : (long)plan.BFrames;
                 s["lookahead"] = false;
-                s["adaptive_quantization"] = true;
+                s["adaptive_quantization"] = !light;
                 break;
             case EncoderVendor.Amd:
                 s["rate_control"] = "QVBR";

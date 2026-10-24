@@ -167,7 +167,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource Label}" Text="{l:T quality.encoderPreset}"/>
                         <StackPanel Grid.Column="1">
-                            <Slider Minimum="1" Maximum="7" Value="{Binding PresetLevel}" IsSnapToTickEnabled="True" TickFrequency="1"
+                            <Slider Minimum="1" Maximum="5" Value="{Binding PresetLevel}" IsSnapToTickEnabled="True" TickFrequency="1"
                                     TickPlacement="BottomRight" AutomationProperties.Name="{l:T quality.encoderPreset}"/>
                             <Grid Margin="0,2,0,0">
                                 <TextBlock Style="{StaticResource Caption}" Text="{l:T quality.faster}" HorizontalAlignment="Left" Margin="0"/>

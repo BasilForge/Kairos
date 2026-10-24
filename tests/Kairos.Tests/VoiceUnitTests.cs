@@ -224,6 +224,23 @@ public static class VoiceUnitTests
         Assert.True(VoicePhrase.MaxSpread < 0.074, "a user's loose samples are not");
     }
 
+    /// <summary>
+    /// Samples 0.065 apart were kept (a user, 1.1.0): Normal then sat at the cap and ordinary talk while playing saved four
+    /// clips in 13 minutes. Samples that loose are asked again (the furthest one) up to twice; kept after that, so a voice
+    /// that varies is never stuck, and the user is told the phrase may save on talk. Close samples are kept at once.
+    /// </summary>
+    [Test]
+    public static void Loose_samples_are_asked_again_twice_then_kept_with_a_warning()
+    {
+        Assert.Equal(EnrollVerdict.Keep, VoicePhrase.Verdict(0.045, retries: 0), "close: kept");
+        Assert.Equal(EnrollVerdict.SayAgain, VoicePhrase.Verdict(0.065, retries: 0), "loose: the furthest said again");
+        Assert.Equal(EnrollVerdict.SayAgain, VoicePhrase.Verdict(0.065, retries: 1), "still loose: once more");
+        Assert.Equal(EnrollVerdict.KeepLoose, VoicePhrase.Verdict(0.065, retries: 2), "after two tries: kept, with a warning");
+        Assert.Equal(EnrollVerdict.SayAgain, VoicePhrase.Verdict(0.074, retries: 5), "beyond the most: never kept");
+        Assert.True(VoiceSettings.Threshold(VoiceSensitivity.Normal, VoicePhrase.TightSpread) <= VoiceSettings.MaxThreshold,
+            "a phrase kept without a warning leaves Normal at or under the cap");
+    }
+
     [Test]
     public static void Smart_save_is_off_by_default_with_normal_sensitivity()
     {

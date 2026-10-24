@@ -165,7 +165,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Button Grid.Column="1" Style="{StaticResource Ghost}" Padding="14,7" Click="OnAddSource" AutomationProperties.Name="{l:T audio.add}">
+                    <Button x:Name="AddSourceButton" Grid.Column="1" Style="{StaticResource Ghost}" Padding="14,7" Click="OnAddSource" AutomationProperties.Name="{l:T audio.add}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE710;" FontSize="12" Margin="0,0,8,0"/>
                             <TextBlock Text="{l:T audio.add}" FontSize="13.5" VerticalAlignment="Center"/>

@@ -25,6 +25,16 @@ public static class SceneRules
     /// </summary>
     public static bool RecordsChosenWindow(CaptureSettings c, string? captureNotice) =>
         BuildMode(c) == CaptureMode.Window && captureNotice == null;
+
+    /// <summary>
+    /// Screen and Games: whether the screen under the game capture is captured. Never while the game gives its picture,
+    /// which covers it: copying the screen too (Desktop Duplication) copies every picture the game shows a second time,
+    /// on the graphics card the game already fills (a user's RTX 3060 Ti in ARC Raiders skipped 76-99 % of the frames
+    /// with both running, a frozen picture with sound; OBS records games with a game capture alone). Without the game's
+    /// picture: always in Screen, in Games when it falls back to the screen (or an anti-cheat forbids hooking).
+    /// </summary>
+    public static bool ScreenUnderGame(CaptureMode mode, bool gamePicture, bool gamesFallBack) =>
+        !gamePicture && (mode == CaptureMode.Screen || gamesFallBack);
 }
 
 /// <summary>Window mode with several apps: which one is recorded now.</summary>
@@ -80,11 +90,13 @@ public sealed class WindowPresence
 /// A game capture laid over another capture (the screen, or the chosen app's window) for a game that fills the screen,
 /// where the other capture can be black (a stretched or exclusive fullscreen game). Checked once a second: a game in
 /// front is targeted (hooked) once, its picture shows while it is in front, and with no picture for 8 s it is hooked
-/// again (a hook that took a GL device first never gives a D3D picture).
+/// again (a hook that took a GL device first never gives a D3D picture), each wait twice the last up to five minutes (a
+/// user's Call of Duty dropped the hook every time: 1,900 tries in four hours); a picture starts them over.
 /// </summary>
 public sealed class GameOverlay
 {
-    static readonly TimeSpan Rehook = TimeSpan.FromSeconds(8);
+    static readonly TimeSpan Rehook = TimeSpan.FromSeconds(8), MaxRehook = TimeSpan.FromMinutes(5);
+    TimeSpan _wait = Rehook;
 
     /// <summary>
     /// Apps that fill the screen without being games (OBS's own list for "any fullscreen", with today's browsers and
@@ -96,8 +108,10 @@ public sealed class GameOverlay
         "systemsettings", "applicationframehost", "shellexperiencehost", "searchui", "searchhost", "lockapp", "textinputhost",
         "chrome", "msedge", "firefox", "brave", "opera", "opera_gx", "vivaldi", "arc", "discord", "obs64",
         "vlc", "mpc-hc64", "mpc-be64", "potplayermini64", "wmplayer", "microsoft.media.player", "mpv", "powerpnt",
-        // Video apps (Netflix's app, Films & TV, web apps in a WebView), Windows' own screens and the screen-snipping tool.
+        // Video apps (Netflix's app, Films & TV, web apps in a WebView), Windows' own screens and the screen-snipping tool
+        // (its overlay fills the screen: a user's log had the layer hooking it).
         "wwahost", "msedgewebview2", "netflix", "video.ui", "plex", "kodi", "startmenuexperiencehost", "screenclippinghost",
+        "snippingtool",
     };
 
     /// <summary>A fullscreen app the Screen mode's game layer may hook (<paramref name="exe"/> without ".exe").</summary>
@@ -125,16 +139,19 @@ public sealed class GameOverlay
         {
             _target = front;
             _since = now;
+            _wait = Rehook;
             return (front, false);
         }
         if (hasPicture)
         {
             _since = now;
+            _wait = Rehook;
             return (null, true);
         }
-        if (now - _since < Rehook)
+        if (now - _since < _wait)
             return (null, false);
         _since = now;
+        _wait = TimeSpan.FromTicks(Math.Min(_wait.Ticks * 2, MaxRehook.Ticks));
         return (front, false);
     }
 }

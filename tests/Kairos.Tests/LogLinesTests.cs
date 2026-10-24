@@ -71,14 +71,38 @@ public static class LogLinesTests
     [Test]
     public static void The_health_line_counts_frames_since_the_last_one()
     {
-        static EngineStatus Status(uint lagged, uint skipped, uint total) =>
-            new(true, false, 59.9, lagged, skipped, total, 300, 300, "obs_nvenc_h264_tex", 2560, 1440, 310, 600, @"D:\Clips", false, null);
-        string line = LogLines.Health(Status(10, 20, 36_000), Status(4, 2, 0), cpuPercent: 3.4, ramMb: 312, drive: "C:", freeGb: 140);
+        static EngineStatus Status(uint lagged, uint skipped, uint total, uint rendered) =>
+            new(true, false, 59.9, lagged, skipped, total, 300, 300, "obs_nvenc_h264_tex", 2560, 1440, 310, 600, @"D:\Clips", false, null,
+                RenderedFrames: rendered);
+        string line = LogLines.Health(Status(10, 20, 36_000, 36_000), Status(4, 2, 0, 0), cpuPercent: 3.4, ramMb: 312, drive: "C:", freeGb: 140);
         Assert.Equal("health: replay on · 59.9 fps · skipped 0.05% · lagged 0.02% · cpu 3% · ram 312 MB · C: 140 GB free", line,
             "skipped and lagged out of the frames since the last line");
-        Assert.True(LogLines.Health(Status(1, 1, 100), Status(9, 9, 5000), 1, 300, "C:", 10).Contains("skipped 1.00%", StringComparison.Ordinal),
+        Assert.True(LogLines.Health(Status(1, 1, 100, 5100), Status(9, 9, 5000, 5000), 1, 300, "C:", 10).Contains("skipped 1.00%", StringComparison.Ordinal),
             "counters reset by a rebuild: counted from zero");
+        // A user's log after a rebuild: "lagged 885.50%" (the session's late pictures over the new pipeline's frames).
+        string rebuilt = LogLines.Health(Status(21_400, 0, 600, 2_000_600), Status(21_338, 360_567, 366_141, 2_000_000), 1, 300, "C:", 10);
+        Assert.True(rebuilt.Contains("skipped 0.00% · lagged 10.33%", StringComparison.Ordinal),
+            "late pictures out of the pictures rendered since the last line, whatever the encoder's counters did: " + rebuilt);
         Assert.True(LogLines.Health(null, null, 0.4, 200, "C:", 10).StartsWith("health: replay not built", StringComparison.Ordinal), "no pipeline");
+    }
+
+    /// <summary>A game filling an 8 GB card shrinks Kairos's budget there: the log says it, over budget plainly.</summary>
+    [Test]
+    public static void The_gpu_memory_line_says_kaiross_share_of_the_card()
+    {
+        const ulong Mb = 1 << 20;
+        Assert.Equal("gpu memory: Kairos uses 412 MB of its 6851 MB budget on the card · 3 MB in system memory",
+            LogLines.GpuMemory(412 * Mb, 6851 * Mb, 3 * Mb), "within its budget");
+        Assert.True(LogLines.GpuMemory(500 * Mb, 300 * Mb, 220 * Mb).EndsWith("over budget: Windows pages it out", StringComparison.Ordinal),
+            "over it: said");
+    }
+
+    [Test]
+    public static void A_clip_from_the_disk_says_how_full_its_picture_was()
+    {
+        Assert.Equal("clip from the disk: 10800 pictures, 100% of the frame rate", LogLines.RingClip(10800, 1, 0), "a full clip");
+        Assert.Equal("clip from the disk: 12 pictures, 1% of the frame rate · the newest picture 95 s behind the sound: the encoder fell behind",
+            LogLines.RingClip(12, 0.0066, 95.2), "a starved encoder");
     }
 
     [Test]

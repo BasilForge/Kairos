@@ -43,6 +43,61 @@ public static class ReplayRingTests
         Assert.Equal(256L * 1024, new FileInfo(path).Length, "the file stays at its size");
     }
 
+    /// <summary>
+    /// The picture's encoder behind the sound (a game holding the graphics card): the clip ends with its last picture, not
+    /// seconds of sound over a frozen one (a user's report, 1.1.0).
+    /// </summary>
+    [Test]
+    public static void A_clip_ends_with_its_last_picture_when_the_sound_ran_ahead()
+    {
+        using var ring = new ReplayRing(NewPath(), capacity: 1 << 20, keepSeconds: 60, blockBytes: 16 * 1024);
+        for (int s = 0; s < 10; s++)
+            FeedSecond(ring, s);
+        for (int a = 0; a < 3 * 47; a++) // 3 s of sound, no picture
+        {
+            long usec = 10_000_000L + a * 1_000_000L / 47;
+            ring.Append(new RingPacket(usec * 48 / 1000, usec * 48 / 1000, usec, 1, 48000, 1, true), Fill(50, 7));
+        }
+        var slice = ring.Take(5)!;
+        long lastPicture = slice.Packets.Where(p => p.Track == 0).Max(p => p.DtsUsec);
+        long lastSound = slice.Packets.Where(p => p.Track != 0).Max(p => p.DtsUsec);
+        Assert.True(lastSound <= lastPicture + 1_000_000L / 60, $"sound to {lastSound / 1e6:F2} s, picture to {lastPicture / 1e6:F2} s");
+        Assert.True(lastSound >= lastPicture - 1_000_000L / 47 * 2, "the sound still reaches the last picture");
+    }
+
+    /// <summary>
+    /// A game that starved the encoder for minutes (a user's log: 99.9 % of the frames skipped at 30 fps): the clip of the
+    /// "last minutes" held a few pictures from long before and seemed old. The save says how full its picture was and how
+    /// far the picture was behind the sound, so the log shows it.
+    /// </summary>
+    [Test]
+    public static void A_clip_says_how_full_its_picture_was_and_how_far_it_was_behind()
+    {
+        using var ring = new ReplayRing(NewPath(), capacity: 1 << 20, keepSeconds: 60, blockBytes: 16 * 1024);
+        for (int s = 0; s < 10; s++)
+            FeedSecond(ring, s);
+        var full = ring.Take(5)!;
+        Assert.Equal(300, full.Pictures, "5 s at 60 fps");
+        Assert.Near(1, full.PictureShare, 0.01, "every frame there");
+        Assert.Near(0, full.PictureBehind, 0.05, "the picture keeps up with the sound");
+
+        for (int s = 10; s < 20; s++) // a starved encoder: one picture (a keyframe) every 2 s, the sound goes on
+        {
+            long usec = s * 1_000_000L;
+            if (s % 2 == 0)
+                ring.Append(new RingPacket(s * 60L, s * 60L, usec, 1, 60, 0, true), Fill(400, 1));
+            for (int a = 0; a < 47; a++)
+            {
+                long at = usec + a * 1_000_000L / 47;
+                ring.Append(new RingPacket(at * 48 / 1000, at * 48 / 1000, at, 1, 48000, 1, true), Fill(50, 7));
+            }
+        }
+        var starved = ring.Take(6)!;
+        Assert.Equal(4, starved.Pictures, "from the keyframe 6 s before the newest picture: 12, 14, 16 and 18 s");
+        Assert.True(starved.PictureShare < 0.05, $"a few percent of 60 fps ({starved.PictureShare:P1})");
+        Assert.Near(2, starved.PictureBehind, 0.1, "the sound went on 2 s past the newest picture");
+    }
+
     [Test]
     public static void Older_seconds_than_the_file_holds_are_not_offered()
     {
@@ -73,6 +128,16 @@ public static class ReplayRingTests
         Thread.Sleep(200);
         Assert.True(ring.Take(5) == null, "start fresh: nothing left");
         Assert.Equal(written, ring.BytesWritten, "clearing writes nothing");
+    }
+
+    /// <summary>One picture in the ring (a keyframe, then its sound): a clip of it, no picture before it to time it by.</summary>
+    [Test]
+    public static void A_single_picture_still_makes_a_clip()
+    {
+        using var ring = new ReplayRing(NewPath(), capacity: 128 * 1024, keepSeconds: 60, blockBytes: 16 * 1024);
+        ring.Append(new RingPacket(0, 0, 0, 1, 60, 0, true), Fill(100, 1));
+        ring.Append(new RingPacket(0, 0, 0, 1, 48000, 1, true), Fill(50, 7));
+        Assert.True(ring.Take(5) is { } slice && slice.Packets.Count >= 1, "a clip of the one picture");
     }
 
     [Test]

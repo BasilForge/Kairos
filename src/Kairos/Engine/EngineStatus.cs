@@ -44,4 +44,15 @@ public sealed record EngineStatus(
     /// <summary>How much lighter it records because it fell behind a game (<see cref="LagRelief"/>; 0: as chosen).</summary>
     int Relief = 0,
     /// <summary>Still falling behind at the lightest it can go: the user can cap the game's frame rate.</summary>
-    bool Behind = false);
+    bool Behind = false,
+    /// <summary>
+    /// Pictures libobs rendered this session, what <see cref="LaggedFrames"/> is out of (both run for the whole session;
+    /// <see cref="SkippedFrames"/> and <see cref="TotalFrames"/> are the encoder's, each pipeline's own).
+    /// </summary>
+    uint RenderedFrames = 0,
+    /// <summary>Separate sources: the quiet rows whose app plays on a device added as a row, heard there (row id, device id).</summary>
+    IReadOnlyDictionary<string, string>? AudioRowsHeardOn = null)
+{
+    /// <summary>The four counters as the lag guard reads them.</summary>
+    public FrameCount Frames => new(LaggedFrames, RenderedFrames, SkippedFrames, TotalFrames);
+}

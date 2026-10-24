@@ -15,7 +15,14 @@ public enum VoiceSensitivity { Strict, Normal, Easy }
 /// <summary>Sound: every source on its own row and track, or (Kairos 1.0's way) all the PC's sound together.</summary>
 public enum AudioLayout { Together, Separate }
 
-public enum AudioSourceKind { Game, Discord, Microphone, OtherSounds, App, Input }
+/// <summary>A sound row's kind: <see cref="Output"/> records a playback device (a mixer's channel: GoXLR's Music, RØDECaster's Chat).</summary>
+public enum AudioSourceKind { Game, Discord, Microphone, OtherSounds, App, Input, Output }
+
+public static class AudioSourceKinds
+{
+    /// <summary>A row that records a sound device (the microphone, an added input or playback device), not a process.</summary>
+    public static bool IsDevice(this AudioSourceKind kind) => kind is AudioSourceKind.Microphone or AudioSourceKind.Input or AudioSourceKind.Output;
+}
 
 public sealed class AppSettings
 {
@@ -99,7 +106,7 @@ public sealed class AppSettings
         Video.Fps = Math.Clamp(Video.Fps, 10, 240);
         Video.CustomCq = Math.Clamp(Video.CustomCq, 1, 63);
         Video.CustomMbps = Math.Clamp(Video.CustomMbps, 2, 300);
-        if (string.IsNullOrWhiteSpace(Video.Preset)) Video.Preset = "p5";
+        Video.Preset = VideoSettings.Capped(Video.Preset);
 
         Replay.Seconds = Math.Clamp(Replay.Seconds, 15, 1200);
         Replay.QuickSeconds = Math.Clamp(Replay.QuickSeconds, 5, 120);
@@ -111,6 +118,7 @@ public sealed class AppSettings
         if (string.IsNullOrWhiteSpace(Audio.MicDevice)) Audio.MicDevice = "default";
         if (!Enum.IsDefined(Audio.Layout)) Audio.Layout = AudioLayout.Together;
         Audio.MixersSetUp ??= [];
+        Capture.BorderlessTips ??= [];
         Audio.Sources = (Audio.Sources ?? []).Where(r => r != null && Enum.IsDefined(r.Kind) && !string.IsNullOrWhiteSpace(r.Id))
             .DistinctBy(r => r.Id).ToList();
         foreach (var row in Audio.Sources)
@@ -169,6 +177,8 @@ public sealed class CaptureSettings
     /// </summary>
     public bool ScreenForRiotGames { get; set; }
     public bool CaptureCursor { get; set; } = true;
+    /// <summary>The games told to use Borderless (exe names), once each (<see cref="App.BorderlessTips"/>).</summary>
+    public List<string> BorderlessTips { get; set; } = [];
 }
 
 public sealed record VideoSettings
@@ -181,7 +191,19 @@ public sealed record VideoSettings
     public QualityPreset Quality { get; set; } = QualityPreset.Ultra;
     public int CustomCq { get; set; } = 22;
     public int CustomMbps { get; set; } = 40;
-    public string Preset { get; set; } = "p5";
+    public string Preset { get; set; } = DefaultPreset;
+
+    /// <summary>
+    /// NVIDIA's slowest preset without look-ahead: its p6 and p7 turn look-ahead on (libobs keeps the preset's), which
+    /// a game holding the graphics card starves (RTX 30 cards skipped 55-86 % of the frames, frozen clips; a user's
+    /// report, 1.1.0). The encoder speed goes from p1 to this.
+    /// </summary>
+    public const string DefaultPreset = "p5";
+    public const int MaxPreset = 5;
+
+    /// <summary><paramref name="preset"/> ("p1" to "p7") as recorded with: p5 at most; anything else p5.</summary>
+    public static string Capped(string? preset) =>
+        int.TryParse(preset?.TrimStart('p', 'P'), out int n) && n >= 1 ? $"p{Math.Min(n, MaxPreset)}" : DefaultPreset;
 }
 
 public sealed class ReplaySettings

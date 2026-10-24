@@ -136,6 +136,7 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_set_output_source(uint channel, IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern double obs_get_active_fps();
     [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_get_lagged_frames();
+    [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_get_total_frames();
     [DllImport(Lib, CallingConvention = Cc)] public static extern uint video_output_get_skipped_frames(IntPtr video);
     [DllImport(Lib, CallingConvention = Cc)] public static extern uint video_output_get_total_frames(IntPtr video);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void base_set_log_handler(ObsLogHandler handler, IntPtr param);
@@ -180,6 +181,8 @@ public static class Obs
     [DllImport(Lib, CallingConvention = Cc)] public static extern float obs_source_get_volume(IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_update(IntPtr source, IntPtr settings);
     [DllImport(Lib, CallingConvention = Cc)] public static extern uint obs_source_get_width(IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool obs_source_showing(IntPtr source);
+    [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_source_get_signal_handler(IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern void obs_source_set_muted(IntPtr source, [MarshalAs(UnmanagedType.U1)] bool muted);
     [DllImport(Lib, CallingConvention = Cc)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool obs_source_muted(IntPtr source);
     [DllImport(Lib, CallingConvention = Cc)] public static extern IntPtr obs_scene_create([MarshalAs(U8)] string name);

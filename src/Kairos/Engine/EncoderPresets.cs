@@ -28,7 +28,7 @@ public static class EncoderPresets
     };
 
     public static EncoderPlan Plan(VideoCodec codec, QualityPreset q, int width, int height, int fps,
-        int customCq, int customMbps, bool nvencAvailable, string nvencPreset = "p5")
+        int customCq, int customMbps, bool nvencAvailable, string nvencPreset = Settings.VideoSettings.DefaultPreset)
     {
         int av1Cq;
         int kbps;

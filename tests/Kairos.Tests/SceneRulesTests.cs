@@ -87,6 +87,19 @@ public static class SceneRulesTests
             Assert.True(AntiCheatGuard.GameSoundWindows.Any(w => WindowTarget.ExeName(w) == game), $"{game} has a window string");
     }
 
+    /// <summary>
+    /// Games run as administrator (or guarded by their anti-cheat) cannot be opened, so not hooked: libobs tried every
+    /// 2 s for ever (a user's log, 6,000 lines). Kairos tells them apart first and leaves them to the screen.
+    /// </summary>
+    [Test]
+    public static void Games_kairos_cannot_open_are_told_apart()
+    {
+        Assert.True(ProcessList.CanBeHooked((uint)Environment.ProcessId), "a process of the user's own");
+        Assert.True(!ProcessList.CanBeHooked(4), "the System process: no rights, as a game run as administrator");
+        Assert.Equal(ProcessList.SelfName, ProcessList.NameOf((uint)Environment.ProcessId), "its name from the snapshot");
+        Assert.Equal(null, ProcessList.NameOf(uint.MaxValue - 2), "none: null");
+    }
+
     [Test]
     public static void The_running_list_has_this_process()
     {
@@ -124,6 +137,23 @@ public static class SceneRulesTests
         Assert.Equal((null, false), layer.Update("Other:Cls:other.exe", false, t0.AddSeconds(14)), "and waits again");
     }
 
+    /// <summary>
+    /// A user's RTX 3060 Ti in ARC Raiders: the screen was copied under the hooked game, every picture of the game taken
+    /// twice, and the encoder skipped 76-99 % of them (a frozen picture with sound). The screen is copied only while no
+    /// game gives its picture: what OBS does with a game capture alone.
+    /// </summary>
+    [Test]
+    public static void The_screen_under_a_game_is_copied_only_while_the_game_gives_no_picture()
+    {
+        Assert.True(!SceneRules.ScreenUnderGame(CaptureMode.Screen, gamePicture: true, gamesFallBack: false), "Screen, the game shows: not copied");
+        Assert.True(SceneRules.ScreenUnderGame(CaptureMode.Screen, gamePicture: false, gamesFallBack: false), "Screen, no game: the screen");
+        Assert.True(!SceneRules.ScreenUnderGame(CaptureMode.Game, gamePicture: true, gamesFallBack: true), "Games, hooked: not copied");
+        Assert.True(SceneRules.ScreenUnderGame(CaptureMode.Game, gamePicture: false, gamesFallBack: true), "Games, no game: falls back to the screen");
+        Assert.True(!SceneRules.ScreenUnderGame(CaptureMode.Game, gamePicture: false, gamesFallBack: false), "Games without the fallback: games only");
+        Assert.True(!GameOverlay.MayHook("SnippingTool") && !GameOverlay.MayHook("snippingtool"), "the snipping tool's overlay is never hooked");
+        Assert.True(GameOverlay.MayHook("PioneerGame"), "ARC Raiders is");
+    }
+
     [Test]
     public static void A_window_string_is_written_the_way_libobs_reads_it()
     {
@@ -141,6 +171,30 @@ public static class SceneRulesTests
         Assert.Equal((null, false), layer.Update("Game 59 fps:Cls:game.exe", false, t0.AddSeconds(1)), "its title changed: the same window, no new hook");
         Assert.Equal((null, true), layer.Update("Game 61 fps:Cls:game.exe", true, t0.AddSeconds(2)), "its picture shows");
         Assert.Equal(("Game:Other:other.exe", false), layer.Update("Game:Other:other.exe", true, t0.AddSeconds(3)), "another window: targeted anew");
+    }
+
+    /// <summary>
+    /// A user's Call of Duty took the hook and dropped it, again and again: hooked anew every 8 s for four hours (1,900
+    /// tries, a 3 MB log). With no picture the waits double, up to five minutes; a picture starts them over.
+    /// </summary>
+    [Test]
+    public static void A_game_that_never_gives_a_picture_is_hooked_less_and_less_often()
+    {
+        var t0 = new DateTime(2026, 10, 24, 0, 0, 0, DateTimeKind.Utc);
+        const string cod = "Call of Duty:Cls:cod.exe";
+        var layer = new GameOverlay();
+        var at = t0;
+        Assert.Equal((cod, false), layer.Update(cod, false, at), "targeted");
+        var waits = new List<double>();
+        for (int s = 1; s <= 3600 && waits.Count < 8; s++)
+            if (layer.Update(cod, false, t0.AddSeconds(s)).Retarget != null)
+            {
+                waits.Add((t0.AddSeconds(s) - at).TotalSeconds);
+                at = t0.AddSeconds(s);
+            }
+        Assert.Equal("8,16,32,64,128,256,300,300", string.Join(",", waits), "the waits double up to five minutes");
+        Assert.Equal((null, true), layer.Update(cod, true, at.AddSeconds(1)), "a picture at last");
+        Assert.Equal((cod, false), layer.Update(cod, false, at.AddSeconds(10)), "lost again: 8 s again");
     }
 
     [Test]

@@ -147,7 +147,8 @@ public sealed class ReplayRing : IDisposable
 
     /// <summary>
     /// The packets of the last <paramref name="seconds"/>, from the first video keyframe at or after that time (sound
-    /// from the same moment); null when there is none yet. The open block is handed to the writer first; only a copy of
+    /// from the same moment) to the newest picture (sound the picture's encoder has not caught up with yet, a game
+    /// holding the graphics card, would play over a frozen picture); null when there is none yet. The open block is handed to the writer first; only a copy of
     /// the index is made under the lock (the encoder thread waits on it).
     /// </summary>
     public RingSlice? Take(double seconds)
@@ -162,16 +163,34 @@ public sealed class ReplayRing : IDisposable
         int newest = Array.FindLastIndex(all, e => e.Packet.Track == 0);
         if (newest < 0)
             return null;
-        long from = all[newest].Packet.DtsUsec - (long)(seconds * 1_000_000);
+        var last = all[newest].Packet;
+        long from = last.DtsUsec - (long)(seconds * 1_000_000);
         int start = Array.FindIndex(all, e => e.Packet is { Track: 0, Key: true } p && p.DtsUsec >= from);
         if (start < 0)
             return null;
         long t0 = all[start].Packet.DtsUsec;
+        int before = newest > 0 ? Array.FindLastIndex(all, newest - 1, e => e.Packet.Track == 0) : -1;
+        long end = last.DtsUsec + (before >= 0 ? last.DtsUsec - all[before].Packet.DtsUsec : 0); // its frame's end
         var picked = new List<RingEntry>(all.Length - start);
+        int pictures = 0;
+        long newestSound = long.MinValue;
         for (int i = start; i < all.Length; i++)
-            if (all[i].Packet.Track == 0 || all[i].Packet.DtsUsec >= t0)
+        {
+            var p = all[i].Packet;
+            if (p.Track == 0)
+                pictures++;
+            else
+                newestSound = Math.Max(newestSound, p.DtsUsec);
+            if (p.Track == 0 || p.DtsUsec >= t0 && p.DtsUsec < end)
                 picked.Add(all[i]);
-        return new RingSlice(this, picked);
+        }
+        double frames = (end - t0) / 1e6 * last.TbDen / Math.Max(1, last.TbNum);
+        return new RingSlice(this, picked)
+        {
+            Pictures = pictures,
+            PictureShare = frames > 0 ? Math.Min(1, pictures / frames) : 1,
+            PictureBehind = newestSound > last.DtsUsec ? (newestSound - last.DtsUsec) / 1e6 : 0,
+        };
     }
 
     /// <summary>Starts empty again (a start, or "start fresh after a save"): the index goes, nothing is written.</summary>
@@ -361,6 +380,15 @@ public sealed class RingSlice
     }
 
     public IReadOnlyList<RingPacket> Packets { get; }
+
+    /// <summary>Its pictures (video packets).</summary>
+    public int Pictures { get; init; }
+
+    /// <summary>Its pictures over the frames its time holds at the frame rate: under 1 when the encoder skipped frames.</summary>
+    public double PictureShare { get; init; } = 1;
+
+    /// <summary>Seconds the newest sound was past the newest picture: an encoder a game starved (the clip ends at the picture).</summary>
+    public double PictureBehind { get; init; }
 
     /// <summary>
     /// Each packet with its bytes, in order, read in runs of contiguous packets (one read per few MB). Throws

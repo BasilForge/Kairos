@@ -15,8 +15,8 @@ public static partial class SelfTest
     const double ToneHz = 7000, ToneDbfs = -85;
 
     /// <summary>
-    /// Kairos.exe --tone &lt;seconds&gt;: a hidden helper with no window that plays the self-test's tone on the default
-    /// output device, so its process can be captured by id.
+    /// Kairos.exe --tone &lt;seconds&gt; [device id]: a hidden helper with no window that plays the self-test's tone on the
+    /// default output device (or the one given), so its process can be captured by id.
     /// </summary>
     public static unsafe int Tone(string[] args)
     {
@@ -26,7 +26,10 @@ public static partial class SelfTest
         // Its own audio session that Windows does not remember (a mixer setting saved for this exe can't mute it), as an
         // app plays sound (PlaySound would play as "System sounds", which people often mute).
         var enumerator = (CoreAudio.IMMDeviceEnumerator)new CoreAudio.MMDeviceEnumerator();
-        Marshal.ThrowExceptionForHR(enumerator.GetDefaultAudioEndpoint(CoreAudio.Render, CoreAudio.Multimedia, out CoreAudio.IMMDevice device));
+        CoreAudio.IMMDevice device;
+        Marshal.ThrowExceptionForHR(args.Length > 2
+            ? enumerator.GetDevice(args[2], out device)
+            : enumerator.GetDefaultAudioEndpoint(CoreAudio.Render, CoreAudio.Multimedia, out device));
         Guid iid = typeof(CoreAudio.IAudioClient).GUID;
         Marshal.ThrowExceptionForHR(device.Activate(ref iid, CoreAudio.ClsctxAll, IntPtr.Zero, out object activated));
         var client = (CoreAudio.IAudioClient)activated;
@@ -135,11 +138,14 @@ public static partial class SelfTest
     /// The tone helper, hidden, under its own name (a mixer rule for "Kairos", such as a Stream Deck dial, can't mute it),
     /// playing for <paramref name="seconds"/>; give it a moment to start.
     /// </summary>
-    static (Process Helper, string Exe) StartTone(double seconds)
+    static (Process Helper, string Exe) StartTone(double seconds, string? device = null)
     {
         string exe = Path.Combine(AppContext.BaseDirectory, "KairosTone.exe");
         File.Copy(Environment.ProcessPath!, exe, overwrite: true);
-        var helper = Process.Start(new ProcessStartInfo(exe, FormattableString.Invariant($"--tone {seconds}")) { UseShellExecute = false, CreateNoWindow = true })!;
+        var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (string arg in new[] { "--tone", seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), device ?? "" }.Where(a => a.Length > 0))
+            start.ArgumentList.Add(arg);
+        var helper = Process.Start(start)!;
         helper.PriorityClass = ProcessPriorityClass.BelowNormal;
         Thread.Sleep(700);
         return (helper, exe);
@@ -164,25 +170,70 @@ public static partial class SelfTest
 
     /// <summary>
     /// --selftest ... --audio separate: the tone must reach "Mix" and "Other sounds" and no other track (read from each
-    /// libobs mix before encoding), and the saved clip must carry the track names.
+    /// libobs mix before encoding), and the saved clip must carry the track names. With playback devices as rows
+    /// (--output-row: the default one, --output-device: any), the tone (on the default device, or --tone-device) must
+    /// reach the row of the device it plays on and no other track, and that row's live level and mute must act on it.
     /// </summary>
     static string? SeparateAudio(CapturePipeline pipeline, AppSettings s, TextWriter output)
     {
-        var (helper, exe) = StartTone(9);
-        var meters = new List<(int Mixer, string Name, ToneMeter Meter, AudioOutputCallback Callback)>();
+        var (helper, exe) = StartTone(16, ToneDevice);
         IntPtr audio = Obs.obs_get_audio();
         try
         {
-            var assignment = AudioPartition.Assign(App.ProcessList.All(), CoreAudio.ProcessesWithSound(),
-                new PartitionInput(0, s.Audio.Sources, App.ProcessList.SelfName));
+            string playsOn = ToneDevice ?? CoreAudio.DefaultRenderId() ?? "";
+            bool anyOutput = s.Audio.Sources.Any(r => r.Kind == AudioSourceKind.Output);
+            var toneRow = s.Audio.Sources.FirstOrDefault(r => r.Kind == AudioSourceKind.Output && r.Target == playsOn);
+            var (withSound, onOutputs) = CoreAudio.Sound(s.Audio.Sources);
+            var assignment = AudioPartition.Assign(App.ProcessList.All(), withSound, new PartitionInput(0, s.Audio.Sources, App.ProcessList.SelfName, onOutputs));
             // A row's live mute and volume reach a source made after them (Other sounds gains processes any time).
             pipeline.ApplyLive(new LiveAudio(1, 1, [new("other", 0.3, true)]));
             pipeline.UpdateAudioTargets(assignment);
             var states = pipeline.OtherSourceStates();
-            if (states.Count == 0 || states.Any(st => !st.Muted || Math.Abs(st.Volume - 0.3) > 0.01))
+            // (With the default playback device as a row, every app may play there: Other sounds can be empty.)
+            if ((states.Count == 0 && !anyOutput) || states.Any(st => !st.Muted || Math.Abs(st.Volume - 0.3) > 0.01))
                 return $"a new Other sounds source did not take the live mute/volume: {string.Join(",", states)}";
             pipeline.ApplyLive(LiveAudio.Of(s.Audio));
             output.WriteLine($"rows capturing: {string.Join(", ", pipeline.CapturingRows)}; other sounds: {string.Join(",", assignment.GetValueOrDefault("other", []))}");
+            string wantedTrack = toneRow?.Label ?? TrackLayout.FileName(TrackRole.Other);
+            string? why = null;
+            foreach (var (name, level) in TrackTones(pipeline, audio, 4000))
+            {
+                output.WriteLine(FormattableString.Invariant($"track {name}: tone {level:F1} dBFS"));
+                bool wanted = name == TrackLayout.FileName(TrackRole.Mix) || name == wantedTrack;
+                if (wanted && level < ToneDbfs - 12)
+                    why ??= $"the tone is missing from {name}";
+                if (!wanted && name != TrackLayout.FileName(TrackRole.Microphone) && level > ToneDbfs - 20)
+                    why ??= $"the tone leaked into {name}";
+            }
+            if (why != null || toneRow == null)
+                return why;
+            // The device row's own level and mute, live: half the volume is 6 dB down, muted is nothing.
+            var live = LiveAudio.Of(s.Audio);
+            LiveAudio With(double volume, bool muted) => live with { Rows = [.. live.Rows.Select(r => r.Id == toneRow.Id ? r with { Volume = volume, Muted = muted } : r)] };
+            pipeline.ApplyLive(With(0.5, false));
+            Thread.Sleep(600); // the mix runs a moment behind: the change heard first
+            double half = TrackTones(pipeline, audio, 2500)[toneRow.Label];
+            pipeline.ApplyLive(With(1, true));
+            Thread.Sleep(600);
+            double muted = TrackTones(pipeline, audio, 2500)[toneRow.Label];
+            pipeline.ApplyLive(live);
+            output.WriteLine(FormattableString.Invariant($"track {toneRow.Label}: at half volume {half:F1} dBFS, muted {muted:F1} dBFS"));
+            if (Math.Abs(half - (ToneDbfs - 6)) > 2)
+                return $"half volume on {toneRow.Label} gave {half:F1} dBFS, not about {ToneDbfs - 6} dBFS";
+            return muted > ToneDbfs - 40 ? $"muting {toneRow.Label} left {muted:F1} dBFS" : null;
+        }
+        finally
+        {
+            StopTone(helper, exe);
+        }
+    }
+
+    /// <summary>The tone's level on each track (read from each libobs mix before encoding) over <paramref name="ms"/>.</summary>
+    static Dictionary<string, double> TrackTones(CapturePipeline pipeline, IntPtr audio, int ms)
+    {
+        var meters = new List<(int Mixer, string Name, ToneMeter Meter, AudioOutputCallback Callback)>();
+        try
+        {
             foreach (var track in pipeline.TrackNames.Select((name, i) => (name, i)))
             {
                 var meter = new ToneMeter(ToneHz);
@@ -190,26 +241,24 @@ public static partial class SelfTest
                 Obs.audio_output_connect(audio, (nuint)track.i, IntPtr.Zero, callback, IntPtr.Zero);
                 meters.Add((track.i, track.name, meter, callback));
             }
-            string? why = null;
-            Thread.Sleep(4000);
-            foreach (var (_, name, meter, _) in meters)
-            {
-                double level = meter.Result().Tone;
-                output.WriteLine(FormattableString.Invariant($"track {name}: tone {level:F1} dBFS"));
-                bool wanted = name == TrackLayout.FileName(TrackRole.Mix) || name == TrackLayout.FileName(TrackRole.Other);
-                if (wanted && level < ToneDbfs - 12)
-                    why ??= $"the tone is missing from {name}";
-                if (!wanted && name != TrackLayout.FileName(TrackRole.Microphone) && level > ToneDbfs - 20)
-                    why ??= $"the tone leaked into {name}";
-            }
-            return why;
+            Thread.Sleep(ms);
+            return meters.ToDictionary(m => m.Name, m => m.Meter.Result().Tone);
         }
         finally
         {
             foreach (var (mixer, _, _, callback) in meters)
                 Obs.audio_output_disconnect(audio, (nuint)mixer, callback, IntPtr.Zero);
-            StopTone(helper, exe);
         }
+    }
+
+    /// <summary>The device the separate-sources tone plays on (--tone-device), or null: the default one.</summary>
+    static string? ToneDevice;
+
+    /// <summary>A playback device as a row of its own track, named "Output 1", "Output 2"...</summary>
+    static void AddOutputRow(AppSettings s, string device)
+    {
+        int n = s.Audio.Sources.Count(r => r.Kind == AudioSourceKind.Output) + 1;
+        s.Audio.Sources.Add(new AudioSource { Id = $"output:test{n}", Kind = AudioSourceKind.Output, Target = device, Label = $"Output {n}", OwnTrack = true });
     }
 
     static (IntPtr, ObsAudioCaptureCallback) Listen(int pid, string name, uint channel, ToneMeter meter)

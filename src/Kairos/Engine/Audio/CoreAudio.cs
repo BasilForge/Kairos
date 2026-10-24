@@ -8,7 +8,8 @@ static class CoreAudio
     public const int Render = 0, Capture = 1, Active = 1, Multimedia = 1, Communications = 2, ClsctxAll = 23;
 
     /// <summary>The processes with an audio session on any active output device (playing or idle, not ended); not system sounds.</summary>
-    public static HashSet<uint> ProcessesWithSound()
+    /// <param name="split">Playback devices (their ids, as libobs names them) whose processes also go in <paramref name="onSplit"/>, with the device.</param>
+    public static HashSet<uint> ProcessesWithSound(IReadOnlySet<string>? split = null, Dictionary<uint, string>? onSplit = null)
     {
         var pids = new HashSet<uint>();
         var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
@@ -21,6 +22,7 @@ static class CoreAudio
             {
                 if (devices.Item(i, out var device) != 0)
                     continue;
+                string? splitId = split != null && device.GetId(out string id) == 0 && split.Contains(id) ? id : null;
                 Guid iid = typeof(IAudioSessionManager2).GUID;
                 if (device.Activate(ref iid, ClsctxAll, IntPtr.Zero, out object activated) == 0)
                 {
@@ -34,7 +36,11 @@ static class CoreAudio
                                 var control = (IAudioSessionControl2)session;
                                 if (control.GetState(out int state) == 0 && state != 2 /* expired */ &&
                                     control.GetProcessId(out uint pid) == 0 && pid != 0)
+                                {
                                     pids.Add(pid);
+                                    if (splitId != null)
+                                        onSplit!.TryAdd(pid, splitId);
+                                }
                                 Marshal.ReleaseComObject(session);
                             }
                         Marshal.ReleaseComObject(sessions);
@@ -52,6 +58,17 @@ static class CoreAudio
         return pids;
     }
 
+    /// <summary>
+    /// The processes with sound, and those playing on a playback device recorded as a row of <paramref name="rows"/> (heard
+    /// from that device: <see cref="PartitionInput.OnOutputs"/>; null when no row is one), in one look at the devices.
+    /// </summary>
+    public static (HashSet<uint> All, Dictionary<uint, string>? OnOutputs) Sound(IReadOnlyList<Settings.AudioSource> rows)
+    {
+        var outputs = rows.Where(r => r.Kind == Settings.AudioSourceKind.Output).Select(r => r.Target).ToHashSet();
+        var onOutputs = outputs.Count > 0 ? new Dictionary<uint, string>() : null;
+        return (ProcessesWithSound(onOutputs != null ? outputs : null, onOutputs), onOutputs);
+    }
+
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
     internal class MMDeviceEnumerator;
 
@@ -60,6 +77,7 @@ static class CoreAudio
     {
         [PreserveSig] int EnumAudioEndpoints(int flow, int state, out IMMDeviceCollection devices);
         [PreserveSig] int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice device);
+        [PreserveSig] int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice device);
     }
 
     [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

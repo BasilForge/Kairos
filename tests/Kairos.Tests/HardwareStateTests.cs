@@ -30,6 +30,22 @@ public static class HardwareStateTests
         Assert.True(updated.Failed.Count == 0 && updated.AutoStep == 0, "a new driver: tried again from the start");
     }
 
+    /// <summary>
+    /// A user's 30 fps was step 3 before the REALTIME step came in, and step 3 is 60 fps and 1080p now: kept as it was,
+    /// his recording would pass the new step by. A step kept under older numbers starts again from none.
+    /// </summary>
+    [Test]
+    public static void Lighter_recording_kept_under_older_step_numbers_starts_again()
+    {
+        string path = Path.Combine(Folder(), "hardware.json");
+        File.WriteAllText(path, """{ "Fingerprint": "pc", "Relief": 3, "ReliefAt": "2026-10-23T20:00:00" }""");
+        var old = HardwareState.Load(path, "pc");
+        Assert.True(old.Relief == 0 && old.ReliefAt == null, "an older Kairos's step: as chosen again");
+        old.Relieve(new DateTime(2026, 10, 24), LagRelief.Realtime);
+        old.Save(path);
+        Assert.Equal(LagRelief.Realtime, HardwareState.Load(path, "pc").Relief, "this Kairos's own step: kept");
+    }
+
     [Test]
     public static void An_outdated_nvidia_driver_asks_for_an_update_then_a_restart()
     {

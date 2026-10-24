@@ -20,6 +20,33 @@ public static class ProcessList
         return all;
     }
 
+    /// <summary>
+    /// Whether game capture can open process <paramref name="pid"/> as libobs does (query and wait rights): a game run as
+    /// administrator, or one its anti-cheat guards, cannot be hooked by Kairos, which never asks for administrator.
+    /// </summary>
+    public static bool CanBeHooked(uint pid)
+    {
+        IntPtr h = OpenProcess(0x0400 /* PROCESS_QUERY_INFORMATION */ | 0x00100000 /* SYNCHRONIZE */, false, pid);
+        if (h == IntPtr.Zero)
+            return false;
+        CloseHandle(h);
+        return true;
+    }
+
+    /// <summary>Process <paramref name="pid"/>'s name (without ".exe") from a snapshot, which needs no rights on it; null when gone.</summary>
+    public static string? NameOf(uint pid)
+    {
+        string? name = null;
+        Any((id, exe) =>
+        {
+            if (id != pid)
+                return false;
+            name = exe;
+            return true;
+        });
+        return name;
+    }
+
     /// <summary>When a process started (file time), or null when it is gone or cannot be asked; opens it for that only.</summary>
     public static long? StartedAt(uint pid)
     {

@@ -67,8 +67,13 @@ public sealed partial class SettingsViewModel
         }
     }
 
-    /// <summary>A device's name in a line of text: short, and left to right inside an Arabic line (its brackets stay where they are).</summary>
-    static string Shown(string device) => Text.Ltr(VirtualAudio.ShortName(device));
+    /// <summary>
+    /// A device's name in a line of text: short, left to right inside an Arabic line (its brackets stay where they are), and
+    /// there kept on one line ("Chat Mic (TC-" / "Helicon GoXLR)" was shown on two).
+    /// </summary>
+    static string Shown(string device) => Text.IsRightToLeft
+        ? Text.Ltr(VirtualAudio.ShortName(device).Replace('-', '‑').Replace(' ', ' '))
+        : VirtualAudio.ShortName(device);
 
     public bool AudioTogether => !AudioSeparate;
 
@@ -112,11 +117,21 @@ public sealed partial class SettingsViewModel
     public IReadOnlyList<Option> AddAudioDevices =>
         [.. (_caps?.Mics ?? []).Where(m => m.Value != "default" && m.Value != _s.Audio.MicDevice && _s.Audio.Sources.All(r => r.Target != m.Value)
                                           && VirtualAudio.WholeMixOf(m.Name) == null) // a whole mix would hold every other row again
-            .Select(m => new Option(m.Name, m))];
+            .Select(m => new Option(Text.Ltr(m.Name), m))];
 
-    ICommand? _addAppCommand, _addDeviceCommand, _removeRowCommand;
+    /// <summary>
+    /// What "+ Add source" offers among the playback devices: a mixer's channel (GoXLR's Music, RØDECaster's Chat). Not
+    /// the one Windows plays every app on: as a row it takes each app's sound off its own row (a user's game, Discord and
+    /// Other sounds all went silent, everything on that one track).
+    /// </summary>
+    public IReadOnlyList<Option> AddAudioOutputs =>
+        [.. (_caps?.Speakers ?? []).Where(d => d.Value != "default" && d.Value != _caps!.DefaultSpeaker && _s.Audio.Sources.All(r => r.Target != d.Value))
+            .Select(d => new Option(Text.Ltr(d.Name), d))];
+
+    ICommand? _addAppCommand, _addDeviceCommand, _addOutputCommand, _removeRowCommand;
     public ICommand AddAudioAppCommand => _addAppCommand ??= new RelayCommand(p => AddAudioApp((NameValue)p!));
     public ICommand AddAudioDeviceCommand => _addDeviceCommand ??= new RelayCommand(p => AddAudioDevice((NameValue)p!));
+    public ICommand AddAudioOutputCommand => _addOutputCommand ??= new RelayCommand(p => AddAudioOutput((NameValue)p!));
     public ICommand RemoveAudioRowCommand => _removeRowCommand ??= new RelayCommand(p => RemoveAudioRow((AudioRowView)p!));
 
     public void AddAudioApp(NameValue app) => AddRow(new AudioSource
@@ -124,9 +139,13 @@ public sealed partial class SettingsViewModel
         Id = "app:" + app.Value.ToLowerInvariant(), Kind = AudioSourceKind.App, Target = app.Value, Label = app.Name,
     });
 
-    public void AddAudioDevice(NameValue device) => AddRow(new AudioSource
+    public void AddAudioDevice(NameValue device) => AddDeviceRow(device, AudioSourceKind.Input, "input:");
+
+    public void AddAudioOutput(NameValue device) => AddDeviceRow(device, AudioSourceKind.Output, "output:");
+
+    void AddDeviceRow(NameValue device, AudioSourceKind kind, string prefix) => AddRow(new AudioSource
     {
-        Id = "input:" + Guid.NewGuid().ToString("N")[..8], Kind = AudioSourceKind.Input, Target = device.Value, Label = device.Name,
+        Id = prefix + Guid.NewGuid().ToString("N")[..8], Kind = kind, Target = device.Value, Label = device.Name,
     });
 
     void AddRow(AudioSource row)
@@ -185,22 +204,28 @@ public sealed partial class SettingsViewModel
     }
 
     /// <summary>
-    /// Each row the engine captures says why it hears nothing (no game yet, the app closed, nothing playing). A row the
-    /// engine does not have (not saved yet, sound recorded together, the engine off) says nothing.
+    /// Each row the engine captures says why it hears nothing (no game yet, the app closed, nothing playing, or its app
+    /// heard on a device row: which one). A row the engine does not have (not saved yet, sound recorded together, the
+    /// engine off) says nothing. A row of the device Windows plays every app on says to remove it (it takes their sound).
     /// </summary>
     void RefreshAudioRowStates()
     {
         var quiet = _status?.Engine?.QuietAudioRows;
+        var heardOn = _status?.Engine?.AudioRowsHeardOn;
         var saved = SavedRowIds();
+        string? DeviceRowName(string device) => _s.Audio.Sources.FirstOrDefault(r => r.Kind == AudioSourceKind.Output && r.Target == device)?.Label;
         foreach (var view in AudioRows)
             view.SetState(!saved.Contains(view.Id) ? Text.Get("audio.startsAfterSave") // the engine has no such source until Save
-                : quiet == null || !quiet.Contains(view.Id) ? "" : view.Row.Kind switch
-            {
-                AudioSourceKind.Game => Text.Get("audio.waitingGame"),
-                AudioSourceKind.OtherSounds => Text.Get("audio.nothingPlaying"),
-                AudioSourceKind.Microphone or AudioSourceKind.Input => "",
-                _ => Text.Get("audio.notRunning"),
-            });
+                : view.Row.Kind == AudioSourceKind.Output && _caps?.DefaultSpeaker is { } main && view.Row.Target == main ? Text.Get("audio.outputIsDefault")
+                : quiet == null || !quiet.Contains(view.Id) ? ""
+                : heardOn?.GetValueOrDefault(view.Id) is { } device && DeviceRowName(device) is { } name ? Text.Format("audio.heardOnRow", Shown(name))
+                : view.Row.Kind switch
+                {
+                    AudioSourceKind.Game => Text.Get("audio.waitingGame"),
+                    AudioSourceKind.OtherSounds => Text.Get("audio.nothingPlaying"),
+                    _ when view.Row.Kind.IsDevice() => "",
+                    _ => Text.Get("audio.notRunning"),
+                });
     }
 
     /// <summary>The rows of the saved settings (what the engine records), read again only when they were saved again.</summary>

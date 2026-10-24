@@ -61,6 +61,7 @@ public static partial class ObsHost
         if (!ResetVideo(video))
             throw new InvalidOperationException("obs_reset_video failed");
         ObsLog.Info($"gpu priority: {GpuPriority.Raise()}");
+        ObsLog.Info($"cpu priority: {CpuPriority.RaiseProcess()}");
         long graphics = clock.ElapsedMilliseconds;
 
         _root = appFolder;

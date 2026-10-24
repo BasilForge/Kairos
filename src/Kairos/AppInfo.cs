@@ -25,7 +25,7 @@ public static class AppInfo
     public static string PipeFor(int session) => $"Kairos.{session}";
     public const string RunValueName = "Kairos";
     /// <summary>Kairos's Discord server: help, problems and ideas.</summary>
-    public const string DiscordUrl = "https://discord.gg/YWgaS6JRzF";
+    public const string DiscordUrl = "https://discord.gg/QgqsGEWzaF";
 
     /// <summary>The full version, a prerelease part included ("1.0.0-beta.1"), without the build details after "+".</summary>
     public static string Version { get; } =

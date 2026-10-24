@@ -30,6 +30,29 @@ public static class AudioSettingsTests
         Assert.Equal(4, s.Audio.Sources.Select(r => r.Id).Distinct().Count(), "ids are unique");
     }
 
+    /// <summary>
+    /// Playback devices added as rows (a mixer's channels) come back after a restart as they were: their kind, the
+    /// device's own id (what libobs opens), name, level, mute and own track, written to the file and read again.
+    /// </summary>
+    [Test]
+    public static void Playback_device_rows_come_back_after_a_restart()
+    {
+        string path = TempFile();
+        var s = new AppSettings();
+        s.Audio.Layout = AudioLayout.Separate;
+        s.Normalize();
+        const string music = "{0.0.0.00000000}.{11111111-2222-3333-4444-555555555555}", chat = "{0.0.0.00000000}.{66666666-7777-8888-9999-000000000000}";
+        s.Audio.Sources.Add(new AudioSource { Id = "output:a1", Kind = AudioSourceKind.Output, Target = music, Label = "Music (TC-Helicon GoXLR)", Volume = 0.7, OwnTrack = true });
+        s.Audio.Sources.Add(new AudioSource { Id = "output:b2", Kind = AudioSourceKind.Output, Target = chat, Label = "Speakers (RODECaster Duo Chat)", Muted = true });
+        SettingsStore.Save(path, s);
+        Assert.True(File.ReadAllText(path).Contains("\"Output\"", StringComparison.Ordinal), "the kind is written by name");
+        var back = SettingsStore.Load(path);
+        var a = back.Audio.Sources.Single(r => r.Id == "output:a1");
+        var b = back.Audio.Sources.Single(r => r.Id == "output:b2");
+        Assert.True(a is { Kind: AudioSourceKind.Output, Target: music, Label: "Music (TC-Helicon GoXLR)", Volume: 0.7, OwnTrack: true, Muted: false }, "the first device row as it was");
+        Assert.True(b is { Kind: AudioSourceKind.Output, Target: chat, Muted: true }, "the second, muted");
+    }
+
     [Test]
     public static void Rows_survive_a_round_trip_and_built_ins_come_back()
     {

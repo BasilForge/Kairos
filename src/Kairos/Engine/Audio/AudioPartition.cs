@@ -5,8 +5,11 @@ namespace Kairos.Engine.Audio;
 /// <summary>A running process: its id, its parent's, and its name (no ".exe").</summary>
 public readonly record struct ProcInfo(uint Pid, uint Parent, string Name);
 
-/// <summary>What the partition needs: the game's process (0: none yet), the rows, and Kairos's own process name.</summary>
-public sealed record PartitionInput(uint GamePid, IReadOnlyList<AudioSource> Rows, string SelfName);
+/// <summary>
+/// What the partition needs: the game's process (0: none yet), the rows, Kairos's own process name, and the processes
+/// playing on a playback device added as a row, with that device's id (heard from that device, so from no process row).
+/// </summary>
+public sealed record PartitionInput(uint GamePid, IReadOnlyList<AudioSource> Rows, string SelfName, IReadOnlyDictionary<uint, string>? OnOutputs = null);
 
 /// <summary>
 /// Which processes each Separate-sources row captures. A capture takes a process and its children, so each row gets the
@@ -19,10 +22,14 @@ public sealed record PartitionInput(uint GamePid, IReadOnlyList<AudioSource> Row
 /// </summary>
 public static class AudioPartition
 {
+    static readonly Dictionary<uint, string> NoOutputs = [];
+
     /// <param name="startedAt">When a process started (any monotonic unit), or null when unknown: a parent that started
     /// after its child is a reused pid, not its launcher.</param>
+    /// <param name="heardOn">Filled with the named rows whose app is heard on a device row instead: row id, device id (the
+    /// Audio page says where their sound went).</param>
     public static IReadOnlyDictionary<string, uint[]> Assign(IReadOnlyCollection<ProcInfo> processes, IReadOnlySet<uint> withSound,
-        PartitionInput input, Func<uint, long?>? startedAt = null)
+        PartitionInput input, Func<uint, long?>? startedAt = null, IDictionary<string, string>? heardOn = null)
     {
         var byPid = new Dictionary<uint, ProcInfo>();
         foreach (var p in processes)
@@ -50,6 +57,13 @@ public static class AudioPartition
         }
         uint[] TopsNamed(Func<string, bool> name) =>
             processes.Where(p => name(p.Name)).Select(p => Top(p.Pid)).Distinct().ToArray();
+        // What plays on a playback device added as a row is heard from that device: a tree holding such a process (the
+        // process or one of its parents) is no row's.
+        var onOutputs = input.OnOutputs ?? NoOutputs;
+        var deviceOf = new Dictionary<uint, string>(); // a tree that plays on a device row: that device
+        foreach (var (pid, device) in onOutputs)
+            foreach (uint node in Ancestors(pid).Prepend(pid))
+                deviceOf.TryAdd(node, device);
 
         // Each named row claims one tree, the apps named outright first; a root inside or above a claimed tree, or a
         // row's second root, is left for Other sounds.
@@ -78,9 +92,13 @@ public static class AudioPartition
                 AudioSourceKind.App => TopsNamed(n => n.Equals(row.Target, StringComparison.OrdinalIgnoreCase)),
                 _ => [],
             };
-            var free = tops.Where(t => !inside.Contains(t) && !above.Contains(t)).ToList();
+            var free = tops.Where(t => !inside.Contains(t) && !above.Contains(t) && !deviceOf.ContainsKey(t)).ToList();
             if (free.Count == 0)
+            {
+                if (heardOn != null && tops.Where(deviceOf.ContainsKey).Select(t => deviceOf[t]).FirstOrDefault() is { } device)
+                    heardOn[row.Id] = device;
                 continue;
+            }
             result[row.Id] = [free[0]];
             Claim(free[0]);
             spare.AddRange(free.Skip(1));
@@ -89,7 +107,7 @@ public static class AudioPartition
             Claim(pid); // its sound goes to Other sounds, as one tree
         var extraRoots = spare.Where(named.Contains).ToHashSet();
 
-        bool Candidate(uint pid) => pid != 0 && !above.Contains(pid) && (!inside.Contains(pid) || extraRoots.Contains(pid))
+        bool Candidate(uint pid) => pid != 0 && !onOutputs.ContainsKey(pid) && !above.Contains(pid) && (!inside.Contains(pid) || extraRoots.Contains(pid))
                                    && !(byPid.TryGetValue(pid, out var p)
                                         && (p.Name.Equals(input.SelfName, StringComparison.OrdinalIgnoreCase) || VirtualAudio.IsMixerApp(p.Name)));
         var others = withSound.Select(pid => extraRoots.Contains(Top(pid)) ? Top(pid) : pid).Where(Candidate).ToHashSet();
