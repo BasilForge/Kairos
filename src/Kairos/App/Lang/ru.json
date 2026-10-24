@@ -579,7 +579,13 @@
   "clips.groupWeek": "На этой неделе",
   "clips.groupMonth": "В этом месяце",
   "clips.groupOlder": "Раньше",
+<<<<<<< HEAD
+  "clips.groupVideos": "Видео",
+  "clips.groupPictures": "Скриншоты",
+  "clips.emptyShots": "Скриншотов пока нет. Нажмите {0}, чтобы сделать.",
+=======
   "clips.emptyShots": "Скриншотов пока нет. Нажмите {0}, чтобы сделать скриншот.",
+>>>>>>> basil/master
   "clips.share": "Поделиться",
   "tray.share": "Поделиться последним клипом",
   "share.title": "Поделиться клипом",

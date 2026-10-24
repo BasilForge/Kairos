@@ -569,6 +569,8 @@
   "clips.groupWeek": "本周",
   "clips.groupMonth": "本月",
   "clips.groupOlder": "更早",
+  "clips.groupVideos": "视频",
+  "clips.groupPictures": "截图",
   "clips.emptyShots": "还没有截图。按 {0} 截一张。",
   "clips.share": "分享",
   "tray.share": "分享上一个片段",

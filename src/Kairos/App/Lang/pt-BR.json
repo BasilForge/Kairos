@@ -574,6 +574,8 @@
   "clips.groupWeek": "Esta semana",
   "clips.groupMonth": "Este mês",
   "clips.groupOlder": "Mais antigos",
+  "clips.groupVideos": "Vídeos",
+  "clips.groupPictures": "Capturas",
   "clips.emptyShots": "Nenhuma captura ainda. Pressione {0} para fazer uma.",
   "clips.share": "Compartilhar",
   "tray.share": "Compartilhar o último clipe",
