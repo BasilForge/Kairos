@@ -106,7 +106,8 @@ public static class ClipLibraryTests
             vm.Kind = null!;
             Assert.Equal("video", vm.Kind, "null from the list itself is not a choice");
             vm.Kind = "";
-            Assert.Equal(3, vm.Items.Count, "everything of that game");
+            Assert.True(vm.AtHome, "back to Library home");
+            Assert.True(vm.Items.Count > 0 && vm.Items.All(c => c.GroupLabel == "Recent"), "home shows Recent clips");
         }
         finally
         {
@@ -164,6 +165,7 @@ public static class ClipLibraryTests
             File.Delete(Directory.GetFiles(root, "*.mp4", SearchOption.AllDirectories).Single());
             vm.Refresh();
             Assert.True(vm.CountText.StartsWith("1 screenshot • ", StringComparison.Ordinal), $"no \"0 clips\": {vm.CountText}");
+            vm.Kind = "picture";
             vm.Items[0].IsSelected = true;
             Assert.Equal("Permanently delete 1 file? This cannot be undone.", vm.ConfirmText, "the delete question, whatever is selected");
         }
@@ -185,6 +187,7 @@ public static class ClipLibraryTests
                 File.WriteAllBytes(Put(root, $@"Desktop\Desktop 2026-10-15 20-{i:00}-00.mp4", i), new byte[1 << 20]);
             var vm = new ClipsViewModel(() => root, () => "Alt+F10", () => "Alt+F12");
             vm.Refresh();
+            vm.Kind = "video";
             Assert.True(vm.Items.Count < 30, "only the first cards are loaded");
             Assert.Equal("", vm.SelectedSizeText, "nothing chosen: no size");
             vm.Items[0].IsSelected = true;
@@ -270,6 +273,7 @@ public static class ClipLibraryTests
                 Put(root, $@"Apex Legends\Apex {i}.mp4", -100 - i);
             var vm = new ClipsViewModel(() => root, () => "Ctrl+F8");
             vm.Refresh();
+            vm.Kind = "video";
             Assert.Equal(24, vm.Items.Count, "the first page: a screenful, quick to show");
             Assert.True(vm.HasMore, "more to load");
             Assert.True(vm.CountText.StartsWith("179 clips"), vm.CountText);
@@ -301,6 +305,7 @@ public static class ClipLibraryTests
                 Put(root, $@"Desktop\Desktop {i:00}.mp4", i);
             var vm = new ClipsViewModel(() => root, () => "Ctrl+F8");
             vm.Refresh();
+            vm.Kind = "video";
             var first = vm.Items.ToList();
             first[0].Thumbnail = System.Windows.Media.Imaging.BitmapSource.Create(1, 1, 96, 96,
                 System.Windows.Media.PixelFormats.Bgra32, null, new byte[4], 4);
@@ -334,6 +339,7 @@ public static class ClipLibraryTests
                 Put(root, $@"Desktop\Desktop {i}.mp4", i);
             var vm = new ClipsViewModel(() => root, () => "Ctrl+F8");
             vm.Refresh();
+            vm.Kind = "video";
             Assert.True(vm.Items.All(c => !c.IsNew), "nothing is new when the page opens");
 
             string saved = Put(root, @"Desktop\Desktop saved.mp4", 10);
@@ -375,6 +381,7 @@ public static class ClipLibraryTests
                 vm.Refresh(live: true);
                 Assert.Equal("All folders (4)", (box.SelectedItem as FolderChoice)?.Label, "still shown after a new clip");
 
+                vm.Kind = "video";
                 box.SelectedValue = "Desktop";
                 Put(root, @"Desktop\Desktop 4.mp4", 6);
                 vm.Refresh(live: true);
@@ -408,5 +415,104 @@ public static class ClipLibraryTests
         var recycled = new List<string>();
         ClipDeleter.Delete([clip], permanent: false, recycled.Add);
         Assert.Equal(2, recycled.Count, "deleting the clip takes its camera file too");
+    }
+
+    [Test]
+    public static void User_albums_can_be_renamed_hidden_and_deleted_defaults_cannot()
+    {
+        Text.Language = "en";
+        string root = TempRoot();
+        string albumsPath = Path.Combine(Path.GetDirectoryName(root)!, "albums.json");
+        try
+        {
+            Put(root, @"Desktop\Desktop a.mp4", 1);
+            var albums = new LibraryAlbums(albumsPath);
+            var vm = new ClipsViewModel(() => root, () => "Alt+F10", () => "Alt+F12",
+                new ClipFavorites(Path.Combine(Path.GetDirectoryName(root)!, "fav.txt")), albums);
+            vm.Refresh();
+            Assert.True(vm.Folders.All(f => f.IsDefault), "only defaults before creating");
+            Assert.True(vm.Folders.All(f => f.SizeText.Length > 0 && f.ModifiedText.Length > 0), "size and modified on cards");
+
+            albums.Add("My clips");
+            vm.Refresh();
+            var user = vm.Folders.Single(f => !f.IsDefault);
+            Assert.Equal("My clips", user.Label, "user album on home");
+            Assert.True(!user.IsDefault, "⋮ menu allowed");
+
+            vm.HideFolderCommand.Execute(user);
+            Assert.True(vm.Folders.All(f => f.IsDefault), "hidden album leaves the row");
+            Assert.Equal(1, vm.HiddenFolders.Count, "listed under hidden");
+
+            vm.UnhideFolderCommand.Execute(vm.HiddenFolders[0]);
+            user = vm.Folders.Single(f => !f.IsDefault);
+            vm.AskDeleteFolderCommand.Execute(user);
+            Assert.True(vm.ConfirmingFolderDelete, "asks before delete");
+            vm.ConfirmDeleteFolderCommand.Execute(null);
+            Assert.True(vm.Folders.All(f => f.IsDefault), "gone after confirm");
+            Assert.Equal(0, albums.Load().Count, "forgotten on disk");
+
+            // Defaults: rename/delete commands are no-ops
+            var videos = vm.Folders.Single(f => f.Id == "video");
+            vm.RenameFolderCommand.Execute(videos);
+            vm.AskDeleteFolderCommand.Execute(videos);
+            Assert.True(!vm.ConfirmingFolderDelete && videos.IsDefault, "defaults cannot be deleted");
+        }
+        finally
+        {
+            Clean(root);
+        }
+    }
+
+    [Test]
+    public static void Pinned_clips_stay_on_top_under_favorites()
+    {
+        Text.Language = "en";
+        string root = TempRoot();
+        string favPath = Path.Combine(Path.GetDirectoryName(root)!, "favorites.txt");
+        try
+        {
+            string older = Put(root, @"Desktop\Desktop old.mp4", 1);
+            string newer = Put(root, @"Desktop\Desktop new.mp4", 5);
+            string mid = Put(root, @"Apex Legends\Apex mid.mp4", 3);
+            var favs = new ClipFavorites(favPath);
+            var vm = new ClipsViewModel(() => root, () => "Alt+F10", () => "Alt+F12", favs);
+            vm.Refresh();
+            Assert.True(vm.AtHome, "home shows folders plus Recent");
+            Assert.Equal(3, vm.Items.Count, "Recent on home: last clips (up to 5)");
+            Assert.True(vm.Items.All(c => c.GroupLabel == "Recent"), "labeled Recent");
+            Assert.Equal(newer, vm.Items[0].Path, "newest first in Recent");
+            Assert.True(vm.Folders.Any(f => f.Id == "video"), "Videos folder on home");
+
+            vm.OpenFolderCommand.Execute(vm.Folders.Single(f => f.Id == "video"));
+            Assert.True(vm.InsideFolder && vm.Kind == "video", "inside Videos");
+            Assert.Equal(newer, vm.Items[0].Path, "newest first");
+
+            vm.FavoriteCommand.Execute(vm.Items.Single(c => c.Path == older));
+            Assert.True(vm.Items[0].IsFavorite && vm.Items[0].Path == older, "pinned clip rises to the top");
+            Assert.Equal("Favorites", vm.Items[0].GroupLabel, "under Favorites inside the folder");
+            Assert.Equal(newer, vm.Items[1].Path, "then the rest, newest first");
+            Assert.Equal("Recent", vm.Items[1].GroupLabel, "unpinned clips under Recent");
+            Assert.True(vm.HasFavorites && vm.FavoriteCount == 1, "Favorites folder will show on home");
+
+            vm.BackCommand.Execute(null);
+            Assert.True(vm.AtHome && vm.Folders.Any(f => f.Id == "favorites"), "home again with Favorites");
+
+            vm.OpenFolderCommand.Execute(vm.Folders.Single(f => f.Id == "favorites"));
+            Assert.Equal(1, vm.Items.Count, "Favorites folder: only pinned clips");
+            Assert.Equal(older, vm.Items[0].Path, "the pinned one");
+
+            vm.FavoriteCommand.Execute(vm.Items[0]);
+            Assert.True(vm.AtHome && !vm.HasFavorites, "unpinning the last one returns home");
+            Assert.True(favs.Load().Count == 0, "forgotten on disk");
+
+            vm.Kind = "video";
+            vm.FavoriteCommand.Execute(vm.Items.Single(c => c.Path == mid));
+            vm.Refresh();
+            Assert.Equal(mid, vm.Items[0].Path, "pin survives a refresh and stays on top");
+        }
+        finally
+        {
+            Clean(root);
+        }
     }
 }
